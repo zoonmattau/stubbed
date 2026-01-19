@@ -42,27 +42,6 @@ export default function AddScreen() {
           </TouchableOpacity>
         </View>
 
-        <View style={styles.tips}>
-          <Text style={styles.tipsTitle}>Tips</Text>
-          <View style={styles.tipItem}>
-            <Ionicons name="checkmark-circle" size={20} color={colors.success} />
-            <Text style={styles.tipText}>
-              Search first to find pre-populated event data
-            </Text>
-          </View>
-          <View style={styles.tipItem}>
-            <Ionicons name="checkmark-circle" size={20} color={colors.success} />
-            <Text style={styles.tipText}>
-              Add photos to preserve your memories
-            </Text>
-          </View>
-          <View style={styles.tipItem}>
-            <Ionicons name="checkmark-circle" size={20} color={colors.success} />
-            <Text style={styles.tipText}>
-              Rate the atmosphere to track your best experiences
-            </Text>
-          </View>
-        </View>
       </View>
     </View>
   );
@@ -118,27 +97,5 @@ const styles = StyleSheet.create({
     fontSize: fontSize.sm,
     color: colors.textSecondary,
     textAlign: 'center',
-  },
-  tips: {
-    backgroundColor: colors.surface,
-    borderRadius: borderRadius.lg,
-    padding: spacing.lg,
-  },
-  tipsTitle: {
-    fontSize: fontSize.md,
-    fontWeight: fontWeight.semibold,
-    color: colors.text,
-    marginBottom: spacing.md,
-  },
-  tipItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    marginBottom: spacing.sm,
-  },
-  tipText: {
-    fontSize: fontSize.sm,
-    color: colors.textSecondary,
-    flex: 1,
   },
 });

@@ -27,6 +27,14 @@ export default function InvitationsScreen() {
     refresh,
   } = useEventInvitations();
 
+  const handleBack = () => {
+    if (router.canGoBack()) {
+      router.back();
+    } else {
+      router.replace('/(tabs)');
+    }
+  };
+
   const handleAccept = async (invitation: EventTagInvitationWithDetails) => {
     const result = await acceptInvitation(invitation.id);
     if (result.success) {
@@ -200,7 +208,7 @@ export default function InvitationsScreen() {
           <Button
             title="Go Back"
             variant="outline"
-            onPress={() => router.back()}
+            onPress={handleBack}
             style={styles.backButton}
           />
         </View>

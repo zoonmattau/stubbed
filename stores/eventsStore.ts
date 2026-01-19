@@ -116,17 +116,35 @@ export const useEventsStore = create<EventsState>((set, get) => ({
       // First, create or find the event
       let eventId: string;
 
+      // Extract team/venue names that need special handling
+      const { home_team_name, away_team_name, venue_name, ...restEventData } = eventData as any;
+
       // Check if this event already exists
       if (eventData.id) {
         eventId = eventData.id;
       } else {
+        // Build the event insert data
+        const insertData: Record<string, unknown> = {
+          ...restEventData,
+          created_by: userId,
+        };
+
+        // Add team and venue names as text fields if they exist
+        // These are stored as text since we don't have foreign key relationships for manually entered teams
+        if (home_team_name) {
+          insertData.home_team_name = home_team_name;
+        }
+        if (away_team_name) {
+          insertData.away_team_name = away_team_name;
+        }
+        if (venue_name) {
+          insertData.venue_name = venue_name;
+        }
+
         // Create new event
         const { data: newEvent, error: eventError } = await supabase
           .from('events')
-          .insert({
-            ...eventData,
-            created_by: userId,
-          })
+          .insert(insertData)
           .select()
           .single();
 
@@ -152,6 +170,7 @@ export const useEventsStore = create<EventsState>((set, get) => ({
 
       return { success: true, attendedEventId: newAttendance.id };
     } catch (error) {
+      console.error('Error in addAttendedEvent:', error);
       return { success: false, error: (error as Error).message };
     }
   },

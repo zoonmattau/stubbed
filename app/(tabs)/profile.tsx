@@ -6,6 +6,7 @@ import {
   ScrollView,
   TouchableOpacity,
   Alert,
+  Platform,
 } from 'react-native';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -13,11 +14,15 @@ import { Card, Avatar, Badge, Button } from '@/components/ui';
 import { ProgressBar } from '@/components/stats';
 import { useAuthStore } from '@/stores/authStore';
 import { useStatsStore } from '@/stores/statsStore';
+import { useEventsStore } from '@/stores/eventsStore';
+import { seedDummyData } from '@/lib/seedDummyData';
 import { colors, spacing, fontSize, fontWeight, borderRadius } from '@/constants/theme';
 
 export default function ProfileScreen() {
   const { user, profile, signOut } = useAuthStore();
   const { stats, achievements, fetchStats, fetchAchievements } = useStatsStore();
+  const { fetchAttendedEvents } = useEventsStore();
+  const [isSeeding, setIsSeeding] = React.useState(false);
 
   useEffect(() => {
     if (user?.id) {
@@ -26,18 +31,89 @@ export default function ProfileScreen() {
     }
   }, [user?.id]);
 
-  const handleSignOut = () => {
-    Alert.alert('Sign Out', 'Are you sure you want to sign out?', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Sign Out',
-        style: 'destructive',
-        onPress: async () => {
-          await signOut();
-          router.replace('/(auth)/login');
+  const handleSignOut = async () => {
+    const doSignOut = async () => {
+      await signOut();
+      router.replace('/(auth)/login');
+    };
+
+    if (Platform.OS === 'web') {
+      const confirmed = window.confirm('Are you sure you want to sign out?');
+      if (confirmed) {
+        doSignOut();
+      }
+    } else {
+      Alert.alert('Sign Out', 'Are you sure you want to sign out?', [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Sign Out',
+          style: 'destructive',
+          onPress: doSignOut,
         },
-      },
-    ]);
+      ]);
+    }
+  };
+
+  const handleSeedData = async () => {
+    if (!user?.id) {
+      if (Platform.OS === 'web') {
+        window.alert('You must be logged in to seed data');
+      } else {
+        Alert.alert('Error', 'You must be logged in to seed data');
+      }
+      return;
+    }
+
+    const doSeed = async () => {
+      setIsSeeding(true);
+      try {
+        const result = await seedDummyData(user.id);
+        if (result.success) {
+          // Refresh data
+          await Promise.all([
+            fetchStats(user.id),
+            fetchAchievements(user.id),
+            fetchAttendedEvents(user.id),
+          ]);
+          if (Platform.OS === 'web') {
+            window.alert(`Added ${result.eventsCreated} demo events to your account!`);
+          } else {
+            Alert.alert('Success', `Added ${result.eventsCreated} demo events to your account!`);
+          }
+        } else {
+          if (Platform.OS === 'web') {
+            window.alert('Failed to seed data. Please try again.');
+          } else {
+            Alert.alert('Error', 'Failed to seed data. Please try again.');
+          }
+        }
+      } catch (error) {
+        console.error('Seed error:', error);
+        if (Platform.OS === 'web') {
+          window.alert('Something went wrong. Please try again.');
+        } else {
+          Alert.alert('Error', 'Something went wrong. Please try again.');
+        }
+      } finally {
+        setIsSeeding(false);
+      }
+    };
+
+    if (Platform.OS === 'web') {
+      const confirmed = window.confirm('This will add 16 sample events to your account spanning the last 12 months. Continue?');
+      if (confirmed) {
+        doSeed();
+      }
+    } else {
+      Alert.alert(
+        'Seed Demo Data',
+        'This will add 16 sample events to your account spanning the last 12 months. Continue?',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Add Demo Data', onPress: doSeed },
+        ]
+      );
+    }
   };
 
   const unlockedAchievements = achievements.filter((a) => a.unlocked);
@@ -177,6 +253,17 @@ export default function ProfileScreen() {
           <TouchableOpacity style={styles.menuItem}>
             <Ionicons name="information-circle-outline" size={22} color={colors.text} />
             <Text style={styles.menuItemText}>About</Text>
+            <Ionicons name="chevron-forward" size={20} color={colors.textMuted} />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.menuItem, styles.menuItemLast]}
+            onPress={handleSeedData}
+            disabled={isSeeding}
+          >
+            <Ionicons name="flask-outline" size={22} color={colors.success} />
+            <Text style={styles.menuItemText}>
+              {isSeeding ? 'Adding Demo Data...' : 'Add Demo Data'}
+            </Text>
             <Ionicons name="chevron-forward" size={20} color={colors.textMuted} />
           </TouchableOpacity>
         </Card>
@@ -363,6 +450,9 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: fontSize.md,
     color: colors.text,
+  },
+  menuItemLast: {
+    borderBottomWidth: 0,
   },
   signOutButton: {
     marginBottom: spacing.lg,

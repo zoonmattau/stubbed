@@ -79,6 +79,10 @@ export interface Event {
   is_verified: boolean;
   created_by: string | null;
   created_at: string;
+  // Text fields for manual entry (when team/venue aren't in database)
+  home_team_name?: string | null;
+  away_team_name?: string | null;
+  venue_name?: string | null;
 }
 
 export interface AttendedEvent {

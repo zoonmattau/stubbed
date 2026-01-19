@@ -25,19 +25,83 @@ import { SPORTS } from '@/constants/sports';
 import { pickImage, uploadEventPhoto } from '@/lib/storage';
 import type { ESPNSearchResult } from '@/lib/espn';
 
-// Map ESPN sport types to local sport IDs
-const ESPN_TO_LOCAL_SPORT: Record<string, string> = {
+// Map sport types from APIs to local sport IDs
+// Handles both ESPN sport values and SportsDB sport names
+const SPORT_TO_LOCAL: Record<string, string> = {
+  // ESPN sport types (lowercase with hyphens)
   'australian-football': 'afl',
   'rugby-league': 'nrl',
   'rugby': 'rugby',
   'soccer': 'soccer',
   'basketball': 'basketball',
-  'football': 'afl', // American football -> AFL as fallback
-  'baseball': 'cricket', // fallback
-  'hockey': 'basketball', // fallback
+  'football': 'basketball', // American football
+  'baseball': 'baseball',
+  'hockey': 'basketball', // Ice hockey fallback
   'tennis': 'tennis',
   'cricket': 'cricket',
+  // SportsDB sport names (title case)
+  'Australian Football': 'afl',
+  'aussie rules': 'afl',
+  'afl': 'afl',
+  'Rugby League': 'nrl',
+  'nrl': 'nrl',
+  'Rugby': 'rugby',
+  'Rugby Union': 'rugby',
+  'Soccer': 'soccer',
+  'Football': 'soccer',
+  'Basketball': 'basketball',
+  'nba': 'basketball',
+  'Baseball': 'basketball',
+  'mlb': 'basketball',
+  'Ice Hockey': 'basketball',
+  'nhl': 'basketball',
+  'Tennis': 'tennis',
+  'Cricket': 'cricket',
+  'Motorsport': 'motorsport',
+  'Formula 1': 'motorsport',
+  'MotoGP': 'motorsport',
+  'Golf': 'golf',
+  'Fighting': 'mma',
+  'MMA': 'mma',
+  'UFC': 'mma',
+  'Netball': 'netball',
+  // League-based mappings
+  'epl': 'soccer',
+  'laliga': 'soccer',
+  'bundesliga': 'soccer',
+  'serie_a': 'soccer',
+  'ligue_1': 'soccer',
+  'champions_league': 'soccer',
+  'mls': 'soccer',
+  'aleague': 'soccer',
 };
+
+// Helper to get local sport ID from any sport string
+function getLocalSportId(sportString: string | undefined): string {
+  if (!sportString) return '';
+
+  // Try exact match first
+  if (SPORT_TO_LOCAL[sportString]) {
+    return SPORT_TO_LOCAL[sportString];
+  }
+
+  // Try lowercase match
+  const lowerSport = sportString.toLowerCase();
+  for (const [key, value] of Object.entries(SPORT_TO_LOCAL)) {
+    if (key.toLowerCase() === lowerSport) {
+      return value;
+    }
+  }
+
+  // Try partial match
+  for (const [key, value] of Object.entries(SPORT_TO_LOCAL)) {
+    if (lowerSport.includes(key.toLowerCase()) || key.toLowerCase().includes(lowerSport)) {
+      return value;
+    }
+  }
+
+  return '';
+}
 
 const eventSchema = z.object({
   sport_id: z.string().min(1, 'Please select a sport'),
@@ -87,12 +151,22 @@ export default function ManualEventScreen() {
   const [selectedFriendIds, setSelectedFriendIds] = useState<string[]>([]);
   const [textNames, setTextNames] = useState<string[]>([]);
 
+  const handleBack = () => {
+    if (router.canGoBack()) {
+      router.back();
+    } else {
+      router.replace('/(tabs)/add');
+    }
+  };
+
   // Calculate default values based on ESPN data
   const defaultValues = useMemo(() => {
     if (espnData) {
       const eventDate = new Date(espnData.date);
+      // Try to get sport from the sport field, or fall back to league name
+      const sportId = getLocalSportId(espnData.sport) || getLocalSportId(espnData.league);
       return {
-        sport_id: ESPN_TO_LOCAL_SPORT[espnData.sport] || '',
+        sport_id: sportId,
         home_team: espnData.homeTeam.name,
         away_team: espnData.awayTeam.name,
         venue: espnData.venue?.name || '',
@@ -145,12 +219,13 @@ export default function ManualEventScreen() {
   useEffect(() => {
     if (espnData) {
       reset(defaultValues);
-      const sportId = ESPN_TO_LOCAL_SPORT[espnData.sport] || '';
+      const sportId = getLocalSportId(espnData.sport) || getLocalSportId(espnData.league);
       if (sportId) {
         setSelectedSport(sportId);
+        setValue('sport_id', sportId);
       }
     }
-  }, [espnData, defaultValues, reset]);
+  }, [espnData, defaultValues, reset, setValue]);
 
   const handleSelectSport = (sportId: string) => {
     setSelectedSport(sportId);
@@ -169,7 +244,10 @@ export default function ManualEventScreen() {
   };
 
   const onSubmit = async (data: EventForm) => {
-    if (!user?.id) return;
+    if (!user?.id) {
+      Alert.alert('Error', 'You must be logged in to add events');
+      return;
+    }
 
     setIsLoading(true);
 
@@ -177,14 +255,18 @@ export default function ManualEventScreen() {
       // Upload photos first
       const photoUrls: string[] = [];
       for (const photoUri of photos) {
-        const result = await uploadEventPhoto(photoUri, user.id, Date.now().toString());
-        if (result.url) {
-          photoUrls.push(result.url);
+        try {
+          const result = await uploadEventPhoto(photoUri, user.id, Date.now().toString());
+          if (result.url) {
+            photoUrls.push(result.url);
+          }
+        } catch (photoError) {
+          console.warn('Failed to upload photo:', photoError);
+          // Continue with other photos
         }
       }
 
       // Determine winner
-      let winnerId: string | undefined;
       let isDraw = false;
       if (data.home_score && data.away_score) {
         const homeNum = parseInt(data.home_score, 10);
@@ -193,7 +275,6 @@ export default function ManualEventScreen() {
           if (homeNum === awayNum) {
             isDraw = true;
           }
-          // Note: In a real app, you'd track team IDs properly
         }
       }
 
@@ -203,6 +284,9 @@ export default function ManualEventScreen() {
           sport_id: data.sport_id,
           event_date: data.event_date,
           event_time: data.event_time || null,
+          home_team_name: data.home_team,
+          away_team_name: data.away_team,
+          venue_name: data.venue,
           competition: data.competition || null,
           round: data.round || null,
           home_score: data.home_score || null,
@@ -224,18 +308,24 @@ export default function ManualEventScreen() {
 
       if (result.success && result.attendedEventId && selectedFriendIds.length > 0) {
         // Create tag invitations for each tagged friend
-        await createInvitations(result.attendedEventId, selectedFriendIds);
+        try {
+          await createInvitations(result.attendedEventId, selectedFriendIds);
+        } catch (inviteError) {
+          console.warn('Failed to create invitations:', inviteError);
+          // Don't fail the whole operation if invites fail
+        }
       }
 
       if (result.success) {
         Alert.alert('Success', 'Event added to your history!', [
-          { text: 'OK', onPress: () => router.back() },
+          { text: 'OK', onPress: handleBack },
         ]);
       } else {
         Alert.alert('Error', result.error || 'Failed to add event');
       }
     } catch (error) {
-      Alert.alert('Error', 'An unexpected error occurred');
+      console.error('Error adding event:', error);
+      Alert.alert('Error', 'An unexpected error occurred. Please try again.');
     } finally {
       setIsLoading(false);
     }

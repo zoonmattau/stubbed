@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -6,10 +6,13 @@ import {
   ScrollView,
   RefreshControl,
   Dimensions,
+  TouchableOpacity,
 } from 'react-native';
+import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import { Card } from '@/components/ui';
-import { StatCard, ProgressBar } from '@/components/stats';
+import { ProgressBar, InteractiveBarChart, BarChartItem, DonutChart, DonutSegment } from '@/components/stats';
 import { useAuthStore } from '@/stores/authStore';
 import { useStatsStore } from '@/stores/statsStore';
 import { useEventsStore } from '@/stores/eventsStore';
@@ -57,13 +60,119 @@ export default function StatsScreen() {
       if (event.is_draw) {
         draws++;
       } else if (event.winner_team_id) {
-        // Check if user's favorite team won (simplified - would need more logic)
         wins++;
+      } else if (event.home_score && event.away_score) {
+        // Has scores but no winner_team_id set
+        const homeScore = parseInt(event.home_score, 10);
+        const awayScore = parseInt(event.away_score, 10);
+        if (!isNaN(homeScore) && !isNaN(awayScore)) {
+          if (homeScore === awayScore) {
+            draws++;
+          } else {
+            wins++; // Count as a win since we saw a result
+          }
+        }
       }
     });
 
     const total = wins + losses + draws;
     return { wins, losses, draws, total };
+  }, [attendedEvents]);
+
+  // Transform breakdowns into chart data
+  const sportChartData: BarChartItem[] = useMemo(() => {
+    return sportBreakdown.map((sport) => ({
+      id: sport.sportId || sport.sportName,
+      label: sport.sportName,
+      value: sport.count,
+      color: sport.color || colors.primary,
+      icon: 'basketball' as const,
+    }));
+  }, [sportBreakdown]);
+
+  // Donut chart data for sports
+  const sportDonutData: DonutSegment[] = useMemo(() => {
+    return sportBreakdown.map((sport) => ({
+      id: sport.sportId || sport.sportName,
+      label: sport.sportName,
+      value: sport.count,
+      color: sport.color || colors.primary,
+    }));
+  }, [sportBreakdown]);
+
+  // Win/Loss chart data
+  const winLossChartData: DonutSegment[] = useMemo(() => {
+    const data: DonutSegment[] = [];
+    if (winLossStats.wins > 0) {
+      data.push({ id: 'wins', label: 'Wins', value: winLossStats.wins, color: colors.success });
+    }
+    if (winLossStats.draws > 0) {
+      data.push({ id: 'draws', label: 'Draws', value: winLossStats.draws, color: colors.textSecondary });
+    }
+    if (winLossStats.losses > 0) {
+      data.push({ id: 'losses', label: 'Losses', value: winLossStats.losses, color: colors.error });
+    }
+    return data;
+  }, [winLossStats]);
+
+  const teamChartData: BarChartItem[] = useMemo(() => {
+    return teamBreakdown.map((team) => ({
+      id: team.teamId || team.teamName,
+      label: team.teamName,
+      value: team.count,
+      color: colors.info,
+      icon: 'shield' as const,
+      subLabel: `${team.count} games`,
+    }));
+  }, [teamBreakdown]);
+
+  const venueChartData: BarChartItem[] = useMemo(() => {
+    return venueBreakdown.map((venue) => ({
+      id: venue.venueId || venue.venueName,
+      label: venue.venueName,
+      value: venue.count,
+      color: colors.success,
+      icon: 'location' as const,
+      subLabel: `${venue.count} visits`,
+    }));
+  }, [venueBreakdown]);
+
+  // Monthly events breakdown
+  const monthlyChartData: BarChartItem[] = useMemo(() => {
+    const monthCounts: Record<string, number> = {};
+    const monthOrder: string[] = [];
+
+    attendedEvents.forEach((attended) => {
+      const event = attended.event;
+      if (!event?.event_date) return;
+
+      const date = new Date(event.event_date);
+      const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+      const monthLabel = date.toLocaleDateString('en-AU', { month: 'short', year: 'numeric' });
+
+      if (!monthCounts[monthKey]) {
+        monthCounts[monthKey] = 0;
+        monthOrder.push(monthKey);
+      }
+      monthCounts[monthKey]++;
+    });
+
+    // Sort by date (most recent first)
+    monthOrder.sort((a, b) => b.localeCompare(a));
+
+    return monthOrder.map((key) => {
+      const [year, month] = key.split('-');
+      const date = new Date(parseInt(year), parseInt(month) - 1);
+      const label = date.toLocaleDateString('en-AU', { month: 'short', year: 'numeric' });
+
+      return {
+        id: key,
+        label,
+        value: monthCounts[key],
+        color: colors.primary,
+        icon: 'calendar' as const,
+      };
+    });
   }, [attendedEvents]);
 
   return (
@@ -78,40 +187,51 @@ export default function StatsScreen() {
         />
       }
     >
-      {/* Summary Stats */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Your Numbers</Text>
-        <View style={styles.statsGrid}>
-          <StatCard
-            label="Total Events"
-            value={stats?.total_events || attendedEvents.length}
-            icon="ticket"
-            iconColor={colors.primary}
-          />
-          <StatCard
-            label="Sports"
-            value={stats?.total_sports || 0}
-            icon="basketball"
-            iconColor={colors.sportBasketball}
-          />
-          <StatCard
-            label="Teams Watched"
-            value={stats?.total_teams || 0}
-            icon="people"
-            iconColor={colors.info}
-          />
-          <StatCard
-            label="Venues Visited"
-            value={stats?.total_venues || 0}
-            icon="location"
-            iconColor={colors.success}
-          />
+      {/* Hero Stats Card */}
+      <LinearGradient
+        colors={[colors.primary, colors.primaryDark || '#1a365d']}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={styles.heroCard}
+      >
+        <View style={styles.heroMain}>
+          <Text style={styles.heroNumber}>{stats?.total_events || attendedEvents.length}</Text>
+          <Text style={styles.heroLabel}>Events Attended</Text>
         </View>
-      </View>
+
+        <View style={styles.heroDivider} />
+
+        <View style={styles.heroSecondary}>
+          <View style={styles.heroStatRow}>
+            <View style={styles.heroStatIcon}>
+              <Ionicons name="basketball" size={16} color={colors.sportBasketball} />
+            </View>
+            <Text style={styles.heroStatValue}>{stats?.total_sports || 0}</Text>
+            <Text style={styles.heroStatLabel}>sports</Text>
+          </View>
+
+          <View style={styles.heroStatRow}>
+            <View style={styles.heroStatIcon}>
+              <Ionicons name="people" size={16} color={colors.info} />
+            </View>
+            <Text style={styles.heroStatValue}>{stats?.total_teams || 0}</Text>
+            <Text style={styles.heroStatLabel}>teams</Text>
+          </View>
+
+          <View style={styles.heroStatRow}>
+            <View style={styles.heroStatIcon}>
+              <Ionicons name="location" size={16} color={colors.success} />
+            </View>
+            <Text style={styles.heroStatValue}>{stats?.total_venues || 0}</Text>
+            <Text style={styles.heroStatLabel}>venues</Text>
+          </View>
+        </View>
+      </LinearGradient>
 
       {/* Streaks */}
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Streaks</Text>
+        <Text style={styles.sectionSubtitle}>Consecutive weeks attending at least one event</Text>
         <Card>
           <View style={styles.streakContainer}>
             <View style={styles.streakItem}>
@@ -120,7 +240,7 @@ export default function StatsScreen() {
               </View>
               <View>
                 <Text style={styles.streakValue}>{stats?.current_streak || 0}</Text>
-                <Text style={styles.streakLabel}>Current Streak</Text>
+                <Text style={styles.streakLabel}>Weekly Streak</Text>
               </View>
             </View>
             <View style={styles.streakDivider} />
@@ -130,108 +250,157 @@ export default function StatsScreen() {
               </View>
               <View>
                 <Text style={styles.streakValue}>{stats?.longest_streak || 0}</Text>
-                <Text style={styles.streakLabel}>Best Streak</Text>
+                <Text style={styles.streakLabel}>Best Weekly</Text>
               </View>
             </View>
           </View>
         </Card>
       </View>
 
-      {/* Win/Loss Record */}
+      {/* Monthly Events Breakdown */}
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>When You Attend</Text>
+        <Text style={styles.sectionTitle}>Events by Month</Text>
+        <Text style={styles.sectionSubtitle}>Your attendance history over time</Text>
         <Card>
-          <View style={styles.recordContainer}>
-            <View style={styles.recordItem}>
-              <Text style={[styles.recordValue, { color: colors.success }]}>
-                {winLossStats.wins}
-              </Text>
-              <Text style={styles.recordLabel}>Wins</Text>
-            </View>
-            <View style={styles.recordItem}>
-              <Text style={[styles.recordValue, { color: colors.textSecondary }]}>
-                {winLossStats.draws}
-              </Text>
-              <Text style={styles.recordLabel}>Draws</Text>
-            </View>
-            <View style={styles.recordItem}>
-              <Text style={[styles.recordValue, { color: colors.error }]}>
-                {winLossStats.losses}
-              </Text>
-              <Text style={styles.recordLabel}>Losses</Text>
-            </View>
-          </View>
-          {winLossStats.total > 0 && (
-            <View style={styles.winPercentage}>
-              <Text style={styles.winPercentageLabel}>Win Rate</Text>
-              <ProgressBar
-                progress={(winLossStats.wins / winLossStats.total) * 100}
-                color={colors.success}
-                showPercentage
-              />
+          {monthlyChartData.length > 0 ? (
+            <InteractiveBarChart
+              data={monthlyChartData}
+              maxItems={12}
+              showSeeAll={monthlyChartData.length > 12}
+            />
+          ) : (
+            <View style={styles.emptyBreakdown}>
+              <Text style={styles.emptyBreakdownText}>No events recorded yet</Text>
             </View>
           )}
         </Card>
       </View>
 
-      {/* Sports Breakdown */}
-      {sportBreakdown.length > 0 && (
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Events by Sport</Text>
-          <Card>
-            {sportBreakdown.slice(0, 5).map((sport, index) => (
-              <View key={sport.sportId || index} style={styles.breakdownItem}>
-                <View style={styles.breakdownInfo}>
-                  <View
-                    style={[
-                      styles.sportDot,
-                      { backgroundColor: sport.color || colors.primary },
-                    ]}
-                  />
-                  <Text style={styles.breakdownName}>{sport.sportName}</Text>
-                </View>
-                <Text style={styles.breakdownCount}>{sport.count}</Text>
-              </View>
-            ))}
-          </Card>
-        </View>
-      )}
+      {/* Win/Loss Record - Visual Chart */}
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Game Results</Text>
+        <Text style={styles.sectionSubtitle}>Win/loss/draw breakdown of games you've attended</Text>
+        <Card>
+          {winLossStats.total > 0 ? (
+            <DonutChart
+              data={winLossChartData}
+              centerValue={winLossStats.total}
+              centerLabel="games with results"
+            />
+          ) : (
+            <View style={styles.emptyBreakdown}>
+              <Text style={styles.emptyBreakdownText}>Add game scores to see win/loss stats</Text>
+            </View>
+          )}
+        </Card>
+      </View>
 
-      {/* Top Venues */}
-      {venueBreakdown.length > 0 && (
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Top Venues</Text>
-          <Card>
-            {venueBreakdown.slice(0, 5).map((venue, index) => (
-              <View key={venue.venueId || index} style={styles.breakdownItem}>
-                <View style={styles.breakdownInfo}>
-                  <Ionicons name="location" size={16} color={colors.textSecondary} />
-                  <Text style={styles.breakdownName}>{venue.venueName}</Text>
-                </View>
-                <Text style={styles.breakdownCount}>{venue.count} visits</Text>
-              </View>
-            ))}
-          </Card>
-        </View>
-      )}
+      {/* Sports Breakdown - Visual Chart */}
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Events by Sport</Text>
+        <Text style={styles.sectionSubtitle}>Breakdown of all sports you've attended</Text>
+        <Card>
+          {sportDonutData.length > 0 ? (
+            <DonutChart
+              data={sportDonutData}
+              centerValue={stats?.total_events || attendedEvents.length}
+              centerLabel="total events"
+            />
+          ) : (
+            <View style={styles.emptyBreakdown}>
+              <Text style={styles.emptyBreakdownText}>No events recorded yet</Text>
+            </View>
+          )}
+        </Card>
+      </View>
 
-      {/* Top Teams */}
-      {teamBreakdown.length > 0 && (
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Most Watched Teams</Text>
-          <Card>
-            {teamBreakdown.slice(0, 5).map((team, index) => (
-              <View key={team.teamId || index} style={styles.breakdownItem}>
-                <View style={styles.breakdownInfo}>
-                  <Ionicons name="shield" size={16} color={colors.textSecondary} />
-                  <Text style={styles.breakdownName}>{team.teamName}</Text>
-                </View>
-                <Text style={styles.breakdownCount}>{team.count} games</Text>
+      {/* Teams - Clickable */}
+      <View style={styles.section}>
+        <TouchableOpacity
+          style={styles.sectionHeader}
+          onPress={() => router.push('/stats/teams')}
+        >
+          <View>
+            <Text style={styles.sectionTitle}>Teams You've Seen</Text>
+            <Text style={styles.sectionSubtitle}>Tap to see detailed breakdown with win records</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={20} color={colors.primary} />
+        </TouchableOpacity>
+        <Card>
+          {teamChartData.length > 0 ? (
+            <InteractiveBarChart
+              data={teamChartData}
+              maxItems={5}
+              onItemPress={() => router.push('/stats/teams')}
+              onSeeAllPress={() => router.push('/stats/teams')}
+              showSeeAll={teamBreakdown.length > 5}
+            />
+          ) : (
+            <View style={styles.emptyBreakdown}>
+              <Text style={styles.emptyBreakdownText}>No teams recorded yet</Text>
+            </View>
+          )}
+        </Card>
+      </View>
+
+      {/* Venues - Clickable */}
+      <View style={styles.section}>
+        <TouchableOpacity
+          style={styles.sectionHeader}
+          onPress={() => router.push('/stats/venues')}
+        >
+          <View>
+            <Text style={styles.sectionTitle}>Venues You've Visited</Text>
+            <Text style={styles.sectionSubtitle}>Tap to see all venues and details</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={20} color={colors.primary} />
+        </TouchableOpacity>
+        <Card>
+          {venueChartData.length > 0 ? (
+            <InteractiveBarChart
+              data={venueChartData}
+              maxItems={5}
+              onItemPress={() => router.push('/stats/venues')}
+              onSeeAllPress={() => router.push('/stats/venues')}
+              showSeeAll={venueBreakdown.length > 5}
+            />
+          ) : (
+            <View style={styles.emptyBreakdown}>
+              <Text style={styles.emptyBreakdownText}>No venues recorded yet</Text>
+            </View>
+          )}
+        </Card>
+      </View>
+
+      {/* World Map - Places You've Been */}
+      <View style={styles.section}>
+        <TouchableOpacity
+          style={styles.sectionHeader}
+          onPress={() => router.push('/stats/map')}
+        >
+          <View>
+            <Text style={styles.sectionTitle}>Places You've Been</Text>
+            <Text style={styles.sectionSubtitle}>Explore your events on a world map</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={20} color={colors.primary} />
+        </TouchableOpacity>
+        <Card onPress={() => router.push('/stats/map')}>
+          <View style={styles.mapPreview}>
+            <Ionicons name="globe-outline" size={48} color={colors.primary} />
+            <Text style={styles.mapPreviewText}>
+              View your events by location
+            </Text>
+            <View style={styles.mapPreviewStats}>
+              <View style={styles.mapPreviewStat}>
+                <Ionicons name="flag" size={16} color={colors.info} />
+                <Text style={styles.mapPreviewStatText}>
+                  {new Set(attendedEvents.map(e => e.event?.venue?.city).filter(Boolean)).size} cities
+                </Text>
               </View>
-            ))}
-          </Card>
-        </View>
-      )}
+            </View>
+          </View>
+        </Card>
+      </View>
     </ScrollView>
   );
 }
@@ -244,6 +413,60 @@ const styles = StyleSheet.create({
   content: {
     padding: spacing.lg,
   },
+  // Hero Card
+  heroCard: {
+    flexDirection: 'row',
+    borderRadius: borderRadius.xl,
+    padding: spacing.lg,
+    marginBottom: spacing.xl,
+  },
+  heroMain: {
+    flex: 1,
+    justifyContent: 'center',
+  },
+  heroNumber: {
+    fontSize: 48,
+    fontWeight: fontWeight.bold,
+    color: colors.white,
+    lineHeight: 52,
+  },
+  heroLabel: {
+    fontSize: fontSize.sm,
+    color: 'rgba(255,255,255,0.8)',
+    marginTop: 2,
+  },
+  heroDivider: {
+    width: 1,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    marginHorizontal: spacing.lg,
+  },
+  heroSecondary: {
+    justifyContent: 'center',
+    gap: spacing.sm,
+  },
+  heroStatRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+  },
+  heroStatIcon: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  heroStatValue: {
+    fontSize: fontSize.md,
+    fontWeight: fontWeight.bold,
+    color: colors.white,
+    minWidth: 20,
+  },
+  heroStatLabel: {
+    fontSize: fontSize.xs,
+    color: 'rgba(255,255,255,0.7)',
+  },
   section: {
     marginBottom: spacing.xl,
   },
@@ -251,12 +474,12 @@ const styles = StyleSheet.create({
     fontSize: fontSize.lg,
     fontWeight: fontWeight.semibold,
     color: colors.text,
-    marginBottom: spacing.md,
+    marginBottom: spacing.xs,
   },
-  statsGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.md,
+  sectionSubtitle: {
+    fontSize: fontSize.sm,
+    color: colors.textSecondary,
+    marginBottom: spacing.md,
   },
   streakContainer: {
     flexDirection: 'row',
@@ -290,56 +513,41 @@ const styles = StyleSheet.create({
     backgroundColor: colors.border,
     marginHorizontal: spacing.md,
   },
-  recordContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    marginBottom: spacing.lg,
-  },
-  recordItem: {
-    alignItems: 'center',
-  },
-  recordValue: {
-    fontSize: fontSize['3xl'],
-    fontWeight: fontWeight.bold,
-  },
-  recordLabel: {
-    fontSize: fontSize.sm,
-    color: colors.textSecondary,
-    marginTop: spacing.xs,
-  },
-  winPercentage: {
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
-    paddingTop: spacing.md,
-  },
-  winPercentageLabel: {
-    fontSize: fontSize.sm,
-    color: colors.textSecondary,
-    marginBottom: spacing.sm,
-  },
-  breakdownItem: {
+  sectionHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: spacing.sm,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
+    marginBottom: spacing.md,
   },
-  breakdownInfo: {
-    flexDirection: 'row',
+  emptyBreakdown: {
+    padding: spacing.lg,
     alignItems: 'center',
-    gap: spacing.sm,
   },
-  sportDot: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
+  emptyBreakdownText: {
+    fontSize: fontSize.sm,
+    color: colors.textMuted,
   },
-  breakdownName: {
+  mapPreview: {
+    alignItems: 'center',
+    paddingVertical: spacing.lg,
+  },
+  mapPreviewText: {
     fontSize: fontSize.md,
     color: colors.text,
+    marginTop: spacing.md,
+    fontWeight: fontWeight.medium,
   },
-  breakdownCount: {
+  mapPreviewStats: {
+    flexDirection: 'row',
+    gap: spacing.lg,
+    marginTop: spacing.md,
+  },
+  mapPreviewStat: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+  },
+  mapPreviewStatText: {
     fontSize: fontSize.sm,
     color: colors.textSecondary,
   },

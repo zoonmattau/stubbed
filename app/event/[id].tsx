@@ -7,10 +7,11 @@ import {
   Image,
   TouchableOpacity,
   Alert,
+  Platform,
 } from 'react-native';
 import { useLocalSearchParams, router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { Card, Badge, Button } from '@/components/ui';
+import { Card, Badge, Button, StarRating } from '@/components/ui';
 import { TaggedUsersList } from '@/components/social/TaggedUsersList';
 import { useAuthStore } from '@/stores/authStore';
 import { useEventsStore } from '@/stores/eventsStore';
@@ -26,6 +27,14 @@ export default function EventDetailScreen() {
 
   const [attendance, setAttendance] = useState<AttendedEventWithDetails | null>(null);
 
+  const handleBack = () => {
+    if (router.canGoBack()) {
+      router.back();
+    } else {
+      router.replace('/(tabs)/events');
+    }
+  };
+
   useEffect(() => {
     const found = attendedEvents.find((e) => e.event_id === id);
     setAttendance(found || null);
@@ -37,7 +46,7 @@ export default function EventDetailScreen() {
         <View style={styles.notFound}>
           <Ionicons name="alert-circle-outline" size={48} color={colors.textMuted} />
           <Text style={styles.notFoundText}>Event not found</Text>
-          <Button title="Go Back" onPress={() => router.back()} variant="outline" />
+          <Button title="Go Back" onPress={handleBack} variant="outline" />
         </View>
       </View>
     );
@@ -51,23 +60,32 @@ export default function EventDetailScreen() {
   };
 
   const handleDelete = () => {
-    Alert.alert(
-      'Delete Event',
-      'Are you sure you want to remove this event from your history?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: async () => {
-            const result = await deleteAttendedEvent(attendance.id);
-            if (result.success) {
-              router.back();
-            }
-          },
-        },
-      ]
-    );
+    const doDelete = async () => {
+      const result = await deleteAttendedEvent(attendance.id);
+      if (result.success) {
+        handleBack();
+      }
+    };
+
+    if (Platform.OS === 'web') {
+      const confirmed = window.confirm('Are you sure you want to remove this event from your history?');
+      if (confirmed) {
+        doDelete();
+      }
+    } else {
+      Alert.alert(
+        'Delete Event',
+        'Are you sure you want to remove this event from your history?',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Delete', style: 'destructive', onPress: doDelete },
+        ]
+      );
+    }
+  };
+
+  const handleEdit = () => {
+    router.push(`/event/edit/${attendance.id}`);
   };
 
   return (
@@ -174,16 +192,7 @@ export default function EventDetailScreen() {
           {attendance.rating && (
             <View style={styles.experienceRow}>
               <Text style={styles.experienceLabel}>Overall Rating</Text>
-              <View style={styles.stars}>
-                {[1, 2, 3, 4, 5].map((star) => (
-                  <Ionicons
-                    key={star}
-                    name={star <= attendance.rating! ? 'star' : 'star-outline'}
-                    size={20}
-                    color={colors.gold}
-                  />
-                ))}
-              </View>
+              <StarRating rating={attendance.rating} size={20} readonly />
             </View>
           )}
 
@@ -191,16 +200,12 @@ export default function EventDetailScreen() {
           {attendance.atmosphere_rating && (
             <View style={styles.experienceRow}>
               <Text style={styles.experienceLabel}>Atmosphere</Text>
-              <View style={styles.stars}>
-                {[1, 2, 3, 4, 5].map((star) => (
-                  <Ionicons
-                    key={star}
-                    name={star <= attendance.atmosphere_rating! ? 'star' : 'star-outline'}
-                    size={20}
-                    color={colors.secondary}
-                  />
-                ))}
-              </View>
+              <StarRating
+                rating={attendance.atmosphere_rating}
+                size={20}
+                color={colors.secondary}
+                readonly
+              />
             </View>
           )}
 
@@ -276,6 +281,11 @@ export default function EventDetailScreen() {
           >
             {attendance.is_favorite ? 'Favorited' : 'Favorite'}
           </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity style={styles.actionButton} onPress={handleEdit}>
+          <Ionicons name="pencil-outline" size={24} color={colors.primary} />
+          <Text style={[styles.actionButtonText, { color: colors.primary }]}>Edit</Text>
         </TouchableOpacity>
 
         <TouchableOpacity style={styles.actionButton}>

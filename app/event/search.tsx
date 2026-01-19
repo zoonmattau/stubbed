@@ -268,10 +268,10 @@ export default function SearchEventsScreen() {
   };
 
   const handleGoBack = () => {
-    if (navigation.canGoBack()) {
+    if (router.canGoBack()) {
       router.back();
     } else {
-      router.replace('/');
+      router.replace('/(tabs)/add');
     }
   };
 
