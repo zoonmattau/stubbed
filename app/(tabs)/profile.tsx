@@ -5,6 +5,7 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
+  TextInput,
   Alert,
   Platform,
 } from 'react-native';
@@ -136,7 +137,7 @@ export default function ProfileScreen() {
           />
           <View style={styles.profileInfo}>
             <Text style={styles.displayName}>
-              {profile?.display_name || profile?.username || 'Sports Fan'}
+              {(profile?.display_name || 'Sports Fan').split(' ')[0]}
             </Text>
             <Text style={styles.username}>@{profile?.username}</Text>
             {profile?.bio && <Text style={styles.bio}>{profile.bio}</Text>}
@@ -158,7 +159,7 @@ export default function ProfileScreen() {
           />
         </View>
 
-        <TouchableOpacity style={styles.editButton}>
+        <TouchableOpacity style={styles.editButton} onPress={() => router.push('/profile/edit')}>
           <Ionicons name="pencil" size={16} color={colors.primary} />
           <Text style={styles.editButtonText}>Edit Profile</Text>
         </TouchableOpacity>
@@ -168,27 +169,66 @@ export default function ProfileScreen() {
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Stats Summary</Text>
         <View style={styles.quickStats}>
-          <View style={styles.quickStatItem}>
+          <TouchableOpacity style={styles.quickStatItem} onPress={() => router.push('/events')}>
             <Ionicons name="ticket" size={24} color={colors.primary} />
             <Text style={styles.quickStatValue}>{stats?.total_events || 0}</Text>
             <Text style={styles.quickStatLabel}>Events</Text>
-          </View>
-          <View style={styles.quickStatItem}>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.quickStatItem} onPress={() => router.push('/achievements')}>
             <Ionicons name="trophy" size={24} color={colors.gold} />
             <Text style={styles.quickStatValue}>{unlockedAchievements.length}</Text>
             <Text style={styles.quickStatLabel}>Achievements</Text>
-          </View>
-          <View style={styles.quickStatItem}>
-            <Ionicons name="flame" size={24} color={colors.warning} />
-            <Text style={styles.quickStatValue}>{stats?.current_streak || 0}</Text>
-            <Text style={styles.quickStatLabel}>Streak</Text>
-          </View>
-          <View style={styles.quickStatItem}>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.quickStatItem} onPress={() => router.push('/stats')}>
+            <Ionicons name="shield" size={24} color={colors.warning} />
+            <Text style={styles.quickStatValue}>{stats?.total_teams || 0}</Text>
+            <Text style={styles.quickStatLabel}>Teams</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.quickStatItem} onPress={() => router.push('/friends')}>
             <Ionicons name="people" size={24} color={colors.info} />
             <Text style={styles.quickStatValue}>0</Text>
             <Text style={styles.quickStatLabel}>Friends</Text>
-          </View>
+          </TouchableOpacity>
         </View>
+      </View>
+
+      {/* Friends Section */}
+      <View style={styles.section}>
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>Friends</Text>
+          <TouchableOpacity onPress={() => router.push('/friends')}>
+            <Text style={styles.seeAll}>See All</Text>
+          </TouchableOpacity>
+        </View>
+        <Card>
+          <View style={styles.friendsSearchContainer}>
+            <View style={styles.friendsSearchBar}>
+              <Ionicons name="search" size={18} color={colors.textMuted} />
+              <TextInput
+                style={styles.friendsSearchInput}
+                placeholder="Search for friends..."
+                placeholderTextColor={colors.textMuted}
+                onFocus={() => router.push('/friends')}
+              />
+            </View>
+          </View>
+          <View style={styles.friendsActions}>
+            <TouchableOpacity
+              style={styles.friendsActionButton}
+              onPress={() => router.push('/friends/requests')}
+            >
+              <Ionicons name="person-add" size={20} color={colors.primary} />
+              <Text style={styles.friendsActionText}>Add Friends</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.friendsActionButton}
+              onPress={() => router.push('/friends')}
+            >
+              <Ionicons name="people" size={20} color={colors.primary} />
+              <Text style={styles.friendsActionText}>View All</Text>
+            </TouchableOpacity>
+          </View>
+        </Card>
       </View>
 
       {/* Achievements Preview */}
@@ -235,22 +275,22 @@ export default function ProfileScreen() {
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Settings</Text>
         <Card padding="none">
-          <TouchableOpacity style={styles.menuItem}>
+          <TouchableOpacity style={styles.menuItem} onPress={() => router.push('/settings/notifications')}>
             <Ionicons name="notifications-outline" size={22} color={colors.text} />
             <Text style={styles.menuItemText}>Notifications</Text>
             <Ionicons name="chevron-forward" size={20} color={colors.textMuted} />
           </TouchableOpacity>
-          <TouchableOpacity style={styles.menuItem}>
+          <TouchableOpacity style={styles.menuItem} onPress={() => router.push('/settings/privacy')}>
             <Ionicons name="shield-outline" size={22} color={colors.text} />
             <Text style={styles.menuItemText}>Privacy</Text>
             <Ionicons name="chevron-forward" size={20} color={colors.textMuted} />
           </TouchableOpacity>
-          <TouchableOpacity style={styles.menuItem}>
+          <TouchableOpacity style={styles.menuItem} onPress={() => router.push('/settings/help')}>
             <Ionicons name="help-circle-outline" size={22} color={colors.text} />
             <Text style={styles.menuItemText}>Help & Support</Text>
             <Ionicons name="chevron-forward" size={20} color={colors.textMuted} />
           </TouchableOpacity>
-          <TouchableOpacity style={styles.menuItem}>
+          <TouchableOpacity style={styles.menuItem} onPress={() => router.push('/settings/about')}>
             <Ionicons name="information-circle-outline" size={22} color={colors.text} />
             <Text style={styles.menuItemText}>About</Text>
             <Ionicons name="chevron-forward" size={20} color={colors.textMuted} />
@@ -437,6 +477,42 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     textAlign: 'center',
     marginTop: spacing.sm,
+  },
+  friendsSearchContainer: {
+    marginBottom: spacing.md,
+  },
+  friendsSearchBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.background,
+    borderRadius: borderRadius.md,
+    paddingHorizontal: spacing.md,
+    gap: spacing.sm,
+  },
+  friendsSearchInput: {
+    flex: 1,
+    fontSize: fontSize.sm,
+    color: colors.text,
+    paddingVertical: spacing.sm,
+  },
+  friendsActions: {
+    flexDirection: 'row',
+    gap: spacing.md,
+  },
+  friendsActionButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.sm,
+    paddingVertical: spacing.md,
+    backgroundColor: `${colors.primary}15`,
+    borderRadius: borderRadius.md,
+  },
+  friendsActionText: {
+    fontSize: fontSize.sm,
+    color: colors.primary,
+    fontWeight: fontWeight.medium,
   },
   menuItem: {
     flexDirection: 'row',

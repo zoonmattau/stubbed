@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -7,18 +7,24 @@ import {
   RefreshControl,
   Dimensions,
   TouchableOpacity,
+  Modal,
+  FlatList,
 } from 'react-native';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Card } from '@/components/ui';
+import { Card, Badge } from '@/components/ui';
 import { ProgressBar, InteractiveBarChart, BarChartItem, DonutChart, DonutSegment } from '@/components/stats';
 import { useAuthStore } from '@/stores/authStore';
 import { useStatsStore } from '@/stores/statsStore';
 import { useEventsStore } from '@/stores/eventsStore';
 import { colors, spacing, fontSize, fontWeight, borderRadius } from '@/constants/theme';
+import { getSportColor } from '@/constants/sports';
+import type { AttendedEventWithDetails } from '@/types';
 
 const { width } = Dimensions.get('window');
+
+type FilterType = 'wins' | 'draws' | 'losses' | 'month' | null;
 
 export default function StatsScreen() {
   const { user } = useAuthStore();
@@ -32,7 +38,10 @@ export default function StatsScreen() {
   } = useStatsStore();
   const { attendedEvents } = useEventsStore();
 
-  const [refreshing, setRefreshing] = React.useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [filterType, setFilterType] = useState<FilterType>(null);
+  const [filterValue, setFilterValue] = useState<string | null>(null);
+  const [showModal, setShowModal] = useState(false);
 
   useEffect(() => {
     if (user?.id) {
@@ -78,6 +87,81 @@ export default function StatsScreen() {
     const total = wins + losses + draws;
     return { wins, losses, draws, total };
   }, [attendedEvents]);
+
+  // Get events filtered by result type
+  const getEventsByResult = (type: 'wins' | 'draws' | 'losses'): AttendedEventWithDetails[] => {
+    return attendedEvents.filter((attended) => {
+      const event = attended.event;
+      if (!event) return false;
+
+      if (type === 'draws') {
+        if (event.is_draw) return true;
+        if (event.home_score && event.away_score) {
+          const homeScore = parseInt(event.home_score, 10);
+          const awayScore = parseInt(event.away_score, 10);
+          return !isNaN(homeScore) && !isNaN(awayScore) && homeScore === awayScore;
+        }
+        return false;
+      }
+
+      if (type === 'wins') {
+        if (event.winner_team_id) return true;
+        if (event.home_score && event.away_score && !event.is_draw) {
+          const homeScore = parseInt(event.home_score, 10);
+          const awayScore = parseInt(event.away_score, 10);
+          return !isNaN(homeScore) && !isNaN(awayScore) && homeScore !== awayScore;
+        }
+        return false;
+      }
+
+      return false;
+    });
+  };
+
+  // Get events filtered by month
+  const getEventsByMonth = (monthKey: string): AttendedEventWithDetails[] => {
+    return attendedEvents.filter((attended) => {
+      const event = attended.event;
+      if (!event?.event_date) return false;
+      const date = new Date(event.event_date);
+      const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+      return key === monthKey;
+    });
+  };
+
+  // Get filtered events based on current filter
+  const filteredEvents = useMemo(() => {
+    if (!filterType || !filterValue) return [];
+    if (filterType === 'month') {
+      return getEventsByMonth(filterValue);
+    }
+    return getEventsByResult(filterType as 'wins' | 'draws' | 'losses');
+  }, [filterType, filterValue, attendedEvents]);
+
+  // Get modal title
+  const getModalTitle = () => {
+    if (filterType === 'wins') return 'Wins';
+    if (filterType === 'draws') return 'Draws';
+    if (filterType === 'losses') return 'Losses';
+    if (filterType === 'month' && filterValue) {
+      const [year, month] = filterValue.split('-');
+      const date = new Date(parseInt(year), parseInt(month) - 1);
+      return date.toLocaleDateString('en-AU', { month: 'long', year: 'numeric' });
+    }
+    return 'Events';
+  };
+
+  const openFilter = (type: FilterType, value: string) => {
+    setFilterType(type);
+    setFilterValue(value);
+    setShowModal(true);
+  };
+
+  const closeModal = () => {
+    setShowModal(false);
+    setFilterType(null);
+    setFilterValue(null);
+  };
 
   // Transform breakdowns into chart data
   const sportChartData: BarChartItem[] = useMemo(() => {
@@ -187,6 +271,12 @@ export default function StatsScreen() {
         />
       }
     >
+      {/* Back Button */}
+      <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
+        <Ionicons name="arrow-back" size={24} color={colors.text} />
+        <Text style={styles.backButtonText}>Back</Text>
+      </TouchableOpacity>
+
       {/* Hero Stats Card */}
       <LinearGradient
         colors={[colors.primary, colors.primaryDark || '#1a365d']}
@@ -228,51 +318,54 @@ export default function StatsScreen() {
         </View>
       </LinearGradient>
 
-      {/* Streaks */}
+      {/* Win Record */}
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Streaks</Text>
-        <Text style={styles.sectionSubtitle}>Consecutive weeks attending at least one event</Text>
+        <Text style={styles.sectionTitle}>Win Record</Text>
+        <Text style={styles.sectionSubtitle}>Your team's performance when you're in the crowd</Text>
         <Card>
           <View style={styles.streakContainer}>
-            <View style={styles.streakItem}>
-              <View style={[styles.streakIcon, { backgroundColor: `${colors.warning}20` }]}>
-                <Ionicons name="flame" size={24} color={colors.warning} />
+            <TouchableOpacity
+              style={styles.streakItem}
+              onPress={() => winLossStats.wins > 0 && openFilter('wins', 'wins')}
+              activeOpacity={winLossStats.wins > 0 ? 0.7 : 1}
+            >
+              <View style={[styles.streakIcon, { backgroundColor: `${colors.success}20` }]}>
+                <Ionicons name="trophy" size={24} color={colors.success} />
               </View>
               <View>
-                <Text style={styles.streakValue}>{stats?.current_streak || 0}</Text>
-                <Text style={styles.streakLabel}>Weekly Streak</Text>
+                <Text style={styles.streakValue}>{winLossStats.wins}</Text>
+                <Text style={styles.streakLabel}>Wins</Text>
               </View>
-            </View>
+            </TouchableOpacity>
             <View style={styles.streakDivider} />
-            <View style={styles.streakItem}>
-              <View style={[styles.streakIcon, { backgroundColor: `${colors.gold}20` }]}>
-                <Ionicons name="trophy" size={24} color={colors.gold} />
+            <TouchableOpacity
+              style={styles.streakItem}
+              onPress={() => winLossStats.draws > 0 && openFilter('draws', 'draws')}
+              activeOpacity={winLossStats.draws > 0 ? 0.7 : 1}
+            >
+              <View style={[styles.streakIcon, { backgroundColor: `${colors.textSecondary}20` }]}>
+                <Ionicons name="remove" size={24} color={colors.textSecondary} />
               </View>
               <View>
-                <Text style={styles.streakValue}>{stats?.longest_streak || 0}</Text>
-                <Text style={styles.streakLabel}>Best Weekly</Text>
+                <Text style={styles.streakValue}>{winLossStats.draws}</Text>
+                <Text style={styles.streakLabel}>Draws</Text>
               </View>
-            </View>
+            </TouchableOpacity>
+            <View style={styles.streakDivider} />
+            <TouchableOpacity
+              style={styles.streakItem}
+              onPress={() => winLossStats.losses > 0 && openFilter('losses', 'losses')}
+              activeOpacity={winLossStats.losses > 0 ? 0.7 : 1}
+            >
+              <View style={[styles.streakIcon, { backgroundColor: `${colors.error}20` }]}>
+                <Ionicons name="close" size={24} color={colors.error} />
+              </View>
+              <View>
+                <Text style={styles.streakValue}>{winLossStats.losses}</Text>
+                <Text style={styles.streakLabel}>Losses</Text>
+              </View>
+            </TouchableOpacity>
           </View>
-        </Card>
-      </View>
-
-      {/* Monthly Events Breakdown */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Events by Month</Text>
-        <Text style={styles.sectionSubtitle}>Your attendance history over time</Text>
-        <Card>
-          {monthlyChartData.length > 0 ? (
-            <InteractiveBarChart
-              data={monthlyChartData}
-              maxItems={12}
-              showSeeAll={monthlyChartData.length > 12}
-            />
-          ) : (
-            <View style={styles.emptyBreakdown}>
-              <Text style={styles.emptyBreakdownText}>No events recorded yet</Text>
-            </View>
-          )}
         </Card>
       </View>
 
@@ -401,6 +494,98 @@ export default function StatsScreen() {
           </View>
         </Card>
       </View>
+
+      {/* Monthly Events Breakdown */}
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Events by Month</Text>
+        <Text style={styles.sectionSubtitle}>Tap a month to see events</Text>
+        <Card>
+          {monthlyChartData.length > 0 ? (
+            <InteractiveBarChart
+              data={monthlyChartData}
+              maxItems={12}
+              showSeeAll={monthlyChartData.length > 12}
+              onItemPress={(item) => openFilter('month', item.id)}
+              compact
+            />
+          ) : (
+            <View style={styles.emptyBreakdown}>
+              <Text style={styles.emptyBreakdownText}>No events recorded yet</Text>
+            </View>
+          )}
+        </Card>
+      </View>
+
+      {/* Events Modal */}
+      <Modal
+        visible={showModal}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={closeModal}
+      >
+        <View style={styles.modalContainer}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>{getModalTitle()}</Text>
+            <TouchableOpacity onPress={closeModal} style={styles.modalClose}>
+              <Ionicons name="close" size={24} color={colors.text} />
+            </TouchableOpacity>
+          </View>
+          <Text style={styles.modalSubtitle}>
+            {filteredEvents.length} event{filteredEvents.length !== 1 ? 's' : ''}
+          </Text>
+          <FlatList
+            data={filteredEvents}
+            keyExtractor={(item) => item.id}
+            contentContainerStyle={styles.modalList}
+            renderItem={({ item }) => {
+              const event = item.event;
+              if (!event) return null;
+              const sportColor = getSportColor(event.sport?.name?.toLowerCase() || '');
+              return (
+                <TouchableOpacity
+                  style={styles.modalEventCard}
+                  onPress={() => {
+                    closeModal();
+                    router.push(`/event/${item.event_id}`);
+                  }}
+                >
+                  <View style={[styles.modalEventIndicator, { backgroundColor: sportColor }]} />
+                  <View style={styles.modalEventContent}>
+                    <View style={styles.modalEventTop}>
+                      <Badge label={event.sport?.name || 'Sport'} size="sm" color={sportColor} />
+                      {event.competition && (
+                        <Text style={styles.modalEventLeague} numberOfLines={1}>{event.competition}</Text>
+                      )}
+                    </View>
+                    <Text style={styles.modalEventTeams} numberOfLines={1}>
+                      {event.home_team?.short_name || event.home_team?.name || 'Home'} vs {event.away_team?.short_name || event.away_team?.name || 'Away'}
+                    </Text>
+                    <View style={styles.modalEventBottom}>
+                      {(event.home_score !== null && event.away_score !== null) && (
+                        <Text style={styles.modalEventScore}>{event.home_score} - {event.away_score}</Text>
+                      )}
+                      <Text style={styles.modalEventDate}>
+                        {new Date(event.event_date).toLocaleDateString('en-AU', {
+                          day: 'numeric',
+                          month: 'short',
+                          year: 'numeric',
+                        })}
+                      </Text>
+                    </View>
+                  </View>
+                  <Ionicons name="chevron-forward" size={20} color={colors.textMuted} />
+                </TouchableOpacity>
+              );
+            }}
+            ListEmptyComponent={
+              <View style={styles.modalEmpty}>
+                <Ionicons name="calendar-outline" size={48} color={colors.textMuted} />
+                <Text style={styles.modalEmptyText}>No events found</Text>
+              </View>
+            }
+          />
+        </View>
+      </Modal>
     </ScrollView>
   );
 }
@@ -412,6 +597,17 @@ const styles = StyleSheet.create({
   },
   content: {
     padding: spacing.lg,
+  },
+  backButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginBottom: spacing.md,
+  },
+  backButtonText: {
+    fontSize: fontSize.md,
+    color: colors.text,
+    fontWeight: fontWeight.medium,
   },
   // Hero Card
   heroCard: {
@@ -550,5 +746,92 @@ const styles = StyleSheet.create({
   mapPreviewStatText: {
     fontSize: fontSize.sm,
     color: colors.textSecondary,
+  },
+  // Modal styles
+  modalContainer: {
+    flex: 1,
+    backgroundColor: colors.background,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: spacing.lg,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  modalTitle: {
+    fontSize: fontSize.xl,
+    fontWeight: fontWeight.bold,
+    color: colors.text,
+  },
+  modalClose: {
+    padding: spacing.sm,
+  },
+  modalSubtitle: {
+    fontSize: fontSize.sm,
+    color: colors.textSecondary,
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.sm,
+  },
+  modalList: {
+    padding: spacing.lg,
+  },
+  modalEventCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.surface,
+    borderRadius: borderRadius.lg,
+    marginBottom: spacing.md,
+    overflow: 'hidden',
+  },
+  modalEventIndicator: {
+    width: 4,
+    alignSelf: 'stretch',
+  },
+  modalEventContent: {
+    flex: 1,
+    padding: spacing.md,
+  },
+  modalEventTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginBottom: spacing.xs,
+  },
+  modalEventLeague: {
+    fontSize: fontSize.xs,
+    color: colors.textSecondary,
+    flex: 1,
+  },
+  modalEventTeams: {
+    fontSize: fontSize.md,
+    fontWeight: fontWeight.semibold,
+    color: colors.text,
+    marginBottom: spacing.xs,
+  },
+  modalEventBottom: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+  },
+  modalEventScore: {
+    fontSize: fontSize.sm,
+    fontWeight: fontWeight.bold,
+    color: colors.text,
+  },
+  modalEventDate: {
+    fontSize: fontSize.xs,
+    color: colors.textSecondary,
+  },
+  modalEmpty: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: spacing['3xl'],
+  },
+  modalEmptyText: {
+    fontSize: fontSize.md,
+    color: colors.textMuted,
+    marginTop: spacing.md,
   },
 });

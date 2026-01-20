@@ -99,6 +99,8 @@ export interface AttendedEvent {
   went_with: string[] | null;
   went_with_user_ids: string[] | null;
   is_favorite: boolean;
+  supported_team: 'home' | 'away' | 'neutral' | null;
+  result: 'win' | 'loss' | 'draw' | null;
   created_at: string;
 }
 
@@ -229,6 +231,7 @@ export interface AttendanceFormData {
   went_with?: string[];
   went_with_user_ids?: string[];
   is_favorite?: boolean;
+  supported_team?: 'home' | 'away' | 'neutral' | null;
 }
 
 // Event tag invitation types

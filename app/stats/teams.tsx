@@ -1,16 +1,20 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
+  Modal,
+  FlatList,
 } from 'react-native';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { Card } from '@/components/ui';
+import { Card, Badge } from '@/components/ui';
 import { useEventsStore } from '@/stores/eventsStore';
 import { colors, spacing, fontSize, fontWeight, borderRadius } from '@/constants/theme';
+import { getSportColor } from '@/constants/sports';
+import type { AttendedEventWithDetails } from '@/types';
 
 interface TeamStats {
   teamName: string;
@@ -24,6 +28,27 @@ interface TeamStats {
 
 export default function TeamsStatsScreen() {
   const { attendedEvents } = useEventsStore();
+  const [selectedTeam, setSelectedTeam] = useState<string | null>(null);
+  const [showModal, setShowModal] = useState(false);
+
+  // Get events for a specific team
+  const getTeamEvents = (teamName: string): AttendedEventWithDetails[] => {
+    return attendedEvents.filter((attended) => {
+      const event = attended.event;
+      if (!event) return false;
+      return event.home_team?.name === teamName || event.away_team?.name === teamName;
+    });
+  };
+
+  const openTeamModal = (teamName: string) => {
+    setSelectedTeam(teamName);
+    setShowModal(true);
+  };
+
+  const closeModal = () => {
+    setShowModal(false);
+    setSelectedTeam(null);
+  };
 
   const teamStats = useMemo(() => {
     const stats: Record<string, TeamStats> = {};
@@ -128,12 +153,12 @@ export default function TeamsStatsScreen() {
               <View style={styles.rankBadge}>
                 <Text style={styles.rankText}>#{index + 1}</Text>
               </View>
-              <View style={styles.teamInfo}>
+              <TouchableOpacity style={styles.teamInfo} onPress={() => openTeamModal(team.teamName)}>
                 <Text style={styles.teamName}>{team.teamName}</Text>
                 <Text style={styles.teamMeta}>
-                  Last seen: {formatDate(team.lastSeen)}
+                  Last seen: {formatDate(team.lastSeen)} • Tap to see games
                 </Text>
-              </View>
+              </TouchableOpacity>
               <View style={styles.gamesCount}>
                 <Text style={styles.gamesNumber}>{team.totalGames}</Text>
                 <Text style={styles.gamesLabel}>games</Text>
@@ -190,6 +215,80 @@ export default function TeamsStatsScreen() {
           </View>
         )}
       </ScrollView>
+
+      {/* Team Games Modal */}
+      <Modal
+        visible={showModal}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={closeModal}
+      >
+        <View style={styles.modalContainer}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>{selectedTeam}</Text>
+            <TouchableOpacity onPress={closeModal} style={styles.modalClose}>
+              <Ionicons name="close" size={24} color={colors.text} />
+            </TouchableOpacity>
+          </View>
+          <Text style={styles.modalSubtitle}>
+            {selectedTeam ? getTeamEvents(selectedTeam).length : 0} game{selectedTeam && getTeamEvents(selectedTeam).length !== 1 ? 's' : ''} attended
+          </Text>
+          <FlatList
+            data={selectedTeam ? getTeamEvents(selectedTeam) : []}
+            keyExtractor={(item) => item.id}
+            contentContainerStyle={styles.modalList}
+            renderItem={({ item }) => {
+              const event = item.event;
+              if (!event) return null;
+              const sportColor = getSportColor(event.sport?.name?.toLowerCase() || '');
+              const isHomeTeam = event.home_team?.name === selectedTeam;
+              return (
+                <TouchableOpacity
+                  style={styles.modalEventCard}
+                  onPress={() => {
+                    closeModal();
+                    router.push(`/event/${item.event_id}`);
+                  }}
+                >
+                  <View style={[styles.modalEventIndicator, { backgroundColor: sportColor }]} />
+                  <View style={styles.modalEventContent}>
+                    <View style={styles.modalEventTop}>
+                      <Badge label={event.sport?.name || 'Sport'} size="sm" color={sportColor} />
+                      <Badge
+                        label={isHomeTeam ? 'Home' : 'Away'}
+                        size="sm"
+                        color={isHomeTeam ? colors.info : colors.textSecondary}
+                      />
+                    </View>
+                    <Text style={styles.modalEventTeams} numberOfLines={1}>
+                      {event.home_team?.short_name || event.home_team?.name || 'Home'} vs {event.away_team?.short_name || event.away_team?.name || 'Away'}
+                    </Text>
+                    <View style={styles.modalEventBottom}>
+                      {(event.home_score !== null && event.away_score !== null) && (
+                        <Text style={styles.modalEventScore}>{event.home_score} - {event.away_score}</Text>
+                      )}
+                      <Text style={styles.modalEventDate}>
+                        {new Date(event.event_date).toLocaleDateString('en-AU', {
+                          day: 'numeric',
+                          month: 'short',
+                          year: 'numeric',
+                        })}
+                      </Text>
+                    </View>
+                  </View>
+                  <Ionicons name="chevron-forward" size={20} color={colors.textMuted} />
+                </TouchableOpacity>
+              );
+            }}
+            ListEmptyComponent={
+              <View style={styles.modalEmpty}>
+                <Ionicons name="calendar-outline" size={48} color={colors.textMuted} />
+                <Text style={styles.modalEmptyText}>No games found</Text>
+              </View>
+            }
+          />
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -342,5 +441,88 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     textAlign: 'center',
     marginTop: spacing.sm,
+  },
+  // Modal styles
+  modalContainer: {
+    flex: 1,
+    backgroundColor: colors.background,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: spacing.lg,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  modalTitle: {
+    fontSize: fontSize.xl,
+    fontWeight: fontWeight.bold,
+    color: colors.text,
+    flex: 1,
+  },
+  modalClose: {
+    padding: spacing.sm,
+  },
+  modalSubtitle: {
+    fontSize: fontSize.sm,
+    color: colors.textSecondary,
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.sm,
+  },
+  modalList: {
+    padding: spacing.lg,
+  },
+  modalEventCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.surface,
+    borderRadius: borderRadius.lg,
+    marginBottom: spacing.md,
+    overflow: 'hidden',
+  },
+  modalEventIndicator: {
+    width: 4,
+    alignSelf: 'stretch',
+  },
+  modalEventContent: {
+    flex: 1,
+    padding: spacing.md,
+  },
+  modalEventTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginBottom: spacing.xs,
+  },
+  modalEventTeams: {
+    fontSize: fontSize.md,
+    fontWeight: fontWeight.semibold,
+    color: colors.text,
+    marginBottom: spacing.xs,
+  },
+  modalEventBottom: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+  },
+  modalEventScore: {
+    fontSize: fontSize.sm,
+    fontWeight: fontWeight.bold,
+    color: colors.text,
+  },
+  modalEventDate: {
+    fontSize: fontSize.xs,
+    color: colors.textSecondary,
+  },
+  modalEmpty: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: spacing['3xl'],
+  },
+  modalEmptyText: {
+    fontSize: fontSize.md,
+    color: colors.textMuted,
+    marginTop: spacing.md,
   },
 });

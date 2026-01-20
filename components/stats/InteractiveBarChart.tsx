@@ -21,6 +21,7 @@ interface InteractiveBarChartProps {
   onSeeAllPress?: () => void;
   showSeeAll?: boolean;
   valueLabel?: string;
+  compact?: boolean;
 }
 
 export function InteractiveBarChart({
@@ -30,6 +31,7 @@ export function InteractiveBarChart({
   onSeeAllPress,
   showSeeAll = true,
   valueLabel = '',
+  compact = false,
 }: InteractiveBarChartProps) {
   const displayData = data.slice(0, maxItems);
   const maxValue = Math.max(...displayData.map((d) => d.value), 1);
@@ -44,13 +46,13 @@ export function InteractiveBarChart({
   }
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, compact && styles.containerCompact]}>
       {displayData.map((item, index) => {
         const barPercent = (item.value / maxValue) * 100;
         return (
           <TouchableOpacity
             key={item.id}
-            style={styles.barRow}
+            style={[styles.barRow, compact && styles.barRowCompact]}
             onPress={() => onItemPress?.(item)}
             activeOpacity={onItemPress ? 0.7 : 1}
           >
@@ -109,6 +111,9 @@ const styles = StyleSheet.create({
   container: {
     gap: spacing.sm,
   },
+  containerCompact: {
+    gap: spacing.xs,
+  },
   emptyContainer: {
     padding: spacing.lg,
     alignItems: 'center',
@@ -122,6 +127,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: spacing.sm,
     gap: spacing.sm,
+  },
+  barRowCompact: {
+    paddingVertical: spacing.xs,
+    gap: spacing.xs,
   },
   labelContainer: {
     width: 100,

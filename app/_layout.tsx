@@ -83,6 +83,24 @@ export default function RootLayout() {
             title: 'Achievements',
           }}
         />
+        <Stack.Screen
+          name="settings"
+          options={{
+            headerShown: false,
+          }}
+        />
+        <Stack.Screen
+          name="stats/map"
+          options={{
+            title: 'World Map',
+          }}
+        />
+        <Stack.Screen
+          name="profile/edit"
+          options={{
+            title: 'Edit Profile',
+          }}
+        />
       </Stack>
   );
 

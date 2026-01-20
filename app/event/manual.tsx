@@ -150,6 +150,7 @@ export default function ManualEventScreen() {
   const [atmosphereRating, setAtmosphereRating] = useState(0);
   const [selectedFriendIds, setSelectedFriendIds] = useState<string[]>([]);
   const [textNames, setTextNames] = useState<string[]>([]);
+  const [supportedTeam, setSupportedTeam] = useState<'home' | 'away' | 'neutral' | null>(null);
 
   const handleBack = () => {
     if (router.canGoBack()) {
@@ -266,14 +267,24 @@ export default function ManualEventScreen() {
         }
       }
 
-      // Determine winner
+      // Determine winner and result from user's perspective
       let isDraw = false;
+      let userResult: 'win' | 'loss' | 'draw' | null = null;
+
       if (data.home_score && data.away_score) {
         const homeNum = parseInt(data.home_score, 10);
         const awayNum = parseInt(data.away_score, 10);
         if (!isNaN(homeNum) && !isNaN(awayNum)) {
           if (homeNum === awayNum) {
             isDraw = true;
+            userResult = supportedTeam && supportedTeam !== 'neutral' ? 'draw' : null;
+          } else if (supportedTeam && supportedTeam !== 'neutral') {
+            const homeWon = homeNum > awayNum;
+            if (supportedTeam === 'home') {
+              userResult = homeWon ? 'win' : 'loss';
+            } else {
+              userResult = homeWon ? 'loss' : 'win';
+            }
           }
         }
       }
@@ -303,6 +314,8 @@ export default function ManualEventScreen() {
           rating: rating || null,
           atmosphere_rating: atmosphereRating || null,
           photo_urls: photoUrls.length > 0 ? photoUrls : null,
+          supported_team: supportedTeam,
+          result: userResult,
         }
       );
 
@@ -593,6 +606,66 @@ export default function ManualEventScreen() {
           </View>
         </View>
 
+        {/* Who Did You Support */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Who did you support?</Text>
+          <Text style={styles.supportSubtitle}>Earn bonus points when your team wins!</Text>
+          <View style={styles.supportOptions}>
+            <TouchableOpacity
+              style={[
+                styles.supportOption,
+                supportedTeam === 'home' && styles.supportOptionActive,
+              ]}
+              onPress={() => setSupportedTeam('home')}
+            >
+              <Ionicons
+                name="home"
+                size={20}
+                color={supportedTeam === 'home' ? colors.white : colors.text}
+              />
+              <Text style={[
+                styles.supportOptionText,
+                supportedTeam === 'home' && styles.supportOptionTextActive,
+              ]}>Home Team</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[
+                styles.supportOption,
+                supportedTeam === 'away' && styles.supportOptionActive,
+              ]}
+              onPress={() => setSupportedTeam('away')}
+            >
+              <Ionicons
+                name="airplane"
+                size={20}
+                color={supportedTeam === 'away' ? colors.white : colors.text}
+              />
+              <Text style={[
+                styles.supportOptionText,
+                supportedTeam === 'away' && styles.supportOptionTextActive,
+              ]}>Away Team</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[
+                styles.supportOption,
+                supportedTeam === 'neutral' && styles.supportOptionActive,
+                supportedTeam === 'neutral' && styles.supportOptionNeutral,
+              ]}
+              onPress={() => setSupportedTeam('neutral')}
+            >
+              <Ionicons
+                name="eye"
+                size={20}
+                color={supportedTeam === 'neutral' ? colors.white : colors.text}
+              />
+              <Text style={[
+                styles.supportOptionText,
+                supportedTeam === 'neutral' && styles.supportOptionTextActive,
+              ]}>Neutral</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+
         {/* Your Experience */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Your Experience</Text>
@@ -879,5 +952,42 @@ const styles = StyleSheet.create({
     fontStyle: 'italic',
     textAlign: 'center',
     marginTop: spacing.sm,
+  },
+  supportSubtitle: {
+    fontSize: fontSize.sm,
+    color: colors.textSecondary,
+    marginBottom: spacing.md,
+  },
+  supportOptions: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+  },
+  supportOption: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.xs,
+    paddingVertical: spacing.md,
+    borderRadius: borderRadius.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+  },
+  supportOptionActive: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  supportOptionNeutral: {
+    backgroundColor: colors.textSecondary,
+    borderColor: colors.textSecondary,
+  },
+  supportOptionText: {
+    fontSize: fontSize.sm,
+    fontWeight: fontWeight.medium,
+    color: colors.text,
+  },
+  supportOptionTextActive: {
+    color: colors.white,
   },
 });

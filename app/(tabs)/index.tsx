@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -15,16 +15,24 @@ import { EventCard } from '@/components/events';
 import { useAuthStore } from '@/stores/authStore';
 import { useEventsStore } from '@/stores/eventsStore';
 import { useStatsStore } from '@/stores/statsStore';
-import { useAchievements } from '@/hooks/useAchievements';
-import { ProgressBar } from '@/components/stats';
+import { usePoints } from '@/hooks/usePoints';
 import { colors, spacing, fontSize, fontWeight, borderRadius } from '@/constants/theme';
-import { RARITY_COLORS } from '@/constants/achievements';
+
+// Level definitions
+const LEVELS = [
+  { level: 1, name: 'Rookie', minPoints: 0, icon: 'ticket-outline', color: '#6B7280' },
+  { level: 2, name: 'Fan', minPoints: 50, icon: 'star-outline', color: '#10B981' },
+  { level: 3, name: 'Supporter', minPoints: 150, icon: 'star-half', color: '#3B82F6' },
+  { level: 4, name: 'Superfan', minPoints: 300, icon: 'star', color: '#8B5CF6' },
+  { level: 5, name: 'Legend', minPoints: 500, icon: 'medal-outline', color: '#F59E0B' },
+  { level: 6, name: 'Hall of Famer', minPoints: 800, icon: 'trophy', color: '#EF4444' },
+  { level: 7, name: 'Icon', minPoints: 1200, icon: 'diamond', color: '#EC4899' },
+];
 
 export default function HomeScreen() {
   const { user, profile } = useAuthStore();
   const { attendedEvents, fetchAttendedEvents } = useEventsStore();
   const { stats, fetchStats, fetchAchievements } = useStatsStore();
-  const { achievements, closestAchievement } = useAchievements();
 
   const [refreshing, setRefreshing] = React.useState(false);
 
@@ -50,7 +58,24 @@ export default function HomeScreen() {
   };
 
   const recentEvents = attendedEvents.slice(0, 3);
-  const unlockedCount = achievements.filter((a) => a.unlocked).length;
+
+  // Calculate user points from attendance history
+  const { totalPoints: userPoints } = usePoints(attendedEvents);
+
+  const currentLevel = useMemo(() => {
+    let level = LEVELS[0];
+    for (const l of LEVELS) {
+      if (userPoints >= l.minPoints) {
+        level = l;
+      }
+    }
+    return level;
+  }, [userPoints]);
+
+  const nextLevel = LEVELS.find(l => l.level === currentLevel.level + 1);
+  const progressToNext = nextLevel
+    ? ((userPoints - currentLevel.minPoints) / (nextLevel.minPoints - currentLevel.minPoints)) * 100
+    : 100;
 
   return (
     <ScrollView
@@ -104,15 +129,6 @@ export default function HomeScreen() {
 
           {/* Secondary stats in column */}
           <View style={styles.heroSecondary}>
-            {/* Streak */}
-            <View style={styles.heroStatRow}>
-              <View style={styles.heroStatIcon}>
-                <Ionicons name="flame" size={16} color={colors.warning} />
-              </View>
-              <Text style={styles.heroStatValue}>{stats?.current_streak || 0}</Text>
-              <Text style={styles.heroStatLabel}>week streak</Text>
-            </View>
-
             {/* Sports */}
             <View style={styles.heroStatRow}>
               <View style={styles.heroStatIcon}>
@@ -120,6 +136,15 @@ export default function HomeScreen() {
               </View>
               <Text style={styles.heroStatValue}>{stats?.total_sports || 0}</Text>
               <Text style={styles.heroStatLabel}>sports</Text>
+            </View>
+
+            {/* Teams */}
+            <View style={styles.heroStatRow}>
+              <View style={styles.heroStatIcon}>
+                <Ionicons name="shield" size={16} color={colors.warning} />
+              </View>
+              <Text style={styles.heroStatValue}>{stats?.total_teams || 0}</Text>
+              <Text style={styles.heroStatLabel}>teams</Text>
             </View>
 
             {/* Venues */}
@@ -134,67 +159,66 @@ export default function HomeScreen() {
         </LinearGradient>
       </TouchableOpacity>
 
-      {/* Next Achievement Card */}
-      {closestAchievement ? (
-        <TouchableOpacity
-          style={styles.nextAchievementCard}
-          onPress={() => router.push('/achievements')}
-          activeOpacity={0.7}
+      {/* Level Card */}
+      <TouchableOpacity
+        activeOpacity={0.9}
+        onPress={() => router.push('/achievements')}
+        style={styles.levelCard}
+      >
+        <LinearGradient
+          colors={[currentLevel.color, `${currentLevel.color}CC`]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.levelCardGradient}
         >
-          <View style={styles.nextAchievementHeader}>
-            <View style={[
-              styles.nextAchievementIcon,
-              { backgroundColor: `${RARITY_COLORS[closestAchievement.achievement.rarity]}20` }
-            ]}>
-              <Ionicons
-                name={closestAchievement.achievement.icon as any}
-                size={20}
-                color={RARITY_COLORS[closestAchievement.achievement.rarity]}
-              />
+          <View style={styles.levelCardHeader}>
+            <View style={styles.levelIconContainer}>
+              <Ionicons name={currentLevel.icon as any} size={28} color={colors.white} />
             </View>
-            <View style={styles.nextAchievementInfo}>
-              <Text style={styles.nextAchievementLabel}>Almost there!</Text>
-              <Text style={styles.nextAchievementName}>{closestAchievement.achievement.name}</Text>
+            <View style={styles.levelInfo}>
+              <Text style={styles.levelLabel}>Level {currentLevel.level}</Text>
+              <Text style={styles.levelName}>{currentLevel.name}</Text>
             </View>
-            <View style={[
-              styles.nextAchievementBadge,
-              { backgroundColor: `${RARITY_COLORS[closestAchievement.achievement.rarity]}20` }
-            ]}>
-              <Text style={[
-                styles.nextAchievementRemaining,
-                { color: RARITY_COLORS[closestAchievement.achievement.rarity] }
-              ]}>
-                {closestAchievement.remaining} to go
+            <View style={styles.levelPoints}>
+              <Text style={styles.levelPointsValue}>{userPoints}</Text>
+              <Text style={styles.levelPointsLabel}>points</Text>
+            </View>
+          </View>
+
+          {nextLevel && (
+            <View style={styles.levelProgress}>
+              <View style={styles.levelProgressBar}>
+                <View style={[styles.levelProgressFill, { width: `${Math.min(progressToNext, 100)}%` }]} />
+              </View>
+              <Text style={styles.levelProgressText}>
+                {nextLevel.minPoints - userPoints} pts to {nextLevel.name}
               </Text>
             </View>
+          )}
+
+          <View style={styles.levelTips}>
+            <Text style={styles.levelTipsTitle}>Ways to earn points:</Text>
+            <View style={styles.levelTipsGrid}>
+              <View style={styles.levelTipItem}>
+                <Ionicons name="ticket" size={14} color="rgba(255,255,255,0.9)" />
+                <Text style={styles.levelTipText}>Attend event (+10)</Text>
+              </View>
+              <View style={styles.levelTipItem}>
+                <Ionicons name="trophy" size={14} color="rgba(255,255,255,0.9)" />
+                <Text style={styles.levelTipText}>Team wins (+15)</Text>
+              </View>
+              <View style={styles.levelTipItem}>
+                <Ionicons name="flame" size={14} color="rgba(255,255,255,0.9)" />
+                <Text style={styles.levelTipText}>3-win streak (+25)</Text>
+              </View>
+              <View style={styles.levelTipItem}>
+                <Ionicons name="star" size={14} color="rgba(255,255,255,0.9)" />
+                <Text style={styles.levelTipText}>New team (+5)</Text>
+              </View>
+            </View>
           </View>
-          <View style={styles.nextAchievementProgress}>
-            <ProgressBar
-              progress={closestAchievement.percent}
-              color={RARITY_COLORS[closestAchievement.achievement.rarity]}
-              height={6}
-            />
-            <Text style={styles.nextAchievementDesc}>{closestAchievement.description}</Text>
-          </View>
-        </TouchableOpacity>
-      ) : (
-        <TouchableOpacity
-          style={styles.achievementsRow}
-          onPress={() => router.push('/achievements')}
-          activeOpacity={0.7}
-        >
-          <View style={styles.achievementsIcon}>
-            <Ionicons name="trophy" size={24} color={colors.gold} />
-          </View>
-          <View style={styles.achievementsInfo}>
-            <Text style={styles.achievementsTitle}>Achievements</Text>
-            <Text style={styles.achievementsSubtitle}>
-              {unlockedCount} of {achievements.length} unlocked
-            </Text>
-          </View>
-          <Ionicons name="chevron-forward" size={20} color={colors.textMuted} />
-        </TouchableOpacity>
-      )}
+        </LinearGradient>
+      </TouchableOpacity>
 
       {/* Quick Add Button */}
       <TouchableOpacity
@@ -233,7 +257,7 @@ export default function HomeScreen() {
                 event={attended.event!}
                 attendance={attended}
                 onPress={() => router.push(`/event/${attended.event_id}`)}
-                compact
+                mini
               />
             ))}
           </View>
@@ -252,37 +276,86 @@ export default function HomeScreen() {
         )}
       </View>
 
-      {/* Quick Links */}
+      {/* Explore Section */}
       <View style={styles.section}>
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>Explore</Text>
         </View>
-        <View style={styles.quickLinks}>
+        <View style={styles.exploreGrid}>
           <TouchableOpacity
-            style={styles.quickLink}
+            style={styles.exploreCard}
             onPress={() => router.push('/(tabs)/stats')}
+            activeOpacity={0.8}
           >
-            <Ionicons name="stats-chart" size={20} color={colors.success} />
-            <Text style={styles.quickLinkText}>Your Stats</Text>
-            <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
+            <LinearGradient
+              colors={[colors.success, '#059669']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.exploreCardGradient}
+            >
+              <View style={styles.exploreCardIcon}>
+                <Ionicons name="stats-chart" size={24} color={colors.white} />
+              </View>
+              <Text style={styles.exploreCardTitle}>Your Stats</Text>
+              <Text style={styles.exploreCardSubtitle}>View detailed analytics</Text>
+            </LinearGradient>
           </TouchableOpacity>
 
           <TouchableOpacity
-            style={styles.quickLink}
+            style={styles.exploreCard}
             onPress={() => router.push('/friends')}
+            activeOpacity={0.8}
           >
-            <Ionicons name="people" size={20} color={colors.info} />
-            <Text style={styles.quickLinkText}>Friends</Text>
-            <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
+            <LinearGradient
+              colors={[colors.info, '#0284c7']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.exploreCardGradient}
+            >
+              <View style={styles.exploreCardIcon}>
+                <Ionicons name="people" size={24} color={colors.white} />
+              </View>
+              <Text style={styles.exploreCardTitle}>Friends</Text>
+              <Text style={styles.exploreCardSubtitle}>Connect with fans</Text>
+            </LinearGradient>
           </TouchableOpacity>
 
           <TouchableOpacity
-            style={[styles.quickLink, styles.quickLinkLast]}
+            style={styles.exploreCard}
             onPress={() => router.push('/achievements')}
+            activeOpacity={0.8}
           >
-            <Ionicons name="trophy" size={20} color={colors.gold} />
-            <Text style={styles.quickLinkText}>All Achievements</Text>
-            <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
+            <LinearGradient
+              colors={[colors.gold, '#d97706']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.exploreCardGradient}
+            >
+              <View style={styles.exploreCardIcon}>
+                <Ionicons name="trophy" size={24} color={colors.white} />
+              </View>
+              <Text style={styles.exploreCardTitle}>Achievements</Text>
+              <Text style={styles.exploreCardSubtitle}>Unlock rewards</Text>
+            </LinearGradient>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.exploreCard}
+            onPress={() => router.push('/stats/map')}
+            activeOpacity={0.8}
+          >
+            <LinearGradient
+              colors={[colors.primary, colors.primaryDark || '#1a365d']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.exploreCardGradient}
+            >
+              <View style={styles.exploreCardIcon}>
+                <Ionicons name="globe" size={24} color={colors.white} />
+              </View>
+              <Text style={styles.exploreCardTitle}>World Map</Text>
+              <Text style={styles.exploreCardSubtitle}>Places you've been</Text>
+            </LinearGradient>
           </TouchableOpacity>
         </View>
       </View>
@@ -374,99 +447,6 @@ const styles = StyleSheet.create({
     color: 'rgba(255,255,255,0.7)',
   },
 
-  // Achievements Row
-  achievementsRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.surface,
-    borderRadius: borderRadius.lg,
-    padding: spacing.md,
-    marginBottom: spacing.lg,
-    gap: spacing.md,
-  },
-  achievementsIcon: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: `${colors.gold}15`,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  achievementsInfo: {
-    flex: 1,
-  },
-  achievementsTitle: {
-    fontSize: fontSize.md,
-    fontWeight: fontWeight.semibold,
-    color: colors.text,
-  },
-  achievementsSubtitle: {
-    fontSize: fontSize.sm,
-    color: colors.textSecondary,
-    marginTop: 2,
-  },
-  achievementsProgress: {
-    backgroundColor: `${colors.gold}15`,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
-    borderRadius: borderRadius.md,
-  },
-  achievementsPercent: {
-    fontSize: fontSize.sm,
-    fontWeight: fontWeight.bold,
-    color: colors.gold,
-  },
-
-  // Next Achievement Card
-  nextAchievementCard: {
-    backgroundColor: colors.surface,
-    borderRadius: borderRadius.lg,
-    padding: spacing.md,
-    marginBottom: spacing.lg,
-  },
-  nextAchievementHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-  },
-  nextAchievementIcon: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  nextAchievementInfo: {
-    flex: 1,
-  },
-  nextAchievementLabel: {
-    fontSize: fontSize.xs,
-    color: colors.textSecondary,
-    marginBottom: 2,
-  },
-  nextAchievementName: {
-    fontSize: fontSize.md,
-    fontWeight: fontWeight.semibold,
-    color: colors.text,
-  },
-  nextAchievementBadge: {
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
-    borderRadius: borderRadius.md,
-  },
-  nextAchievementRemaining: {
-    fontSize: fontSize.xs,
-    fontWeight: fontWeight.bold,
-  },
-  nextAchievementProgress: {
-    marginTop: spacing.md,
-  },
-  nextAchievementDesc: {
-    fontSize: fontSize.xs,
-    color: colors.textSecondary,
-    marginTop: spacing.xs,
-  },
-
   // Add Button
   addButton: {
     marginBottom: spacing.xl,
@@ -540,26 +520,135 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
 
-  // Quick Links
-  quickLinks: {
-    backgroundColor: colors.surface,
+  // Explore Grid
+  exploreGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.md,
+  },
+  exploreCard: {
+    width: '48%',
     borderRadius: borderRadius.lg,
     overflow: 'hidden',
   },
-  quickLink: {
+  exploreCardGradient: {
+    padding: spacing.md,
+    minHeight: 100,
+  },
+  exploreCardIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: spacing.sm,
+  },
+  exploreCardTitle: {
+    fontSize: fontSize.md,
+    fontWeight: fontWeight.semibold,
+    color: colors.white,
+  },
+  exploreCardSubtitle: {
+    fontSize: fontSize.xs,
+    color: 'rgba(255,255,255,0.8)',
+    marginTop: 2,
+  },
+
+  // Level Card
+  levelCard: {
+    marginBottom: spacing.md,
+    borderRadius: borderRadius.xl,
+    overflow: 'hidden',
+  },
+  levelCardGradient: {
+    padding: spacing.lg,
+  },
+  levelCardHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: spacing.md,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
     gap: spacing.md,
   },
-  quickLinkLast: {
-    borderBottomWidth: 0,
+  levelIconContainer: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  quickLinkText: {
+  levelInfo: {
     flex: 1,
-    fontSize: fontSize.md,
-    color: colors.text,
+  },
+  levelLabel: {
+    fontSize: fontSize.xs,
+    color: 'rgba(255,255,255,0.8)',
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+  },
+  levelName: {
+    fontSize: fontSize.xl,
+    fontWeight: fontWeight.bold,
+    color: colors.white,
+  },
+  levelPoints: {
+    alignItems: 'flex-end',
+  },
+  levelPointsValue: {
+    fontSize: fontSize.xl,
+    fontWeight: fontWeight.bold,
+    color: colors.white,
+  },
+  levelPointsLabel: {
+    fontSize: fontSize.xs,
+    color: 'rgba(255,255,255,0.8)',
+  },
+  levelProgress: {
+    marginTop: spacing.md,
+  },
+  levelProgressBar: {
+    height: 6,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    borderRadius: 3,
+    overflow: 'hidden',
+  },
+  levelProgressFill: {
+    height: '100%',
+    backgroundColor: colors.white,
+    borderRadius: 3,
+  },
+  levelProgressText: {
+    fontSize: fontSize.xs,
+    color: 'rgba(255,255,255,0.9)',
+    marginTop: spacing.xs,
+    textAlign: 'right',
+  },
+  levelTips: {
+    marginTop: spacing.md,
+    paddingTop: spacing.md,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255,255,255,0.15)',
+  },
+  levelTipsTitle: {
+    fontSize: fontSize.xs,
+    color: 'rgba(255,255,255,0.9)',
+    fontWeight: fontWeight.semibold,
+    marginBottom: spacing.sm,
+  },
+  levelTipsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.xs,
+  },
+  levelTipItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    width: '48%',
+    marginBottom: 2,
+  },
+  levelTipText: {
+    fontSize: fontSize.xs,
+    color: 'rgba(255,255,255,0.85)',
   },
 });

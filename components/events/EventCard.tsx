@@ -12,24 +12,67 @@ interface EventCardProps {
   attendance?: AttendedEventWithDetails;
   onPress?: () => void;
   compact?: boolean;
+  mini?: boolean;
 }
 
-export function EventCard({ event, attendance, onPress, compact = false }: EventCardProps) {
+export function EventCard({ event, attendance, onPress, compact = false, mini = false }: EventCardProps) {
   const sportColor = getSportColor(event.sport?.name?.toLowerCase() || '');
+
+  // Mini version - very compact single line style
+  if (mini) {
+    return (
+      <Card onPress={onPress} style={styles.miniContainer}>
+        <View style={[styles.miniSportIndicator, { backgroundColor: sportColor }]} />
+        <View style={styles.miniContent}>
+          <View style={styles.miniTop}>
+            <View style={styles.miniMeta}>
+              <Badge label={event.sport?.name || 'Sport'} size="sm" color={sportColor} />
+              {event.competition && (
+                <Text style={styles.miniCompetition} numberOfLines={1}>{event.competition}</Text>
+              )}
+            </View>
+            {attendance?.rating && (
+              <View style={styles.miniRating}>
+                {[1, 2, 3, 4, 5].map((star) => (
+                  <Ionicons
+                    key={star}
+                    name={star <= attendance.rating! ? 'star' : 'star-outline'}
+                    size={12}
+                    color={colors.gold}
+                  />
+                ))}
+              </View>
+            )}
+          </View>
+          <View style={styles.miniBottom}>
+            <Text style={styles.miniTeams} numberOfLines={1}>
+              {event.home_team?.short_name || event.home_team?.name || 'Home'} vs {event.away_team?.short_name || event.away_team?.name || 'Away'}
+            </Text>
+            {(event.home_score !== null && event.away_score !== null) && (
+              <Text style={styles.miniScore}>{event.home_score} - {event.away_score}</Text>
+            )}
+          </View>
+        </View>
+      </Card>
+    );
+  }
 
   return (
     <Card onPress={onPress} style={styles.container}>
       <View style={[styles.sportIndicator, { backgroundColor: sportColor }]} />
       <View style={styles.content}>
         <View style={styles.header}>
-          <Badge
-            label={event.sport?.name || 'Sport'}
-            size="sm"
-            color={sportColor}
-          />
-          {event.competition && (
-            <Text style={styles.competition}>{event.competition}</Text>
-          )}
+          <View style={styles.headerLeft}>
+            <Badge
+              label={event.sport?.name || 'Sport'}
+              size="sm"
+              color={sportColor}
+            />
+            {event.competition && (
+              <Text style={styles.competition}>{event.competition}</Text>
+            )}
+          </View>
+          <Text style={styles.headerDate}>{formatDate(event.event_date)}</Text>
         </View>
 
         <View style={styles.teams}>
@@ -82,12 +125,8 @@ export function EventCard({ event, attendance, onPress, compact = false }: Event
           </View>
         </View>
 
-        {!compact && (
+        {!compact && (event.event_time || event.venue?.name) && (
           <View style={styles.details}>
-            <View style={styles.detailItem}>
-              <Ionicons name="calendar-outline" size={14} color={colors.textSecondary} />
-              <Text style={styles.detailText}>{formatDate(event.event_date)}</Text>
-            </View>
             {event.event_time && (
               <View style={styles.detailItem}>
                 <Ionicons name="time-outline" size={14} color={colors.textSecondary} />
@@ -130,6 +169,59 @@ export function EventCard({ event, attendance, onPress, compact = false }: Event
 }
 
 const styles = StyleSheet.create({
+  // Mini styles
+  miniContainer: {
+    flexDirection: 'row',
+    overflow: 'hidden',
+  },
+  miniSportIndicator: {
+    width: 3,
+  },
+  miniContent: {
+    flex: 1,
+    padding: spacing.sm,
+    paddingLeft: spacing.md,
+  },
+  miniTop: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: spacing.xs,
+  },
+  miniTeams: {
+    flex: 1,
+    fontSize: fontSize.sm,
+    fontWeight: fontWeight.semibold,
+    color: colors.text,
+  },
+  miniScore: {
+    fontSize: fontSize.sm,
+    fontWeight: fontWeight.bold,
+    color: colors.text,
+    marginLeft: spacing.sm,
+  },
+  miniBottom: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  miniMeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    flex: 1,
+  },
+  miniCompetition: {
+    fontSize: fontSize.xs,
+    color: colors.textSecondary,
+    flex: 1,
+  },
+  miniRating: {
+    flexDirection: 'row',
+    gap: 1,
+  },
+
+  // Regular styles
   container: {
     flexDirection: 'row',
     overflow: 'hidden',
@@ -144,8 +236,19 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
     marginBottom: spacing.md,
+  },
+  headerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
     gap: spacing.sm,
+    flex: 1,
+  },
+  headerDate: {
+    fontSize: fontSize.sm,
+    color: colors.textSecondary,
+    fontWeight: fontWeight.medium,
   },
   competition: {
     fontSize: fontSize.sm,
