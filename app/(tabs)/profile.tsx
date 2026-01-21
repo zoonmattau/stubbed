@@ -123,10 +123,26 @@ export default function ProfileScreen() {
     return 'User';
   };
 
+  // Level names based on points
+  const LEVEL_NAMES = [
+    'Rookie',      // Level 1: 0-99
+    'Fan',         // Level 2: 100-199
+    'Supporter',   // Level 3: 200-299
+    'Enthusiast',  // Level 4: 300-399
+    'Dedicated',   // Level 5: 400-499
+    'Veteran',     // Level 6: 500-599
+    'Expert',      // Level 7: 600-699
+    'Elite',       // Level 8: 700-799
+    'Champion',    // Level 9: 800-899
+    'Legend',      // Level 10+: 900+
+  ];
+
   // Calculate level based on points
   const level = Math.floor(totalPoints / 100) + 1;
   const pointsToNextLevel = 100 - (totalPoints % 100);
   const levelProgress = ((totalPoints % 100) / 100) * 100;
+  const currentLevelName = LEVEL_NAMES[Math.min(level - 1, LEVEL_NAMES.length - 1)];
+  const nextLevelName = LEVEL_NAMES[Math.min(level, LEVEL_NAMES.length - 1)];
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
@@ -151,13 +167,13 @@ export default function ProfileScreen() {
         <View style={styles.levelContainer}>
           <View style={styles.levelHeader}>
             <View style={styles.levelBadge}>
-              <Text style={styles.levelText}>Level {level}</Text>
+              <Text style={styles.levelText}>{currentLevelName}</Text>
             </View>
             <Text style={styles.pointsText}>{totalPoints} total points</Text>
           </View>
           <ProgressBar
             progress={levelProgress}
-            label={`${pointsToNextLevel} pts to Level ${level + 1}`}
+            label={`${pointsToNextLevel} pts to ${nextLevelName}`}
             color={colors.primary}
           />
         </View>
