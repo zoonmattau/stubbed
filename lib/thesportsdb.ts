@@ -2,6 +2,28 @@
 // Paid tier with API key for better data access
 // Docs: https://www.thesportsdb.com/api.php
 
+import { fetchWithRetry } from './retry';
+import { sportsDbRateLimiter } from './rateLimiter';
+
+// API Result type for proper error handling
+export interface ApiResult<T> {
+  success: boolean;
+  data: T;
+  error?: string;
+}
+
+// Custom error class for API errors
+export class SportsDBError extends Error {
+  constructor(
+    message: string,
+    public statusCode?: number,
+    public endpoint?: string
+  ) {
+    super(message);
+    this.name = 'SportsDBError';
+  }
+}
+
 export interface SportsDBPlayer {
   idPlayer: string;
   strPlayer: string;
@@ -217,26 +239,37 @@ export async function fetchSportsDBEvents(
     season?: string;
     round?: string;
   }
-): Promise<SportsDBSearchResult[]> {
+): Promise<ApiResult<SportsDBSearchResult[]>> {
   const league = SPORTSDB_LEAGUES[leagueKey];
   const season = options?.season || getCurrentSeason();
 
   try {
     // Try to get events for the season
     const url = `${BASE_URL}/eventsseason.php?id=${league.id}&s=${season}`;
-    const response = await fetch(url);
+    const response = await fetchWithRetry(url);
 
     if (!response.ok) {
-      throw new Error(`TheSportsDB API error: ${response.status}`);
+      return {
+        success: false,
+        data: [],
+        error: `API request failed with status ${response.status}`,
+      };
     }
 
     const data = await response.json();
     const events: SportsDBEvent[] = data.events || [];
 
-    return events.map((event) => parseEvent(event, league.sport, league.name));
+    return {
+      success: true,
+      data: events.map((event) => parseEvent(event, league.sport, league.name)),
+    };
   } catch (error) {
-    console.error('Error fetching TheSportsDB events:', error);
-    return [];
+    const message = error instanceof Error ? error.message : 'Unknown error occurred';
+    return {
+      success: false,
+      data: [],
+      error: message,
+    };
   }
 }
 
@@ -246,27 +279,46 @@ export async function fetchSportsDBEvents(
 export async function fetchNextEvents(
   leagueKey: SportsDBLeagueKey,
   limit: number = 15
-): Promise<SportsDBSearchResult[]> {
+): Promise<ApiResult<SportsDBSearchResult[]>> {
   const league = SPORTSDB_LEAGUES[leagueKey];
 
+  // Check rate limit
+  if (!sportsDbRateLimiter.canMakeRequest('api')) {
+    return {
+      success: false,
+      data: [],
+      error: 'Rate limit reached. Please wait a moment before trying again.',
+    };
+  }
+
   try {
+    sportsDbRateLimiter.recordRequest('api');
     // Use eventsnextleague endpoint (works well with paid API)
     const url = `${BASE_URL}/eventsnextleague.php?id=${league.id}`;
-    console.log('[SportsDB] Fetching next events:', url);
-    const response = await fetch(url);
+    const response = await fetchWithRetry(url);
 
     if (!response.ok) {
-      throw new Error(`TheSportsDB API error: ${response.status}`);
+      return {
+        success: false,
+        data: [],
+        error: `API request failed with status ${response.status}`,
+      };
     }
 
     const data = await response.json();
     const events: SportsDBEvent[] = (data.events || []).slice(0, limit);
 
-    console.log('[SportsDB] Found', events.length, 'upcoming events for', league.name);
-    return events.map((event) => parseEvent(event, league.sport, league.name));
+    return {
+      success: true,
+      data: events.map((event) => parseEvent(event, league.sport, league.name)),
+    };
   } catch (error) {
-    console.error('Error fetching next events:', error);
-    return [];
+    const message = error instanceof Error ? error.message : 'Unknown error occurred';
+    return {
+      success: false,
+      data: [],
+      error: message,
+    };
   }
 }
 
@@ -276,27 +328,36 @@ export async function fetchNextEvents(
 export async function fetchPastEvents(
   leagueKey: SportsDBLeagueKey,
   limit: number = 15
-): Promise<SportsDBSearchResult[]> {
+): Promise<ApiResult<SportsDBSearchResult[]>> {
   const league = SPORTSDB_LEAGUES[leagueKey];
 
   try {
     // Use eventspastleague endpoint (works well with paid API)
     const url = `${BASE_URL}/eventspastleague.php?id=${league.id}`;
-    console.log('[SportsDB] Fetching past events:', url);
-    const response = await fetch(url);
+    const response = await fetchWithRetry(url);
 
     if (!response.ok) {
-      throw new Error(`TheSportsDB API error: ${response.status}`);
+      return {
+        success: false,
+        data: [],
+        error: `API request failed with status ${response.status}`,
+      };
     }
 
     const data = await response.json();
     const events: SportsDBEvent[] = (data.events || []).slice(0, limit);
 
-    console.log('[SportsDB] Found', events.length, 'past events for', league.name);
-    return events.map((event) => parseEvent(event, league.sport, league.name));
+    return {
+      success: true,
+      data: events.map((event) => parseEvent(event, league.sport, league.name)),
+    };
   } catch (error) {
-    console.error('Error fetching past events:', error);
-    return [];
+    const message = error instanceof Error ? error.message : 'Unknown error occurred';
+    return {
+      success: false,
+      data: [],
+      error: message,
+    };
   }
 }
 
@@ -370,7 +431,6 @@ export async function fetchTeamPastEvents(teamId: string): Promise<SportsDBSearc
 export async function searchPlayers(playerName: string): Promise<SportsDBPlayerResult[]> {
   try {
     const url = `${BASE_URL}/searchplayers.php?p=${encodeURIComponent(playerName)}`;
-    console.log('[SportsDB] Searching players:', url);
     const response = await fetch(url);
 
     if (!response.ok) {
@@ -380,10 +440,8 @@ export async function searchPlayers(playerName: string): Promise<SportsDBPlayerR
     const data = await response.json();
     const players: SportsDBPlayer[] = data.player || [];
 
-    console.log('[SportsDB] Found', players.length, 'players matching', playerName);
     return players.map(parsePlayer);
   } catch (error) {
-    console.error('Error searching players:', error);
     return [];
   }
 }
@@ -394,7 +452,6 @@ export async function searchPlayers(playerName: string): Promise<SportsDBPlayerR
 export async function searchPlayersByTeam(teamName: string): Promise<SportsDBPlayerResult[]> {
   try {
     const url = `${BASE_URL}/searchplayers.php?t=${encodeURIComponent(teamName)}`;
-    console.log('[SportsDB] Searching players by team:', url);
     const response = await fetch(url);
 
     if (!response.ok) {
@@ -404,10 +461,8 @@ export async function searchPlayersByTeam(teamName: string): Promise<SportsDBPla
     const data = await response.json();
     const players: SportsDBPlayer[] = data.player || [];
 
-    console.log('[SportsDB] Found', players.length, 'players for team', teamName);
     return players.map(parsePlayer);
   } catch (error) {
-    console.error('Error searching players by team:', error);
     return [];
   }
 }
@@ -464,7 +519,6 @@ export async function getTeamById(teamId: string): Promise<SportsDBTeamResult | 
 export async function searchTeams(teamName: string): Promise<SportsDBTeamResult[]> {
   try {
     const url = `${BASE_URL}/searchteams.php?t=${encodeURIComponent(teamName)}`;
-    console.log('[SportsDB] Searching teams:', url);
     const response = await fetch(url);
 
     if (!response.ok) {
@@ -474,10 +528,8 @@ export async function searchTeams(teamName: string): Promise<SportsDBTeamResult[
     const data = await response.json();
     const teams: SportsDBTeam[] = data.teams || [];
 
-    console.log('[SportsDB] Found', teams.length, 'teams matching', teamName);
     return teams.map(parseTeam);
   } catch (error) {
-    console.error('Error searching teams:', error);
     return [];
   }
 }
@@ -532,9 +584,19 @@ function parseEvent(event: SportsDBEvent, sport: string, league: string): Sports
   }
 
   // Combine date and time
-  const dateTime = event.strTimestamp
-    ? event.strTimestamp
-    : `${event.dateEvent}T${event.strTime || '00:00:00'}`;
+  // strTimestamp is in UTC with timezone offset (preferred)
+  // strTime is in the event's local timezone (fallback)
+  let dateTime: string;
+  if (event.strTimestamp) {
+    // strTimestamp includes timezone info, JavaScript Date will handle conversion
+    dateTime = event.strTimestamp;
+  } else {
+    // strTime is local event time - create date string without timezone
+    // This will be parsed in user's local timezone which may not be accurate
+    // but is the best we can do without event timezone info
+    const time = event.strTime || '00:00:00';
+    dateTime = `${event.dateEvent}T${time}`;
+  }
 
   return {
     id: event.idEvent,
@@ -572,6 +634,104 @@ function parseEvent(event: SportsDBEvent, sport: string, league: string): Sports
 // Get league display info
 export function getLeagueInfo(leagueKey: SportsDBLeagueKey) {
   return SPORTSDB_LEAGUES[leagueKey];
+}
+
+// Standings/Table types
+export interface SportsDBStanding {
+  idStanding: string;
+  intRank: string;
+  idTeam: string;
+  strTeam: string;
+  strTeamBadge: string | null;
+  idLeague: string;
+  strLeague: string;
+  strSeason: string;
+  strForm: string | null;
+  strDescription: string | null;
+  intPlayed: string;
+  intWin: string;
+  intLoss: string;
+  intDraw: string;
+  intGoalsFor: string;
+  intGoalsAgainst: string;
+  intGoalDifference: string;
+  intPoints: string;
+  dateUpdated: string | null;
+}
+
+export interface StandingResult {
+  rank: number;
+  teamId: string;
+  teamName: string;
+  teamBadge?: string;
+  played: number;
+  won: number;
+  drawn: number;
+  lost: number;
+  goalsFor: number;
+  goalsAgainst: number;
+  goalDifference: number;
+  points: number;
+  form?: string;
+  description?: string;
+}
+
+/**
+ * Fetch league standings/table
+ */
+export async function fetchLeagueStandings(
+  leagueKey: SportsDBLeagueKey,
+  season?: string
+): Promise<ApiResult<StandingResult[]>> {
+  const league = SPORTSDB_LEAGUES[leagueKey];
+  const seasonParam = season || getCurrentSeason();
+
+  try {
+    const url = `${BASE_URL}/lookuptable.php?l=${league.id}&s=${seasonParam}`;
+    const response = await fetchWithRetry(url);
+
+    if (!response.ok) {
+      return {
+        success: false,
+        data: [],
+        error: `API request failed with status ${response.status}`,
+      };
+    }
+
+    const data = await response.json();
+    const standings: SportsDBStanding[] = data.table || [];
+
+    return {
+      success: true,
+      data: standings.map(parseStanding),
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error occurred';
+    return {
+      success: false,
+      data: [],
+      error: message,
+    };
+  }
+}
+
+function parseStanding(standing: SportsDBStanding): StandingResult {
+  return {
+    rank: parseInt(standing.intRank, 10) || 0,
+    teamId: standing.idTeam,
+    teamName: standing.strTeam,
+    teamBadge: standing.strTeamBadge || undefined,
+    played: parseInt(standing.intPlayed, 10) || 0,
+    won: parseInt(standing.intWin, 10) || 0,
+    drawn: parseInt(standing.intDraw, 10) || 0,
+    lost: parseInt(standing.intLoss, 10) || 0,
+    goalsFor: parseInt(standing.intGoalsFor, 10) || 0,
+    goalsAgainst: parseInt(standing.intGoalsAgainst, 10) || 0,
+    goalDifference: parseInt(standing.intGoalDifference, 10) || 0,
+    points: parseInt(standing.intPoints, 10) || 0,
+    form: standing.strForm || undefined,
+    description: standing.strDescription || undefined,
+  };
 }
 
 // Group leagues by sport type for UI

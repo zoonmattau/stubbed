@@ -49,23 +49,16 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   error: null,
 
   fetchSettings: async (userId: string) => {
-    console.log('[SettingsStore] fetchSettings called with userId:', userId);
     set({ isLoading: true, error: null });
 
     try {
-      console.log('[SettingsStore] Fetching from Supabase...');
-      // Use maybeSingle() to avoid 406 error when no row exists
       const { data, error } = await supabase
         .from('user_settings')
         .select('*')
         .eq('user_id', userId)
         .maybeSingle();
 
-      console.log('[SettingsStore] Supabase response:', { data, error });
-
       if (error) {
-        // For any error, use defaults locally
-        console.error('Error fetching settings:', error);
         set({
           settings: { user_id: userId, ...DEFAULT_SETTINGS } as UserSettings,
           isLoading: false
@@ -75,7 +68,6 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
 
       // If no settings exist, create default settings
       if (!data) {
-        console.log('[SettingsStore] No settings found, creating defaults...');
         try {
           const { data: newData, error: insertError } = await supabase
             .from('user_settings')
@@ -84,8 +76,6 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
             .single();
 
           if (insertError) {
-            // If insert fails, use defaults locally
-            console.error('Error creating settings:', insertError);
             set({
               settings: { user_id: userId, ...DEFAULT_SETTINGS } as UserSettings,
               isLoading: false
@@ -95,8 +85,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
 
           set({ settings: newData, isLoading: false });
           return;
-        } catch (insertErr) {
-          // Fallback to local defaults
+        } catch {
           set({
             settings: { user_id: userId, ...DEFAULT_SETTINGS } as UserSettings,
             isLoading: false
@@ -107,8 +96,6 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
 
       set({ settings: data, isLoading: false });
     } catch (error: any) {
-      console.error('Error fetching settings:', error);
-      // Fallback to local defaults so UI doesn't get stuck
       set({
         settings: { user_id: userId, ...DEFAULT_SETTINGS } as UserSettings,
         error: error.message,
@@ -136,7 +123,6 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
         throw error;
       }
     } catch (error: any) {
-      console.error('Error updating settings:', error);
       set({ error: error.message });
     }
   },

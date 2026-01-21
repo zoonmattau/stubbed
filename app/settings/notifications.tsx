@@ -20,9 +20,7 @@ export default function NotificationsScreen() {
   const { settings, isLoading, fetchSettings, updateSettings } = useSettingsStore();
 
   useEffect(() => {
-    console.log('[NotificationsScreen] useEffect - user:', user?.id, 'settings:', settings);
     if (user?.id) {
-      console.log('[NotificationsScreen] Calling fetchSettings...');
       fetchSettings(user.id);
     }
   }, [user?.id]);

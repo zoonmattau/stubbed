@@ -1,7 +1,10 @@
 import { create } from 'zustand';
 import { supabase } from '@/lib/supabase';
-import type { User, Session } from '@supabase/supabase-js';
+import type { User, Session, Subscription } from '@supabase/supabase-js';
 import type { Profile } from '@/types';
+
+// Store the auth subscription outside the store to prevent re-subscribing
+let authSubscription: Subscription | null = null;
 
 interface AuthState {
   user: User | null;
@@ -12,6 +15,7 @@ interface AuthState {
 
   // Actions
   initialize: () => Promise<void>;
+  cleanup: () => void;
   setSession: (session: Session | null) => void;
   setUser: (user: User | null) => void;
   setProfile: (profile: Profile | null) => void;
@@ -27,7 +31,11 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   isInitialized: false,
 
   initialize: async () => {
-    console.log('[Auth] Initializing...');
+    // Prevent multiple subscriptions
+    if (authSubscription) {
+      return;
+    }
+
     try {
       const {
         data: { session },
@@ -38,17 +46,14 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         console.error('[Auth] Error getting session:', error);
       }
 
-      console.log('[Auth] Session:', session ? 'exists' : 'none');
       set({ session, user: session?.user ?? null });
 
       if (session?.user) {
-        console.log('[Auth] Fetching profile for user:', session.user.id);
         await get().fetchProfile();
       }
 
-      // Listen for auth changes
-      supabase.auth.onAuthStateChange(async (event, session) => {
-        console.log('[Auth] State change:', event);
+      // Listen for auth changes and store the subscription
+      const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
         set({ session, user: session?.user ?? null });
 
         if ((event === 'SIGNED_IN' || event === 'USER_UPDATED') && session?.user) {
@@ -65,7 +70,6 @@ export const useAuthStore = create<AuthState>((set, get) => ({
             }
 
             if (!existingProfile) {
-              console.log('[Auth] Creating profile for new user');
               // Create profile from user metadata
               const metadata = session.user.user_metadata;
               const { error: insertError } = await supabase.from('profiles').insert({
@@ -94,11 +98,20 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           set({ profile: null });
         }
       });
+
+      // Store the subscription for cleanup
+      authSubscription = subscription;
     } catch (err) {
       console.error('[Auth] Initialize failed:', err);
     } finally {
-      console.log('[Auth] Initialization complete');
       set({ isLoading: false, isInitialized: true });
+    }
+  },
+
+  cleanup: () => {
+    if (authSubscription) {
+      authSubscription.unsubscribe();
+      authSubscription = null;
     }
   },
 

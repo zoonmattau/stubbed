@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { supabase } from '@/lib/supabase';
 import type { UserStats, UserAchievement, AchievementWithStatus } from '@/types';
 import { ACHIEVEMENTS } from '@/constants/achievements';
+import { validateSingleResponse, validateRpcResponse, validateArrayResponse } from '@/lib/supabaseHelpers';
 
 interface StatsState {
   stats: UserStats | null;
@@ -38,42 +39,65 @@ export const useStatsStore = create<StatsState>((set, get) => ({
 
     try {
       // Fetch user stats
-      const { data: statsData, error: statsError } = await supabase
+      const statsResponse = await supabase
         .from('user_stats')
         .select('*')
         .eq('user_id', userId)
         .single();
 
-      if (statsError && statsError.code !== 'PGRST116') {
-        throw statsError;
-      }
-
-      // Fetch sport breakdown
-      const { data: sportData } = await supabase.rpc('get_sport_breakdown', {
-        p_user_id: userId,
+      const statsResult = validateSingleResponse<UserStats>(statsResponse, {
+        allowEmpty: true,
+        errorPrefix: 'Failed to load stats',
       });
 
-      // Fetch team breakdown
-      const { data: teamData } = await supabase.rpc('get_team_breakdown', {
+      // Fetch sport breakdown with validation
+      const sportResponse = await supabase.rpc('get_sport_breakdown', {
         p_user_id: userId,
+      });
+      const sportResult = validateRpcResponse<typeof sportResponse.data>(sportResponse, {
+        defaultValue: [],
+        errorPrefix: 'Failed to load sport breakdown',
       });
 
-      // Fetch venue breakdown
-      const { data: venueData } = await supabase.rpc('get_venue_breakdown', {
+      // Fetch team breakdown with validation
+      const teamResponse = await supabase.rpc('get_team_breakdown', {
         p_user_id: userId,
+      });
+      const teamResult = validateRpcResponse<typeof teamResponse.data>(teamResponse, {
+        defaultValue: [],
+        errorPrefix: 'Failed to load team breakdown',
       });
 
-      // Fetch monthly trend
-      const { data: trendData } = await supabase.rpc('get_monthly_trend', {
+      // Fetch venue breakdown with validation
+      const venueResponse = await supabase.rpc('get_venue_breakdown', {
         p_user_id: userId,
       });
+      const venueResult = validateRpcResponse<typeof venueResponse.data>(venueResponse, {
+        defaultValue: [],
+        errorPrefix: 'Failed to load venue breakdown',
+      });
+
+      // Fetch monthly trend with validation
+      const trendResponse = await supabase.rpc('get_monthly_trend', {
+        p_user_id: userId,
+      });
+      const trendResult = validateRpcResponse<typeof trendResponse.data>(trendResponse, {
+        defaultValue: [],
+        errorPrefix: 'Failed to load monthly trend',
+      });
+
+      // Collect any errors
+      const errors = [statsResult, sportResult, teamResult, venueResult, trendResult]
+        .filter(r => !r.success && r.error)
+        .map(r => r.error);
 
       set({
-        stats: statsData as UserStats | null,
-        sportBreakdown: sportData || [],
-        teamBreakdown: teamData || [],
-        venueBreakdown: venueData || [],
-        monthlyTrend: trendData || [],
+        stats: statsResult.data as UserStats | null,
+        sportBreakdown: (sportResult.data as any) || [],
+        teamBreakdown: (teamResult.data as any) || [],
+        venueBreakdown: (venueResult.data as any) || [],
+        monthlyTrend: (trendResult.data as any) || [],
+        error: errors.length > 0 ? errors[0] : null,
       });
     } catch (error) {
       set({ error: (error as Error).message });

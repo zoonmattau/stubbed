@@ -8,6 +8,7 @@ import {
   TextInput,
   Alert,
   Platform,
+  ActivityIndicator,
 } from 'react-native';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -21,7 +22,7 @@ import { colors, spacing, fontSize, fontWeight, borderRadius } from '@/constants
 
 export default function ProfileScreen() {
   const { user, profile, signOut } = useAuthStore();
-  const { stats, achievements, fetchStats, fetchAchievements } = useStatsStore();
+  const { stats, achievements, isLoading: statsLoading, fetchStats, fetchAchievements } = useStatsStore();
   const { fetchAttendedEvents } = useEventsStore();
   const [isSeeding, setIsSeeding] = React.useState(false);
 
@@ -168,28 +169,35 @@ export default function ProfileScreen() {
       {/* Quick Stats */}
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Stats Summary</Text>
-        <View style={styles.quickStats}>
-          <TouchableOpacity style={styles.quickStatItem} onPress={() => router.push('/events')}>
-            <Ionicons name="ticket" size={24} color={colors.primary} />
-            <Text style={styles.quickStatValue}>{stats?.total_events || 0}</Text>
-            <Text style={styles.quickStatLabel}>Events</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.quickStatItem} onPress={() => router.push('/achievements')}>
-            <Ionicons name="trophy" size={24} color={colors.gold} />
-            <Text style={styles.quickStatValue}>{unlockedAchievements.length}</Text>
-            <Text style={styles.quickStatLabel}>Achievements</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.quickStatItem} onPress={() => router.push('/stats')}>
-            <Ionicons name="shield" size={24} color={colors.warning} />
-            <Text style={styles.quickStatValue}>{stats?.total_teams || 0}</Text>
-            <Text style={styles.quickStatLabel}>Teams</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.quickStatItem} onPress={() => router.push('/friends')}>
-            <Ionicons name="people" size={24} color={colors.info} />
-            <Text style={styles.quickStatValue}>0</Text>
-            <Text style={styles.quickStatLabel}>Friends</Text>
-          </TouchableOpacity>
-        </View>
+        {statsLoading ? (
+          <View style={styles.statsLoadingContainer}>
+            <ActivityIndicator size="small" color={colors.primary} />
+            <Text style={styles.statsLoadingText}>Loading stats...</Text>
+          </View>
+        ) : (
+          <View style={styles.quickStats}>
+            <TouchableOpacity style={styles.quickStatItem} onPress={() => router.push('/events')}>
+              <Ionicons name="ticket" size={24} color={colors.primary} />
+              <Text style={styles.quickStatValue}>{stats?.total_events || 0}</Text>
+              <Text style={styles.quickStatLabel}>Events</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.quickStatItem} onPress={() => router.push('/achievements')}>
+              <Ionicons name="trophy" size={24} color={colors.gold} />
+              <Text style={styles.quickStatValue}>{unlockedAchievements.length}</Text>
+              <Text style={styles.quickStatLabel}>Achievements</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.quickStatItem} onPress={() => router.push('/stats')}>
+              <Ionicons name="shield" size={24} color={colors.warning} />
+              <Text style={styles.quickStatValue}>{stats?.total_teams || 0}</Text>
+              <Text style={styles.quickStatLabel}>Teams</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.quickStatItem} onPress={() => router.push('/friends')}>
+              <Ionicons name="people" size={24} color={colors.info} />
+              <Text style={styles.quickStatValue}>0</Text>
+              <Text style={styles.quickStatLabel}>Friends</Text>
+            </TouchableOpacity>
+          </View>
+        )}
       </View>
 
       {/* Friends Section */}
@@ -436,6 +444,19 @@ const styles = StyleSheet.create({
     fontSize: fontSize.xs,
     color: colors.textSecondary,
     marginTop: 2,
+  },
+  statsLoadingContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.surface,
+    borderRadius: borderRadius.lg,
+    padding: spacing.xl,
+    gap: spacing.sm,
+  },
+  statsLoadingText: {
+    fontSize: fontSize.sm,
+    color: colors.textSecondary,
   },
   achievementsList: {
     gap: spacing.sm,

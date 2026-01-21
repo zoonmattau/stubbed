@@ -2,7 +2,7 @@ import React from 'react';
 import { View, Text, StyleSheet, Image } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Card, Badge } from '@/components/ui';
-import { colors, spacing, fontSize, fontWeight } from '@/constants/theme';
+import { colors, spacing, fontSize, fontWeight, borderRadius } from '@/constants/theme';
 import { formatDate, formatTime } from '@/utils/dates';
 import { getSportColor } from '@/constants/sports';
 import type { EventWithDetails, AttendedEventWithDetails } from '@/types';
@@ -18,38 +18,196 @@ interface EventCardProps {
 export function EventCard({ event, attendance, onPress, compact = false, mini = false }: EventCardProps) {
   const sportColor = getSportColor(event.sport?.name?.toLowerCase() || '');
 
-  // Mini version - very compact single line style
+  // Mini version - fun card style with team logos and gradient
   if (mini) {
+    const isCricket = event.sport?.name?.toLowerCase() === 'cricket';
+
+    // For cricket, extract runs from "450/10" format
+    // Also supports combined innings like "450+280" or "450/10+280/10"
+    const parseScore = (score: string | number | null | undefined): number => {
+      if (score === null || score === undefined) return 0;
+      const scoreStr = String(score);
+
+      if (isCricket) {
+        // Handle combined innings format: "450+280" or "450/10+280/10"
+        if (scoreStr.includes('+')) {
+          return scoreStr.split('+').reduce((total, inning) => {
+            const runs = inning.includes('/')
+              ? parseInt(inning.split('/')[0], 10)
+              : parseInt(inning, 10);
+            return total + (runs || 0);
+          }, 0);
+        }
+        // Single innings: "450/10"
+        if (scoreStr.includes('/')) {
+          return parseInt(scoreStr.split('/')[0], 10) || 0;
+        }
+      }
+      return parseInt(scoreStr, 10) || 0;
+    };
+
+    const homeScoreNum = parseScore(event.home_score);
+    const awayScoreNum = parseScore(event.away_score);
+
+    const hasScore = event.home_score !== null && event.away_score !== null;
+    const homeWon = hasScore && homeScoreNum > awayScoreNum;
+    const awayWon = hasScore && awayScoreNum > homeScoreNum;
+    const isDraw = hasScore && homeScoreNum === awayScoreNum;
+    const margin = Math.abs(homeScoreNum - awayScoreNum);
+    const winnerName = homeWon
+      ? (event.home_team?.short_name || event.home_team?.name || 'Home')
+      : (event.away_team?.short_name || event.away_team?.name || 'Away');
+
+    // Format cricket scores to show innings nicely
+    const formatCricketScore = (score: string | number | null | undefined): { total: number; innings: string[] } => {
+      if (score === null || score === undefined) return { total: 0, innings: [] };
+      const scoreStr = String(score);
+      if (scoreStr.includes('+')) {
+        const parts = scoreStr.split('+').map(s => s.trim());
+        const total = parts.reduce((sum, inning) => {
+          const runs = inning.includes('/') ? parseInt(inning.split('/')[0], 10) : parseInt(inning, 10);
+          return sum + (runs || 0);
+        }, 0);
+        return { total, innings: parts };
+      }
+      return { total: parseScore(score), innings: [scoreStr] };
+    };
+
+    const homeScoreData = isCricket ? formatCricketScore(event.home_score) : null;
+    const awayScoreData = isCricket ? formatCricketScore(event.away_score) : null;
+
     return (
       <Card onPress={onPress} style={styles.miniContainer}>
-        <View style={[styles.miniSportIndicator, { backgroundColor: sportColor }]} />
         <View style={styles.miniContent}>
-          <View style={styles.miniTop}>
-            <View style={styles.miniMeta}>
+          {/* Top row - Sport badge, competition, and date */}
+          <View style={styles.miniHeader}>
+            <View style={styles.miniHeaderLeft}>
               <Badge label={event.sport?.name || 'Sport'} size="sm" color={sportColor} />
               {event.competition && (
                 <Text style={styles.miniCompetition} numberOfLines={1}>{event.competition}</Text>
               )}
             </View>
+            <Text style={styles.miniDate}>{formatDate(event.event_date)}</Text>
+          </View>
+
+          {/* Main content - Teams and score */}
+          <View style={styles.miniMatchup}>
+            {/* Home Team */}
+            <View style={styles.miniTeam}>
+              {event.home_team?.logo_url ? (
+                <Image source={{ uri: event.home_team.logo_url }} style={styles.miniTeamLogo} />
+              ) : (
+                <View style={[styles.miniTeamLogoPlaceholder, { backgroundColor: sportColor }]}>
+                  <Text style={styles.miniTeamLogoText}>
+                    {event.home_team?.short_name?.[0] || 'H'}
+                  </Text>
+                </View>
+              )}
+              <Text style={[styles.miniTeamName, homeWon && styles.miniTeamNameWinner]} numberOfLines={1}>
+                {event.home_team?.short_name || event.home_team?.name || 'Home'}
+              </Text>
+              {homeWon && <View style={[styles.miniWinIndicator, { backgroundColor: sportColor }]} />}
+            </View>
+
+            {/* Score/VS */}
+            <View style={styles.miniScoreContainer}>
+              {hasScore ? (
+                <>
+                  {/* Test cricket with multiple innings - stacked layout */}
+                  {isCricket && homeScoreData && awayScoreData && homeScoreData.innings.length > 1 ? (
+                    <View style={styles.miniCricketScores}>
+                      <View style={styles.miniCricketScoreColumn}>
+                        {homeScoreData.innings.map((inn, i) => (
+                          <Text key={i} style={[styles.miniCricketInning, homeWon && styles.miniCricketInningWinner]}>
+                            {inn}
+                          </Text>
+                        ))}
+                        <Text style={[styles.miniCricketTotal, homeWon && styles.miniCricketTotalWinner]}>
+                          ({homeScoreData.total})
+                        </Text>
+                      </View>
+                      <Text style={styles.miniCricketDivider}>v</Text>
+                      <View style={styles.miniCricketScoreColumn}>
+                        {awayScoreData.innings.map((inn, i) => (
+                          <Text key={i} style={[styles.miniCricketInning, awayWon && styles.miniCricketInningWinner]}>
+                            {inn}
+                          </Text>
+                        ))}
+                        <Text style={[styles.miniCricketTotal, awayWon && styles.miniCricketTotalWinner]}>
+                          ({awayScoreData.total})
+                        </Text>
+                      </View>
+                    </View>
+                  ) : (
+                    /* Standard layout for all other sports and single-innings cricket */
+                    <View style={styles.miniScoreBox}>
+                      <Text style={[styles.miniScoreText, homeWon && styles.miniScoreWinner]}>
+                        {event.home_score}
+                      </Text>
+                      <Text style={styles.miniScoreDivider}>-</Text>
+                      <Text style={[styles.miniScoreText, awayWon && styles.miniScoreWinner]}>
+                        {event.away_score}
+                      </Text>
+                    </View>
+                  )}
+                  {isDraw ? (
+                    <Text style={styles.miniDrawLabel}>DRAW</Text>
+                  ) : (
+                    <View style={styles.miniMarginContainer}>
+                      <Text style={styles.miniMarginText}>
+                        {winnerName} won by {margin}{isCricket ? ' runs' : ''}
+                      </Text>
+                    </View>
+                  )}
+                </>
+              ) : (
+                <Text style={styles.miniVs}>VS</Text>
+              )}
+            </View>
+
+            {/* Away Team */}
+            <View style={styles.miniTeam}>
+              {event.away_team?.logo_url ? (
+                <Image source={{ uri: event.away_team.logo_url }} style={styles.miniTeamLogo} />
+              ) : (
+                <View style={[styles.miniTeamLogoPlaceholder, { backgroundColor: sportColor }]}>
+                  <Text style={styles.miniTeamLogoText}>
+                    {event.away_team?.short_name?.[0] || 'A'}
+                  </Text>
+                </View>
+              )}
+              <Text style={[styles.miniTeamName, awayWon && styles.miniTeamNameWinner]} numberOfLines={1}>
+                {event.away_team?.short_name || event.away_team?.name || 'Away'}
+              </Text>
+              {awayWon && <View style={[styles.miniWinIndicator, { backgroundColor: sportColor }]} />}
+            </View>
+          </View>
+
+          {/* Bottom row - Venue and rating */}
+          <View style={styles.miniFooter}>
+            {event.venue?.name ? (
+              <View style={styles.miniVenue}>
+                <Ionicons name="location" size={12} color={colors.textSecondary} />
+                <Text style={styles.miniVenueText} numberOfLines={1}>{event.venue.name}</Text>
+              </View>
+            ) : (
+              <View />
+            )}
             {attendance?.rating && (
               <View style={styles.miniRating}>
-                {[1, 2, 3, 4, 5].map((star) => (
-                  <Ionicons
-                    key={star}
-                    name={star <= attendance.rating! ? 'star' : 'star-outline'}
-                    size={12}
-                    color={colors.gold}
-                  />
-                ))}
+                {[1, 2, 3, 4, 5].map((star) => {
+                  const fullStar = star <= Math.floor(attendance.rating!);
+                  const halfStar = !fullStar && star === Math.ceil(attendance.rating!) && attendance.rating! % 1 !== 0;
+                  return (
+                    <Ionicons
+                      key={star}
+                      name={fullStar ? 'star' : halfStar ? 'star-half' : 'star-outline'}
+                      size={14}
+                      color={colors.gold}
+                    />
+                  );
+                })}
               </View>
-            )}
-          </View>
-          <View style={styles.miniBottom}>
-            <Text style={styles.miniTeams} numberOfLines={1}>
-              {event.home_team?.short_name || event.home_team?.name || 'Home'} vs {event.away_team?.short_name || event.away_team?.name || 'Away'}
-            </Text>
-            {(event.home_score !== null && event.away_score !== null) && (
-              <Text style={styles.miniScore}>{event.home_score} - {event.away_score}</Text>
             )}
           </View>
         </View>
@@ -169,43 +327,21 @@ export function EventCard({ event, attendance, onPress, compact = false, mini = 
 }
 
 const styles = StyleSheet.create({
-  // Mini styles
+  // Mini styles - Clean card design
   miniContainer: {
-    flexDirection: 'row',
     overflow: 'hidden',
-  },
-  miniSportIndicator: {
-    width: 3,
+    borderRadius: borderRadius.lg,
   },
   miniContent: {
-    flex: 1,
-    padding: spacing.sm,
-    paddingLeft: spacing.md,
+    padding: spacing.md,
   },
-  miniTop: {
+  miniHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: spacing.xs,
+    marginBottom: spacing.md,
   },
-  miniTeams: {
-    flex: 1,
-    fontSize: fontSize.sm,
-    fontWeight: fontWeight.semibold,
-    color: colors.text,
-  },
-  miniScore: {
-    fontSize: fontSize.sm,
-    fontWeight: fontWeight.bold,
-    color: colors.text,
-    marginLeft: spacing.sm,
-  },
-  miniBottom: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  miniMeta: {
+  miniHeaderLeft: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
@@ -216,9 +352,159 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     flex: 1,
   },
+  miniDate: {
+    fontSize: fontSize.xs,
+    color: colors.textMuted,
+    fontWeight: fontWeight.medium,
+  },
+  miniMatchup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: spacing.md,
+  },
+  miniTeam: {
+    flex: 1,
+    alignItems: 'center',
+    gap: spacing.xs,
+  },
+  miniTeamLogo: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: colors.surfaceLighter,
+  },
+  miniTeamLogoPlaceholder: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  miniTeamLogoText: {
+    color: colors.white,
+    fontWeight: fontWeight.bold,
+    fontSize: fontSize.lg,
+  },
+  miniTeamName: {
+    fontSize: fontSize.xs,
+    color: colors.text,
+    fontWeight: fontWeight.medium,
+    textAlign: 'center',
+    maxWidth: 80,
+  },
+  miniTeamNameWinner: {
+    fontWeight: fontWeight.bold,
+    color: colors.text,
+  },
+  miniWinIndicator: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    marginTop: 2,
+  },
+  miniScoreContainer: {
+    alignItems: 'center',
+    paddingHorizontal: spacing.sm,
+  },
+  miniScoreBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: borderRadius.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+  },
+  miniScoreText: {
+    fontSize: fontSize.xl,
+    fontWeight: fontWeight.bold,
+    color: colors.text,
+    minWidth: 24,
+    textAlign: 'center',
+  },
+  miniScoreWinner: {
+    color: colors.primary,
+  },
+  miniScoreDivider: {
+    fontSize: fontSize.md,
+    color: colors.textMuted,
+    marginHorizontal: spacing.sm,
+  },
+  miniVs: {
+    fontSize: fontSize.sm,
+    fontWeight: fontWeight.semibold,
+    color: colors.textMuted,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
+  },
+  miniDrawLabel: {
+    fontSize: fontSize.xs,
+    color: colors.textSecondary,
+    fontWeight: fontWeight.medium,
+    marginTop: spacing.xs,
+  },
+  miniMarginContainer: {
+    marginTop: spacing.xs,
+  },
+  miniMarginText: {
+    fontSize: fontSize.xs,
+    fontWeight: fontWeight.medium,
+    color: colors.textSecondary,
+  },
+  // Cricket-specific score styles
+  miniCricketScores: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.sm,
+  },
+  miniCricketScoreColumn: {
+    alignItems: 'center',
+  },
+  miniCricketInning: {
+    fontSize: fontSize.sm,
+    fontWeight: fontWeight.medium,
+    color: colors.textSecondary,
+  },
+  miniCricketInningWinner: {
+    color: colors.text,
+    fontWeight: fontWeight.semibold,
+  },
+  miniCricketTotal: {
+    fontSize: fontSize.xs,
+    fontWeight: fontWeight.medium,
+    color: colors.textMuted,
+    marginTop: 2,
+  },
+  miniCricketTotalWinner: {
+    color: colors.textSecondary,
+    fontWeight: fontWeight.semibold,
+  },
+  miniCricketDivider: {
+    fontSize: fontSize.xs,
+    color: colors.textMuted,
+    marginTop: spacing.xs,
+  },
+  miniFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingTop: spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  miniVenue: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    flex: 1,
+  },
+  miniVenueText: {
+    fontSize: fontSize.xs,
+    color: colors.textSecondary,
+    flex: 1,
+  },
   miniRating: {
     flexDirection: 'row',
-    gap: 1,
+    gap: 2,
   },
 
   // Regular styles

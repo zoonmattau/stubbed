@@ -4,11 +4,16 @@ import { StatusBar } from 'expo-status-bar';
 import { View, ActivityIndicator, StyleSheet, Platform } from 'react-native';
 import { useAuthStore } from '@/stores/authStore';
 import { colors } from '@/constants/theme';
+import { ErrorBoundary } from '@/components/ui';
+import { logConfigStatus } from '@/lib/config';
 
 export default function RootLayout() {
   const { isLoading, isInitialized, initialize } = useAuthStore();
 
   useEffect(() => {
+    // Validate configuration at startup
+    logConfigStatus();
+    // Initialize auth
     initialize();
   }, []);
 
@@ -107,20 +112,22 @@ export default function RootLayout() {
   // On web, wrap in a phone-sized container
   if (Platform.OS === 'web') {
     return (
-      <View style={styles.webContainer}>
-        <View style={styles.phoneContainer}>
-          {content}
-          <StatusBar style="light" />
+      <ErrorBoundary>
+        <View style={styles.webContainer}>
+          <View style={styles.phoneContainer}>
+            {content}
+            <StatusBar style="light" />
+          </View>
         </View>
-      </View>
+      </ErrorBoundary>
     );
   }
 
   return (
-    <>
+    <ErrorBoundary>
       {content}
       <StatusBar style="light" />
-    </>
+    </ErrorBoundary>
   );
 }
 
@@ -145,6 +152,5 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
     overflow: 'hidden',
     borderRadius: Platform.OS === 'web' ? 20 : 0,
-    boxShadow: '0 0 50px rgba(0,0,0,0.5)',
   },
 });

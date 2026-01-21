@@ -21,7 +21,7 @@ type SupportedTeam = 'home' | 'away' | 'neutral' | null;
 export default function EditEventScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { user } = useAuthStore();
-  const { attendedEvents, updateAttendedEvent } = useEventsStore();
+  const { attendedEvents, updateAttendedEvent, updateEvent } = useEventsStore();
 
   const [attendance, setAttendance] = useState<AttendedEventWithDetails | null>(null);
   const [rating, setRating] = useState<number>(0);
@@ -33,6 +33,9 @@ export default function EditEventScreen() {
   const [wentWith, setWentWith] = useState<string[]>([]);
   const [newPerson, setNewPerson] = useState('');
   const [isSaving, setIsSaving] = useState(false);
+  // Event details
+  const [homeScore, setHomeScore] = useState('');
+  const [awayScore, setAwayScore] = useState('');
 
   const handleBack = () => {
     if (router.canGoBack()) {
@@ -51,8 +54,11 @@ export default function EditEventScreen() {
       setNotes(found.notes || '');
       setSection(found.section || '');
       setTicketPrice(found.ticket_price?.toString() || '');
-      setSupportedTeam((found as any).supported_team || null);
+      setSupportedTeam(found.supported_team || null);
       setWentWith(found.went_with || []);
+      // Event details
+      setHomeScore(found.event?.home_score || '');
+      setAwayScore(found.event?.away_score || '');
     }
   }, [id, attendedEvents]);
 
@@ -68,10 +74,32 @@ export default function EditEventScreen() {
   };
 
   const handleSave = async () => {
-    if (!attendance) return;
+    if (!attendance || !attendance.event) return;
 
     setIsSaving(true);
     try {
+      // Update event scores if changed
+      const eventUpdates: Record<string, any> = {};
+      if (homeScore !== (attendance.event.home_score || '')) {
+        eventUpdates.home_score = homeScore || null;
+      }
+      if (awayScore !== (attendance.event.away_score || '')) {
+        eventUpdates.away_score = awayScore || null;
+      }
+
+      // If scores changed, update the event
+      if (Object.keys(eventUpdates).length > 0) {
+        const eventResult = await updateEvent(attendance.event_id, eventUpdates);
+        if (!eventResult.success) {
+          console.error('Event update failed:', eventResult.error);
+          if (Platform.OS === 'web') {
+            window.alert(`Failed to update scores: ${eventResult.error || 'Unknown error'}`);
+          }
+          setIsSaving(false);
+          return;
+        }
+      }
+
       const updates: Record<string, any> = {
         rating: rating || null,
         atmosphere_rating: atmosphereRating || null,
@@ -140,11 +168,48 @@ export default function EditEventScreen() {
         {/* Event Summary */}
         <Card style={styles.summaryCard}>
           <Text style={styles.matchTitle}>
-            {event.home_team?.name || 'Home'} vs {event.away_team?.name || 'Away'}
+            {event.home_team?.name || event.home_team_name || 'Home'} vs {event.away_team?.name || event.away_team_name || 'Away'}
           </Text>
           <Text style={styles.matchDate}>
             {new Date(event.event_date).toLocaleDateString()}
           </Text>
+        </Card>
+
+        {/* Scores */}
+        <Card style={styles.scoresCard}>
+          <Text style={styles.sectionTitle}>Final Score</Text>
+          <View style={styles.scoresRow}>
+            <View style={styles.scoreInputGroup}>
+              <Text style={styles.scoreTeamLabel} numberOfLines={1}>
+                {event.home_team?.short_name || event.home_team?.name || event.home_team_name || 'Home'}
+              </Text>
+              <TextInput
+                style={styles.scoreInput}
+                value={homeScore}
+                onChangeText={setHomeScore}
+                placeholder="0"
+                placeholderTextColor={colors.textMuted}
+              />
+            </View>
+            <Text style={styles.scoreDivider}>-</Text>
+            <View style={styles.scoreInputGroup}>
+              <Text style={styles.scoreTeamLabel} numberOfLines={1}>
+                {event.away_team?.short_name || event.away_team?.name || event.away_team_name || 'Away'}
+              </Text>
+              <TextInput
+                style={styles.scoreInput}
+                value={awayScore}
+                onChangeText={setAwayScore}
+                placeholder="0"
+                placeholderTextColor={colors.textMuted}
+              />
+            </View>
+          </View>
+          {event.sport?.name?.toLowerCase() === 'cricket' && (
+            <Text style={styles.scoreHint}>
+              For Test cricket, use format: 365/10+241/10
+            </Text>
+          )}
         </Card>
 
         {/* Supported Team */}
@@ -320,6 +385,50 @@ const styles = StyleSheet.create({
     fontSize: fontSize.sm,
     color: colors.textSecondary,
     marginTop: spacing.xs,
+  },
+  scoresCard: {
+    marginBottom: spacing.lg,
+  },
+  scoresRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.md,
+    marginTop: spacing.sm,
+  },
+  scoreInputGroup: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  scoreTeamLabel: {
+    fontSize: fontSize.sm,
+    fontWeight: fontWeight.medium,
+    color: colors.textSecondary,
+    marginBottom: spacing.xs,
+    textAlign: 'center',
+  },
+  scoreInput: {
+    backgroundColor: colors.surfaceLight,
+    borderRadius: borderRadius.md,
+    padding: spacing.md,
+    fontSize: fontSize.xl,
+    fontWeight: fontWeight.bold,
+    color: colors.text,
+    textAlign: 'center',
+    width: '100%',
+  },
+  scoreDivider: {
+    fontSize: fontSize.xl,
+    fontWeight: fontWeight.bold,
+    color: colors.textMuted,
+    marginTop: spacing.lg,
+  },
+  scoreHint: {
+    fontSize: fontSize.xs,
+    color: colors.textMuted,
+    textAlign: 'center',
+    marginTop: spacing.sm,
+    fontStyle: 'italic',
   },
   section: {
     marginBottom: spacing.lg,

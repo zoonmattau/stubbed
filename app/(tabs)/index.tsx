@@ -357,6 +357,7 @@ export default function HomeScreen() {
               <Text style={styles.exploreCardSubtitle}>Places you've been</Text>
             </LinearGradient>
           </TouchableOpacity>
+
         </View>
       </View>
     </ScrollView>

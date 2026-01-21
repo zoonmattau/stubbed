@@ -32,6 +32,10 @@ interface EventsState {
     attendanceId: string,
     updates: Partial<AttendedEvent>
   ) => Promise<{ success: boolean; error?: string }>;
+  updateEvent: (
+    eventId: string,
+    updates: Partial<Event>
+  ) => Promise<{ success: boolean; error?: string }>;
   deleteAttendedEvent: (attendanceId: string) => Promise<{ success: boolean; error?: string }>;
   searchEvents: (query: string) => Promise<EventWithDetails[]>;
 }
@@ -117,7 +121,7 @@ export const useEventsStore = create<EventsState>((set, get) => ({
       let eventId: string;
 
       // Extract team/venue names that need special handling
-      const { home_team_name, away_team_name, venue_name, ...restEventData } = eventData as any;
+      const { home_team_name, away_team_name, venue_name, ...restEventData } = eventData;
 
       // Check if this event already exists
       if (eventData.id) {
@@ -188,6 +192,30 @@ export const useEventsStore = create<EventsState>((set, get) => ({
       set((state) => ({
         attendedEvents: state.attendedEvents.map((event) =>
           event.id === attendanceId ? { ...event, ...updates } : event
+        ),
+      }));
+
+      return { success: true };
+    } catch (error) {
+      return { success: false, error: (error as Error).message };
+    }
+  },
+
+  updateEvent: async (eventId, updates) => {
+    try {
+      const { error } = await supabase
+        .from('events')
+        .update(updates)
+        .eq('id', eventId);
+
+      if (error) throw error;
+
+      // Update local state - update the event within attended events
+      set((state) => ({
+        attendedEvents: state.attendedEvents.map((attended) =>
+          attended.event_id === eventId
+            ? { ...attended, event: { ...attended.event!, ...updates } }
+            : attended
         ),
       }));
 

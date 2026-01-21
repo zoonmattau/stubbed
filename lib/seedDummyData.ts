@@ -228,7 +228,7 @@ export async function seedDummyData(userId: string) {
       away_score: '172/8',
       winner_team_id: TEAMS.MelbourneStars,
     },
-    // 8 months ago - Boxing Day Test (Australia vs England)
+    // 8 months ago - Boxing Day Test (Australia vs England) - Complete match
     {
       sport_id: SPORTS.Cricket,
       home_team_id: TEAMS.Australia,
@@ -236,9 +236,10 @@ export async function seedDummyData(userId: string) {
       venue_id: VENUES.MCG,
       event_date: getDateMonthsAgo(8, 26),
       competition: 'The Ashes',
-      round: 'Boxing Day Test - Day 1',
-      home_score: '263/4',
-      away_score: null,
+      round: 'Boxing Day Test',
+      home_score: '365/10+241/10',
+      away_score: '294/10+198/10',
+      winner_team_id: TEAMS.Australia,
       home_team_name: 'Australia',
       away_team_name: 'England',
     },

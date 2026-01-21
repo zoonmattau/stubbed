@@ -13,17 +13,17 @@ export default function FriendRequestsScreen() {
   const [requests] = useState<FriendWithProfile[]>(mockRequests);
   const [searchUsername, setSearchUsername] = useState('');
 
-  const handleAccept = (id: string) => {
-    console.log('Accept friend:', id);
+  const handleAccept = (_id: string) => {
+    // TODO: Implement accept friend request
   };
 
-  const handleDecline = (id: string) => {
-    console.log('Decline friend:', id);
+  const handleDecline = (_id: string) => {
+    // TODO: Implement decline friend request
   };
 
   const handleSendRequest = () => {
     if (searchUsername.trim()) {
-      console.log('Send request to:', searchUsername);
+      // TODO: Implement send friend request
       setSearchUsername('');
     }
   };

@@ -1,31 +1,107 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   TouchableOpacity,
   TextInput,
+  ScrollView,
+  Modal,
 } from 'react-native';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { EventList } from '@/components/events';
 import { useAuthStore } from '@/stores/authStore';
 import { useEventsStore } from '@/stores/eventsStore';
 import { colors, spacing, fontSize, fontWeight, borderRadius } from '@/constants/theme';
 import { sortByDate } from '@/utils/dates';
+import { useIsMounted } from '@/hooks/useSafeAsync';
 import type { AttendedEventWithDetails } from '@/types';
 
-type FilterType = 'all' | 'favorites' | 'recent';
+type MainTabType = 'my_events' | 'live';
+type FilterType = 'all' | 'favorites';
 type SortType = 'date_desc' | 'date_asc' | 'rating';
+
+interface SportCategory {
+  id: string;
+  name: string;
+  icon: string;
+  color: string;
+  route: string;
+}
+
+// Sorted alphabetically
+const LIVE_SPORTS: SportCategory[] = [
+  { id: 'afl', name: 'AFL', icon: 'football', color: '#3b82f6', route: '/sports/afl' },
+  { id: 'aleague', name: 'A-League', icon: 'football', color: '#a855f7', route: '/sports/aleague' },
+  { id: 'basketball', name: 'Basketball', icon: 'basketball', color: '#f97316', route: '/sports/basketball' },
+  { id: 'cricket', name: 'Cricket', icon: 'baseball', color: '#22c55e', route: '/sports/cricket' },
+  { id: 'golf', name: 'Golf', icon: 'golf', color: '#10b981', route: '/sports/golf' },
+  { id: 'motorsport', name: 'Motorsport', icon: 'car-sport', color: '#ef4444', route: '/sports/motorsport' },
+  { id: 'netball', name: 'Netball', icon: 'people', color: '#ec4899', route: '/sports/netball' },
+  { id: 'nrl', name: 'NRL', icon: 'football-outline', color: '#8b5cf6', route: '/sports/nrl' },
+  { id: 'rugby', name: 'Rugby Union', icon: 'american-football', color: '#f59e0b', route: '/sports/rugby' },
+  { id: 'tennis', name: 'Tennis', icon: 'tennisball', color: '#84cc16', route: '/tennis' },
+  { id: 'combat', name: 'UFC & Boxing', icon: 'fitness', color: '#f97316', route: '/sports/combat' },
+];
+
+const SPORTS_FILTER_KEY = '@sports_filter';
 
 export default function EventsScreen() {
   const { user } = useAuthStore();
-  const { attendedEvents, fetchAttendedEvents, isLoading } = useEventsStore();
+  const { attendedEvents, fetchAttendedEvents } = useEventsStore();
 
+  const [mainTab, setMainTab] = useState<MainTabType>('my_events');
   const [searchQuery, setSearchQuery] = useState('');
   const [filter, setFilter] = useState<FilterType>('all');
   const [sort, setSort] = useState<SortType>('date_desc');
   const [refreshing, setRefreshing] = useState(false);
+  const [hiddenSports, setHiddenSports] = useState<Set<string>>(new Set());
+  const [showFilterModal, setShowFilterModal] = useState(false);
+
+  const isMounted = useIsMounted();
+
+  // Load saved sports filter preferences
+  useEffect(() => {
+    const loadSportsFilter = async () => {
+      try {
+        const saved = await AsyncStorage.getItem(SPORTS_FILTER_KEY);
+        if (saved && isMounted()) {
+          setHiddenSports(new Set(JSON.parse(saved)));
+        }
+      } catch (error) {
+        if (isMounted()) {
+          console.error('Error loading sports filter:', error);
+        }
+      }
+    };
+    loadSportsFilter();
+  }, [isMounted]);
+
+  // Save sports filter preferences
+  const saveSportsFilter = useCallback(async (hidden: Set<string>) => {
+    try {
+      await AsyncStorage.setItem(SPORTS_FILTER_KEY, JSON.stringify([...hidden]));
+    } catch (error) {
+      console.error('Error saving sports filter:', error);
+    }
+  }, []);
+
+  const toggleSportVisibility = useCallback((sportId: string) => {
+    setHiddenSports(prev => {
+      const next = new Set(prev);
+      if (next.has(sportId)) {
+        next.delete(sportId);
+      } else {
+        next.add(sportId);
+      }
+      saveSportsFilter(next);
+      return next;
+    });
+  }, [saveSportsFilter]);
+
+  const visibleSports = LIVE_SPORTS.filter(sport => !hiddenSports.has(sport.id));
 
   useEffect(() => {
     if (user?.id) {
@@ -37,7 +113,9 @@ export default function EventsScreen() {
     if (!user?.id) return;
     setRefreshing(true);
     await fetchAttendedEvents(user.id);
-    setRefreshing(false);
+    if (isMounted()) {
+      setRefreshing(false);
+    }
   };
 
   const filteredEvents = React.useMemo(() => {
@@ -82,8 +160,145 @@ export default function EventsScreen() {
     return events as AttendedEventWithDetails[];
   }, [attendedEvents, searchQuery, filter, sort]);
 
-  return (
-    <View style={styles.container}>
+  const renderMainTabs = () => (
+    <View style={styles.mainTabsContainer}>
+      <TouchableOpacity
+        style={[styles.mainTab, mainTab === 'my_events' && styles.mainTabActive]}
+        onPress={() => setMainTab('my_events')}
+      >
+        <Ionicons
+          name="calendar"
+          size={16}
+          color={mainTab === 'my_events' ? colors.white : colors.textSecondary}
+        />
+        <Text style={[styles.mainTabText, mainTab === 'my_events' && styles.mainTabTextActive]}>
+          My Events
+        </Text>
+      </TouchableOpacity>
+      <TouchableOpacity
+        style={[styles.mainTab, mainTab === 'live' && styles.mainTabActive]}
+        onPress={() => setMainTab('live')}
+      >
+        <View style={styles.liveIndicator}>
+          <View style={styles.liveDot} />
+        </View>
+        <Text style={[styles.mainTabText, mainTab === 'live' && styles.mainTabTextActive]}>
+          Live Sports
+        </Text>
+      </TouchableOpacity>
+    </View>
+  );
+
+  const renderFilterModal = () => (
+    <Modal
+      visible={showFilterModal}
+      animationType="slide"
+      transparent={true}
+      onRequestClose={() => setShowFilterModal(false)}
+    >
+      <View style={styles.modalOverlay}>
+        <View style={styles.modalContent}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>Filter Sports</Text>
+            <TouchableOpacity onPress={() => setShowFilterModal(false)}>
+              <Ionicons name="close" size={24} color={colors.text} />
+            </TouchableOpacity>
+          </View>
+          <Text style={styles.modalSubtitle}>Toggle sports to show or hide them</Text>
+
+          <ScrollView style={styles.modalList}>
+            {LIVE_SPORTS.map((sport) => {
+              const isVisible = !hiddenSports.has(sport.id);
+              return (
+                <TouchableOpacity
+                  key={sport.id}
+                  style={styles.filterItem}
+                  onPress={() => toggleSportVisibility(sport.id)}
+                  activeOpacity={0.7}
+                >
+                  <View style={[styles.filterIcon, { backgroundColor: sport.color + '20' }]}>
+                    <Ionicons name={sport.icon as any} size={20} color={sport.color} />
+                  </View>
+                  <Text style={styles.filterItemName}>{sport.name}</Text>
+                  <Ionicons
+                    name={isVisible ? 'checkmark-circle' : 'ellipse-outline'}
+                    size={24}
+                    color={isVisible ? colors.success : colors.textMuted}
+                  />
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+
+          <TouchableOpacity
+            style={styles.modalDoneButton}
+            onPress={() => setShowFilterModal(false)}
+          >
+            <Text style={styles.modalDoneText}>Done</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </Modal>
+  );
+
+  const renderLiveSports = () => (
+    <ScrollView
+      style={styles.liveContainer}
+      contentContainerStyle={styles.liveContent}
+      showsVerticalScrollIndicator={false}
+    >
+      <View style={styles.liveHeader}>
+        <View>
+          <Text style={styles.liveTitle}>Browse Live Sports</Text>
+          <Text style={styles.liveSubtitle}>Scores, fixtures, standings & more</Text>
+        </View>
+        <TouchableOpacity
+          style={styles.filterButton}
+          onPress={() => setShowFilterModal(true)}
+        >
+          <Ionicons name="options-outline" size={18} color={colors.primary} />
+          {hiddenSports.size > 0 && (
+            <View style={styles.filterBadge}>
+              <Text style={styles.filterBadgeText}>{hiddenSports.size}</Text>
+            </View>
+          )}
+        </TouchableOpacity>
+      </View>
+
+      <View style={styles.sportsGrid}>
+        {visibleSports.map((sport) => (
+          <TouchableOpacity
+            key={sport.id}
+            style={styles.sportCard}
+            onPress={() => router.push(sport.route as any)}
+            activeOpacity={0.7}
+          >
+            <View style={[styles.sportIcon, { backgroundColor: sport.color + '20' }]}>
+              <Ionicons name={sport.icon as any} size={24} color={sport.color} />
+            </View>
+            <Text style={styles.sportName}>{sport.name}</Text>
+            <Ionicons name="chevron-forward" size={14} color={colors.textMuted} style={styles.sportArrow} />
+          </TouchableOpacity>
+        ))}
+      </View>
+
+      {visibleSports.length === 0 && (
+        <View style={styles.emptyFilter}>
+          <Ionicons name="filter-outline" size={48} color={colors.textMuted} />
+          <Text style={styles.emptyFilterText}>All sports are hidden</Text>
+          <TouchableOpacity
+            style={styles.showAllButton}
+            onPress={() => setShowFilterModal(true)}
+          >
+            <Text style={styles.showAllText}>Manage Filters</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+    </ScrollView>
+  );
+
+  const renderMyEvents = () => (
+    <>
       {/* Search Bar */}
       <View style={styles.searchContainer}>
         <View style={styles.searchBar}>
@@ -164,14 +379,26 @@ export default function EventsScreen() {
             : 'No events tracked yet. Add your first event!'
         }
       />
+    </>
+  );
 
-      {/* FAB */}
-      <TouchableOpacity
-        style={styles.fab}
-        onPress={() => router.push('/event/manual')}
-      >
-        <Ionicons name="add" size={28} color={colors.white} />
-      </TouchableOpacity>
+  return (
+    <View style={styles.container}>
+      {renderMainTabs()}
+
+      {mainTab === 'my_events' ? renderMyEvents() : renderLiveSports()}
+
+      {/* FAB - only show on My Events */}
+      {mainTab === 'my_events' && (
+        <TouchableOpacity
+          style={styles.fab}
+          onPress={() => router.push('/event/manual')}
+        >
+          <Ionicons name="add" size={28} color={colors.white} />
+        </TouchableOpacity>
+      )}
+
+      {renderFilterModal()}
     </View>
   );
 }
@@ -181,6 +408,128 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background,
   },
+  // Main tabs
+  mainTabsContainer: {
+    flexDirection: 'row',
+    backgroundColor: colors.surface,
+    padding: spacing.sm,
+    gap: spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  mainTab: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    borderRadius: borderRadius.md,
+    backgroundColor: colors.surfaceLight,
+    gap: spacing.xs,
+  },
+  mainTabActive: {
+    backgroundColor: colors.primary,
+  },
+  mainTabText: {
+    fontSize: fontSize.sm,
+    fontWeight: fontWeight.medium,
+    color: colors.textSecondary,
+  },
+  mainTabTextActive: {
+    color: colors.white,
+  },
+  liveIndicator: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#ef4444',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  liveDot: {
+    width: 4,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: colors.white,
+  },
+  // Live sports section
+  liveContainer: {
+    flex: 1,
+  },
+  liveContent: {
+    padding: spacing.lg,
+  },
+  liveHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: spacing.lg,
+  },
+  liveTitle: {
+    fontSize: fontSize.xl,
+    fontWeight: fontWeight.bold,
+    color: colors.text,
+    marginBottom: spacing.xs,
+  },
+  liveSubtitle: {
+    fontSize: fontSize.sm,
+    color: colors.textSecondary,
+  },
+  filterButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.primary + '15',
+    paddingVertical: spacing.xs,
+    paddingHorizontal: spacing.sm,
+    borderRadius: borderRadius.full,
+    borderWidth: 1,
+    borderColor: colors.primary + '30',
+  },
+  filterBadge: {
+    backgroundColor: colors.primary,
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: 4,
+  },
+  filterBadgeText: {
+    fontSize: 10,
+    fontWeight: fontWeight.bold,
+    color: colors.white,
+  },
+  sportsGrid: {
+    gap: spacing.sm,
+  },
+  sportCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.surface,
+    padding: spacing.md,
+    borderRadius: borderRadius.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    gap: spacing.md,
+  },
+  sportIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sportName: {
+    flex: 1,
+    fontSize: fontSize.md,
+    fontWeight: fontWeight.medium,
+    color: colors.text,
+  },
+  sportArrow: {
+    marginLeft: 'auto',
+  },
+  // Search
   searchContainer: {
     padding: spacing.lg,
     paddingBottom: spacing.sm,
@@ -211,7 +560,7 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   filterTab: {
-    paddingVertical: spacing.sm,
+    paddingVertical: spacing.xs,
     paddingHorizontal: spacing.md,
     borderRadius: borderRadius.full,
     backgroundColor: colors.surface,
@@ -220,7 +569,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primary,
   },
   filterTabText: {
-    fontSize: fontSize.sm,
+    fontSize: fontSize.xs,
     color: colors.textSecondary,
     fontWeight: fontWeight.medium,
   },
@@ -259,5 +608,95 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.3,
     shadowRadius: 8,
     elevation: 8,
+  },
+  // Empty filter state
+  emptyFilter: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: spacing['3xl'],
+  },
+  emptyFilterText: {
+    fontSize: fontSize.md,
+    color: colors.textSecondary,
+    marginTop: spacing.md,
+    marginBottom: spacing.lg,
+  },
+  showAllButton: {
+    backgroundColor: colors.primary,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.lg,
+    borderRadius: borderRadius.md,
+  },
+  showAllText: {
+    fontSize: fontSize.sm,
+    fontWeight: fontWeight.semibold,
+    color: colors.white,
+  },
+  // Modal styles
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-end',
+  },
+  modalContent: {
+    backgroundColor: colors.background,
+    borderTopLeftRadius: borderRadius.xl,
+    borderTopRightRadius: borderRadius.xl,
+    maxHeight: '80%',
+    paddingBottom: spacing.xl,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: spacing.lg,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  modalTitle: {
+    fontSize: fontSize.lg,
+    fontWeight: fontWeight.bold,
+    color: colors.text,
+  },
+  modalSubtitle: {
+    fontSize: fontSize.sm,
+    color: colors.textSecondary,
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.sm,
+  },
+  modalList: {
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.md,
+  },
+  filterItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: spacing.sm,
+    gap: spacing.md,
+  },
+  filterIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  filterItemName: {
+    flex: 1,
+    fontSize: fontSize.md,
+    color: colors.text,
+  },
+  modalDoneButton: {
+    backgroundColor: colors.primary,
+    marginHorizontal: spacing.lg,
+    marginTop: spacing.lg,
+    paddingVertical: spacing.md,
+    borderRadius: borderRadius.md,
+    alignItems: 'center',
+  },
+  modalDoneText: {
+    fontSize: fontSize.md,
+    fontWeight: fontWeight.semibold,
+    color: colors.white,
   },
 });
