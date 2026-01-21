@@ -21,6 +21,7 @@ interface StatsState {
   fetchStats: (userId: string) => Promise<void>;
   fetchAchievements: (userId: string) => Promise<void>;
   refreshStats: (userId: string) => Promise<void>;
+  recalculateAchievements: (userId: string) => Promise<void>;
 }
 
 export const useStatsStore = create<StatsState>((set, get) => ({
@@ -181,5 +182,158 @@ export const useStatsStore = create<StatsState>((set, get) => ({
 
   refreshStats: async (userId) => {
     await Promise.all([get().fetchStats(userId), get().fetchAchievements(userId)]);
+  },
+
+  recalculateAchievements: async (userId) => {
+    try {
+      console.log('[Stats] Recalculating achievements for user:', userId);
+
+      // Fetch current user stats from the database
+      const { data: events, error: eventsError } = await supabase
+        .from('attended_events')
+        .select(`
+          *,
+          event:events(
+            *,
+            sport:sports(*),
+            home_team:teams!events_home_team_id_fkey(*),
+            away_team:teams!events_away_team_id_fkey(*),
+            venue:venues(*)
+          )
+        `)
+        .eq('user_id', userId);
+
+      if (eventsError) {
+        console.error('[Stats] Error fetching events:', eventsError);
+        return;
+      }
+
+      const attendedEvents = events || [];
+      const totalEvents = attendedEvents.length;
+
+      // Calculate unique counts
+      const uniqueSports = new Set<string>();
+      const uniqueVenues = new Set<string>();
+      const uniqueTeams = new Set<string>();
+      const teamCounts: Record<string, number> = {};
+      const venueCounts: Record<string, number> = {};
+
+      attendedEvents.forEach((ae: any) => {
+        const event = ae.event;
+        if (!event) return;
+
+        if (event.sport_id) uniqueSports.add(event.sport_id);
+        if (event.venue_id) uniqueVenues.add(event.venue_id);
+        if (event.home_team_id) {
+          uniqueTeams.add(event.home_team_id);
+          teamCounts[event.home_team_id] = (teamCounts[event.home_team_id] || 0) + 1;
+        }
+        if (event.away_team_id) {
+          uniqueTeams.add(event.away_team_id);
+          teamCounts[event.away_team_id] = (teamCounts[event.away_team_id] || 0) + 1;
+        }
+        if (event.venue_id) {
+          venueCounts[event.venue_id] = (venueCounts[event.venue_id] || 0) + 1;
+        }
+      });
+
+      const maxSameTeam = Object.values(teamCounts).length > 0
+        ? Math.max(...Object.values(teamCounts))
+        : 0;
+      const maxSameVenue = Object.values(venueCounts).length > 0
+        ? Math.max(...Object.values(venueCounts))
+        : 0;
+
+      // Fetch user's current unlocked achievements
+      const { data: unlockedData, error: unlockedError } = await supabase
+        .from('user_achievements')
+        .select('*, achievement:achievements(*)')
+        .eq('user_id', userId);
+
+      if (unlockedError) {
+        console.error('[Stats] Error fetching unlocked achievements:', unlockedError);
+        return;
+      }
+
+      const currentUnlocked = unlockedData || [];
+      const achievementsToRevoke: string[] = [];
+
+      // Check each unlocked achievement to see if user still qualifies
+      for (const ua of currentUnlocked) {
+        const achievement = ua.achievement;
+        if (!achievement) continue;
+
+        const achievementDef = ACHIEVEMENTS.find(a => a.code === achievement.code);
+        if (!achievementDef) continue;
+
+        let stillQualifies = true;
+
+        if (achievementDef.requirementType === 'count') {
+          const req = achievementDef.requirementValue;
+
+          // Check count-based requirements
+          if (req.count !== undefined && totalEvents < (req.count as number)) {
+            stillQualifies = false;
+          }
+          if (req.sports !== undefined && uniqueSports.size < (req.sports as number)) {
+            stillQualifies = false;
+          }
+          if (req.venues !== undefined && uniqueVenues.size < (req.venues as number)) {
+            stillQualifies = false;
+          }
+          if (req.teams !== undefined && uniqueTeams.size < (req.teams as number)) {
+            stillQualifies = false;
+          }
+          if (req.sameTeam !== undefined && maxSameTeam < (req.sameTeam as number)) {
+            stillQualifies = false;
+          }
+          if (req.sameVenue !== undefined && maxSameVenue < (req.sameVenue as number)) {
+            stillQualifies = false;
+          }
+        }
+
+        if (!stillQualifies) {
+          console.log('[Stats] User no longer qualifies for achievement:', achievement.code);
+          achievementsToRevoke.push(ua.id);
+        }
+      }
+
+      // Revoke achievements that no longer qualify
+      if (achievementsToRevoke.length > 0) {
+        console.log('[Stats] Revoking achievements:', achievementsToRevoke);
+        const { error: deleteError } = await supabase
+          .from('user_achievements')
+          .delete()
+          .in('id', achievementsToRevoke);
+
+        if (deleteError) {
+          console.error('[Stats] Error revoking achievements:', deleteError);
+        }
+      }
+
+      // Update user_stats
+      const { error: statsError } = await supabase
+        .from('user_stats')
+        .upsert({
+          user_id: userId,
+          total_events: totalEvents,
+          total_sports: uniqueSports.size,
+          total_teams: uniqueTeams.size,
+          total_venues: uniqueVenues.size,
+          updated_at: new Date().toISOString(),
+        }, { onConflict: 'user_id' });
+
+      if (statsError) {
+        console.error('[Stats] Error updating stats:', statsError);
+      }
+
+      // Refresh achievements in the UI
+      await get().fetchAchievements(userId);
+      await get().fetchStats(userId);
+
+      console.log('[Stats] Achievement recalculation complete');
+    } catch (error) {
+      console.error('[Stats] Error recalculating achievements:', error);
+    }
   },
 }));

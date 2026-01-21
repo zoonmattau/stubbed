@@ -6,11 +6,12 @@ import {
   ScrollView,
   RefreshControl,
   TouchableOpacity,
+  ImageBackground,
 } from 'react-native';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Card, Avatar } from '@/components/ui';
+import { Card, Avatar, Footer } from '@/components/ui';
 import { EventCard } from '@/components/events';
 import { useAuthStore } from '@/stores/authStore';
 import { useEventsStore } from '@/stores/eventsStore';
@@ -107,56 +108,61 @@ export default function HomeScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* Hero Stats Card - Compact horizontal layout */}
+      {/* Hero Stats Card with Stadium Background */}
       <TouchableOpacity
         activeOpacity={0.9}
         onPress={() => router.push('/(tabs)/stats')}
       >
-        <LinearGradient
-          colors={[colors.primary, colors.primaryDark || '#1a365d']}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
+        <ImageBackground
+          source={{ uri: 'https://images.unsplash.com/photo-1577223625816-7546f13df25d?w=800&q=80' }}
           style={styles.heroCard}
+          imageStyle={styles.heroCardImage}
         >
-          {/* Main stat - Events */}
-          <View style={styles.heroMain}>
-            <Text style={styles.heroNumber}>{stats?.total_events || 0}</Text>
-            <Text style={styles.heroLabel}>Events Attended</Text>
-          </View>
-
-          {/* Divider */}
-          <View style={styles.heroDivider} />
-
-          {/* Secondary stats in column */}
-          <View style={styles.heroSecondary}>
-            {/* Sports */}
-            <View style={styles.heroStatRow}>
-              <View style={styles.heroStatIcon}>
-                <Ionicons name="basketball" size={16} color={colors.info} />
-              </View>
-              <Text style={styles.heroStatValue}>{stats?.total_sports || 0}</Text>
-              <Text style={styles.heroStatLabel}>sports</Text>
+          {/* Dark overlay for readability */}
+          <LinearGradient
+            colors={['rgba(0,0,0,0.6)', 'rgba(0,0,0,0.8)']}
+            style={styles.heroOverlay}
+          >
+            {/* Main stat - Events */}
+            <View style={styles.heroMain}>
+              <Text style={styles.heroNumber}>{stats?.total_events || 0}</Text>
+              <Text style={styles.heroLabel}>Events Attended</Text>
             </View>
 
-            {/* Teams */}
-            <View style={styles.heroStatRow}>
-              <View style={styles.heroStatIcon}>
-                <Ionicons name="shield" size={16} color={colors.warning} />
-              </View>
-              <Text style={styles.heroStatValue}>{stats?.total_teams || 0}</Text>
-              <Text style={styles.heroStatLabel}>teams</Text>
-            </View>
+            {/* Divider */}
+            <View style={styles.heroDivider} />
 
-            {/* Venues */}
-            <View style={styles.heroStatRow}>
-              <View style={styles.heroStatIcon}>
-                <Ionicons name="location" size={16} color={colors.success} />
+            {/* Secondary stats in column */}
+            <View style={styles.heroSecondary}>
+              {/* Sports */}
+              <View style={styles.heroStatRow}>
+                <View style={styles.heroStatIcon}>
+                  <Ionicons name="basketball" size={16} color={colors.info} />
+                </View>
+                <Text style={styles.heroStatValue}>{stats?.total_sports || 0}</Text>
+                <Text style={styles.heroStatLabel}>sports</Text>
               </View>
-              <Text style={styles.heroStatValue}>{stats?.total_venues || 0}</Text>
-              <Text style={styles.heroStatLabel}>venues</Text>
+
+              {/* Teams */}
+              <View style={styles.heroStatRow}>
+                <View style={styles.heroStatIcon}>
+                  <Ionicons name="shield" size={16} color={colors.warning} />
+                </View>
+                <Text style={styles.heroStatValue}>{stats?.total_teams || 0}</Text>
+                <Text style={styles.heroStatLabel}>teams</Text>
+              </View>
+
+              {/* Venues */}
+              <View style={styles.heroStatRow}>
+                <View style={styles.heroStatIcon}>
+                  <Ionicons name="location" size={16} color={colors.success} />
+                </View>
+                <Text style={styles.heroStatValue}>{stats?.total_venues || 0}</Text>
+                <Text style={styles.heroStatLabel}>venues</Text>
+              </View>
             </View>
-          </View>
-        </LinearGradient>
+          </LinearGradient>
+        </ImageBackground>
       </TouchableOpacity>
 
       {/* Level Card */}
@@ -360,6 +366,8 @@ export default function HomeScreen() {
 
         </View>
       </View>
+
+      <Footer />
     </ScrollView>
   );
 }
@@ -395,10 +403,16 @@ const styles = StyleSheet.create({
 
   // Hero Card
   heroCard: {
-    flexDirection: 'row',
     borderRadius: borderRadius.xl,
-    padding: spacing.lg,
     marginBottom: spacing.md,
+    overflow: 'hidden',
+  },
+  heroCardImage: {
+    borderRadius: borderRadius.xl,
+  },
+  heroOverlay: {
+    flexDirection: 'row',
+    padding: spacing.lg,
   },
   heroMain: {
     flex: 1,

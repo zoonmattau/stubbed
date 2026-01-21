@@ -26,16 +26,27 @@ export default function FriendsScreen() {
     friend.profile?.display_name?.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
+  const handleBack = () => {
+    if (router.canGoBack()) {
+      router.back();
+    } else {
+      router.replace('/(tabs)/profile');
+    }
+  };
+
   return (
     <View style={styles.container}>
-      {/* Header Actions */}
-      <View style={styles.headerActions}>
+      {/* Header with Back Button */}
+      <View style={styles.header}>
+        <TouchableOpacity onPress={handleBack} style={styles.backButton}>
+          <Ionicons name="arrow-back" size={24} color={colors.text} />
+        </TouchableOpacity>
+        <Text style={styles.headerTitle}>Friends</Text>
         <TouchableOpacity
           style={styles.headerButton}
           onPress={() => router.push('/friends/requests')}
         >
           <Ionicons name="person-add" size={20} color={colors.primary} />
-          <Text style={styles.headerButtonText}>Friend Requests</Text>
         </TouchableOpacity>
       </View>
 
@@ -104,25 +115,24 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background,
   },
-  headerActions: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    padding: spacing.lg,
-    paddingBottom: 0,
-  },
-  headerButton: {
+  header: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.xs,
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.md,
-    backgroundColor: `${colors.primary}15`,
-    borderRadius: borderRadius.full,
+    padding: spacing.lg,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
   },
-  headerButtonText: {
-    fontSize: fontSize.sm,
-    color: colors.primary,
-    fontWeight: fontWeight.medium,
+  backButton: {
+    marginRight: spacing.md,
+  },
+  headerTitle: {
+    flex: 1,
+    fontSize: fontSize.xl,
+    fontWeight: fontWeight.bold,
+    color: colors.text,
+  },
+  headerButton: {
+    padding: spacing.sm,
   },
   searchContainer: {
     padding: spacing.lg,

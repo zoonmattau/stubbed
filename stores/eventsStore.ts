@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { supabase } from '@/lib/supabase';
+import { useStatsStore } from '@/stores/statsStore';
 import type {
   Event,
   AttendedEvent,
@@ -273,6 +274,11 @@ export const useEventsStore = create<EventsState>((set, get) => ({
       }));
 
       console.log('[Events] Delete successful, local state updated');
+
+      // Recalculate achievements after deletion
+      console.log('[Events] Triggering achievement recalculation');
+      useStatsStore.getState().recalculateAchievements(user.id);
+
       return { success: true };
     } catch (error) {
       console.error('[Events] Delete failed:', error);

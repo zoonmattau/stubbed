@@ -5,3 +5,4 @@ export { Badge } from './Badge';
 export { Avatar } from './Avatar';
 export { StarRating } from './StarRating';
 export { ErrorBoundary } from './ErrorBoundary';
+export { Footer } from './Footer';

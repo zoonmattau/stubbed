@@ -14,33 +14,65 @@ import {
 } from 'react-native';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { Card, Avatar, Badge, Button } from '@/components/ui';
+import { Card, Avatar, Badge, Button, Footer } from '@/components/ui';
 import { ProgressBar } from '@/components/stats';
 import { useAuthStore } from '@/stores/authStore';
 import { useStatsStore } from '@/stores/statsStore';
+import { useEventsStore } from '@/stores/eventsStore';
 import { useFavoritesStore } from '@/stores/favoritesStore';
 import { colors, spacing, fontSize, fontWeight, borderRadius } from '@/constants/theme';
 
 export default function ProfileScreen() {
   const { user, profile, signOut } = useAuthStore();
-  const { stats, achievements, isLoading: statsLoading, fetchStats, fetchAchievements } = useStatsStore();
+  const { stats, achievements, isLoading: statsLoading, fetchStats, fetchAchievements, recalculateAchievements } = useStatsStore();
+  const { teams: allTeams, fetchTeams } = useEventsStore();
   const { teams: favoriteTeams, addTeamManual, removeTeam } = useFavoritesStore();
 
   const [showAddTeamModal, setShowAddTeamModal] = useState(false);
   const [newTeamName, setNewTeamName] = useState('');
+  const [filteredTeams, setFilteredTeams] = useState<typeof allTeams>([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
 
   useEffect(() => {
     if (user?.id) {
+      // Recalculate achievements first to ensure data is accurate
+      recalculateAchievements(user.id);
       fetchStats(user.id);
       fetchAchievements(user.id);
     }
   }, [user?.id]);
 
-  const handleAddFavoriteTeam = () => {
-    if (!newTeamName.trim()) return;
-    addTeamManual({ name: newTeamName.trim() });
+  const handleAddFavoriteTeam = (teamName?: string, sport?: string, badge?: string) => {
+    const name = teamName || newTeamName.trim();
+    if (!name) return;
+    addTeamManual({ name, sport, badge });
     setNewTeamName('');
+    setFilteredTeams([]);
+    setShowSuggestions(false);
     setShowAddTeamModal(false);
+  };
+
+  const handleTeamSearch = (text: string) => {
+    setNewTeamName(text);
+    if (text.length >= 2) {
+      const filtered = allTeams.filter(team =>
+        team.name.toLowerCase().includes(text.toLowerCase())
+      ).slice(0, 5);
+      setFilteredTeams(filtered);
+      setShowSuggestions(filtered.length > 0);
+    } else {
+      setFilteredTeams([]);
+      setShowSuggestions(false);
+    }
+  };
+
+  const handleSelectTeam = (team: typeof allTeams[0]) => {
+    handleAddFavoriteTeam(team.name, undefined, team.logo_url || undefined);
+  };
+
+  const handleOpenAddTeamModal = () => {
+    fetchTeams(); // Load teams when modal opens
+    setShowAddTeamModal(true);
   };
 
   const handleRemoveFavoriteTeam = (teamId: string, teamName: string) => {
@@ -301,7 +333,7 @@ export default function ProfileScreen() {
       <View style={styles.section}>
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>Favorite Teams</Text>
-          <TouchableOpacity onPress={() => setShowAddTeamModal(true)}>
+          <TouchableOpacity onPress={handleOpenAddTeamModal}>
             <Ionicons name="add-circle" size={24} color={colors.primary} />
           </TouchableOpacity>
         </View>
@@ -362,29 +394,51 @@ export default function ProfileScreen() {
               </TouchableOpacity>
             </View>
             <Text style={styles.modalHint}>
-              Enter the team name exactly as it appears in events
+              Start typing to search for teams
             </Text>
             <TextInput
               style={styles.modalInput}
               value={newTeamName}
-              onChangeText={setNewTeamName}
+              onChangeText={handleTeamSearch}
               placeholder="e.g. Melbourne Storm, Collingwood"
               placeholderTextColor={colors.textMuted}
               autoFocus
             />
+            {showSuggestions && (
+              <View style={styles.suggestionsContainer}>
+                {filteredTeams.map((team) => (
+                  <TouchableOpacity
+                    key={team.id}
+                    style={styles.suggestionItem}
+                    onPress={() => handleSelectTeam(team)}
+                  >
+                    {team.logo_url ? (
+                      <Image source={{ uri: team.logo_url }} style={styles.suggestionBadge} />
+                    ) : (
+                      <View style={styles.suggestionBadgePlaceholder}>
+                        <Ionicons name="shield" size={16} color={colors.primary} />
+                      </View>
+                    )}
+                    <Text style={styles.suggestionText}>{team.name}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            )}
             <View style={styles.modalButtons}>
               <Button
                 title="Cancel"
                 variant="outline"
                 onPress={() => {
                   setNewTeamName('');
+                  setFilteredTeams([]);
+                  setShowSuggestions(false);
                   setShowAddTeamModal(false);
                 }}
                 style={styles.modalButton}
               />
               <Button
                 title="Add Team"
-                onPress={handleAddFavoriteTeam}
+                onPress={() => handleAddFavoriteTeam()}
                 disabled={!newTeamName.trim()}
                 style={styles.modalButton}
               />
@@ -428,7 +482,7 @@ export default function ProfileScreen() {
         style={styles.signOutButton}
       />
 
-      <Text style={styles.version}>Stubbed v1.0.0</Text>
+      <Footer />
     </ScrollView>
   );
 }
@@ -753,6 +807,40 @@ const styles = StyleSheet.create({
     gap: spacing.md,
   },
   modalButton: {
+    flex: 1,
+  },
+  suggestionsContainer: {
+    backgroundColor: colors.surface,
+    borderRadius: borderRadius.md,
+    marginBottom: spacing.md,
+    maxHeight: 200,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  suggestionItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: spacing.md,
+    gap: spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  suggestionBadge: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+  },
+  suggestionBadgePlaceholder: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: `${colors.primary}20`,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  suggestionText: {
+    fontSize: fontSize.md,
+    color: colors.text,
     flex: 1,
   },
 });

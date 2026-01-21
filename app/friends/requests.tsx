@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, FlatList, TextInput, TouchableOpacity, Alert, Platform } from 'react-native';
+import { View, Text, StyleSheet, FlatList, TextInput, TouchableOpacity, Alert, Platform, ScrollView } from 'react-native';
+import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Card, Button } from '@/components/ui';
 import { FriendCard } from '@/components/social';
@@ -12,6 +13,14 @@ const mockRequests: FriendWithProfile[] = [];
 export default function FriendRequestsScreen() {
   const [requests] = useState<FriendWithProfile[]>(mockRequests);
   const [searchUsername, setSearchUsername] = useState('');
+
+  const handleBack = () => {
+    if (router.canGoBack()) {
+      router.back();
+    } else {
+      router.replace('/friends');
+    }
+  };
 
   const handleAccept = (id: string) => {
     const doAccept = () => {
@@ -104,6 +113,16 @@ export default function FriendRequestsScreen() {
 
   return (
     <View style={styles.container}>
+      {/* Header with Back Button */}
+      <View style={styles.header}>
+        <TouchableOpacity onPress={handleBack} style={styles.backButton}>
+          <Ionicons name="arrow-back" size={24} color={colors.text} />
+        </TouchableOpacity>
+        <Text style={styles.headerTitle}>Friend Requests</Text>
+        <View style={styles.headerSpacer} />
+      </View>
+
+      <ScrollView style={styles.content}>
       {/* Add Friend Section */}
       <View style={styles.addSection}>
         <Text style={styles.sectionTitle}>Add Friend</Text>
@@ -176,6 +195,7 @@ export default function FriendRequestsScreen() {
           </View>
         </Card>
       </View>
+      </ScrollView>
     </View>
   );
 }
@@ -184,6 +204,28 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: spacing.lg,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  backButton: {
+    marginRight: spacing.md,
+  },
+  headerTitle: {
+    flex: 1,
+    fontSize: fontSize.xl,
+    fontWeight: fontWeight.bold,
+    color: colors.text,
+  },
+  headerSpacer: {
+    width: 24,
+  },
+  content: {
+    flex: 1,
     padding: spacing.lg,
   },
   addSection: {

@@ -13,7 +13,7 @@ import {
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Card, Badge } from '@/components/ui';
+import { Card, Badge, Footer } from '@/components/ui';
 import { ProgressBar, InteractiveBarChart, BarChartItem, DonutChart, DonutSegment } from '@/components/stats';
 import { useAuthStore } from '@/stores/authStore';
 import { useStatsStore } from '@/stores/statsStore';
@@ -531,6 +531,8 @@ export default function StatsScreen() {
           )}
         </Card>
       </View>
+
+      <Footer />
 
       {/* Events Modal */}
       <Modal

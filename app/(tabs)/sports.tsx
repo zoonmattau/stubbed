@@ -9,7 +9,7 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { Card } from '@/components/ui';
+import { Card, Footer } from '@/components/ui';
 import { colors, spacing, fontSize, fontWeight, borderRadius } from '@/constants/theme';
 import { SPORTS } from '@/constants/sports';
 import { SPORTSDB_LEAGUES, SPORTSDB_CATEGORIES } from '@/lib/thesportsdb';
@@ -166,6 +166,8 @@ export default function SportsScreen() {
           We're adding more sports and leagues regularly. Stay tuned!
         </Text>
       </View>
+
+      <Footer />
     </ScrollView>
   );
 }
