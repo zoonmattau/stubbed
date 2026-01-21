@@ -40,7 +40,7 @@ const SPORT_CONFIGS: Record<string, SportConfig> = {
     title: 'Cricket',
     icon: 'baseball',
     color: '#22c55e',
-    leagues: ['bbl', 'ipl', 'the_hundred', 'psl', 't20_blast'],
+    leagues: ['bbl', 'ipl', 'the_hundred', 'psl', 't20_blast', 'icc_world_cup', 'icc_t20_wc', 'test_championship', 'cpl', 'sa20', 'ilt20'],
     sportName: 'Cricket',
   },
   afl: {
@@ -96,15 +96,29 @@ const SPORT_CONFIGS: Record<string, SportConfig> = {
     title: 'Rugby Union',
     icon: 'american-football',
     color: '#f59e0b',
-    leagues: ['super_rugby_sdb', 'six_nations', 'rugby_championship'],
-    sportName: 'Super Rugby',
+    leagues: ['super_rugby_sdb', 'six_nations', 'rugby_championship', 'premiership_rugby', 'top_14', 'united_rugby'],
+    sportName: 'Rugby Union',
   },
   basketball: {
     title: 'Basketball',
     icon: 'basketball',
     color: '#f97316',
-    leagues: ['wnba_sdb', 'euroleague'],
+    leagues: ['wnba_sdb', 'euroleague', 'nbl', 'nba_sdb'],
     sportName: 'Basketball',
+  },
+  soccer: {
+    title: 'Soccer Cups',
+    icon: 'football',
+    color: '#16a34a',
+    leagues: ['europa_league', 'conference_league', 'fa_cup', 'copa_del_rey', 'dfb_pokal', 'coppa_italia', 'coupe_de_france', 'efl_cup', 'copa_libertadores', 'copa_sudamericana', 'copa_america', 'world_cup', 'nations_league'],
+    sportName: 'Soccer',
+  },
+  hockey: {
+    title: 'Ice Hockey',
+    icon: 'snow',
+    color: '#0ea5e9',
+    leagues: ['khl', 'shl', 'liiga'],
+    sportName: 'Ice Hockey',
   },
 };
 

@@ -45,7 +45,7 @@ export default function VenuesStatsScreen() {
       if (!stats[venueName]) {
         stats[venueName] = {
           venueName,
-          city,
+          city: city ?? undefined,
           totalVisits: 0,
           sports: [],
           teams: [],
@@ -233,7 +233,7 @@ const styles = StyleSheet.create({
     width: 32,
     height: 32,
     borderRadius: 16,
-    backgroundColor: colors.successLight || `${colors.success}20`,
+    backgroundColor: `${colors.success}20`,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: spacing.md,

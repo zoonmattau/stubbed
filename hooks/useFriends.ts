@@ -3,6 +3,18 @@ import { supabase } from '@/lib/supabase';
 import { useAuthStore } from '@/stores/authStore';
 import type { FriendWithProfile, Profile, TaggedUser } from '@/types';
 
+// Type for friendship query results with joined profiles
+interface FriendshipQueryResult {
+  id: string;
+  requester_id: string;
+  addressee_id: string;
+  status: 'pending' | 'accepted' | 'declined' | 'blocked';
+  created_at: string;
+  updated_at: string;
+  requester?: Profile;
+  addressee?: Profile;
+}
+
 export function useFriends() {
   const { user } = useAuthStore();
   const [friends, setFriends] = useState<FriendWithProfile[]>([]);
@@ -33,7 +45,8 @@ export function useFriends() {
 
       if (fetchError) throw fetchError;
 
-      const formattedFriends = (friendships || []).map((f) => ({
+      const typedFriendships = (friendships || []) as unknown as FriendshipQueryResult[];
+      const formattedFriends = typedFriendships.map((f) => ({
         ...f,
         profile:
           f.requester_id === user.id
@@ -66,7 +79,8 @@ export function useFriends() {
 
       if (fetchError) throw fetchError;
 
-      const formatted = (data || []).map((f) => ({
+      const typedData = (data || []) as unknown as FriendshipQueryResult[];
+      const formatted = typedData.map((f) => ({
         ...f,
         profile: f.requester as Profile,
       }));
@@ -94,7 +108,8 @@ export function useFriends() {
 
       if (fetchError) throw fetchError;
 
-      const formatted = (data || []).map((f) => ({
+      const typedData = (data || []) as unknown as FriendshipQueryResult[];
+      const formatted = typedData.map((f) => ({
         ...f,
         profile: f.addressee as Profile,
       }));
@@ -129,19 +144,21 @@ export function useFriends() {
           return { success: false, error: 'User not found' };
         }
 
-        if (targetUser.id === user.id) {
+        const target = targetUser as { id: string };
+        if (target.id === user.id) {
           return { success: false, error: "You can't add yourself" };
         }
 
         // Check if friendship already exists
-        const { data: existing } = await supabase
+        const { data: existingData } = await supabase
           .from('friendships')
           .select('id, status')
           .or(
-            `and(requester_id.eq.${user.id},addressee_id.eq.${targetUser.id}),and(requester_id.eq.${targetUser.id},addressee_id.eq.${user.id})`
+            `and(requester_id.eq.${user.id},addressee_id.eq.${target.id}),and(requester_id.eq.${target.id},addressee_id.eq.${user.id})`
           )
           .single();
 
+        const existing = existingData as { id: string; status: string } | null;
         if (existing) {
           if (existing.status === 'accepted') {
             return { success: false, error: 'Already friends' };
@@ -152,11 +169,13 @@ export function useFriends() {
         }
 
         // Create friendship request
-        const { error: createError } = await supabase.from('friendships').insert({
-          requester_id: user.id,
-          addressee_id: targetUser.id,
-          status: 'pending',
-        });
+        const { error: createError } = await supabase.from('friendships')
+          // @ts-ignore - Supabase type inference issue with insert params
+          .insert({
+            requester_id: user.id,
+            addressee_id: target.id,
+            status: 'pending',
+          });
 
         if (createError) throw createError;
 
@@ -174,6 +193,7 @@ export function useFriends() {
       try {
         const { error: updateError } = await supabase
           .from('friendships')
+          // @ts-ignore - Supabase type inference issue with update params
           .update({ status: 'accepted', updated_at: new Date().toISOString() })
           .eq('id', friendshipId);
 
@@ -193,6 +213,7 @@ export function useFriends() {
       try {
         const { error: updateError } = await supabase
           .from('friendships')
+          // @ts-ignore - Supabase type inference issue with update params
           .update({ status: 'declined', updated_at: new Date().toISOString() })
           .eq('id', friendshipId);
 

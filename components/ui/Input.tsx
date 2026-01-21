@@ -22,14 +22,14 @@ export const Input = forwardRef<TextInput, InputProps>(
     return (
       <View style={[styles.container, containerStyle]}>
         {label && <Text style={styles.label}>{label}</Text>}
-        <View style={[styles.inputContainer, error && styles.inputError]}>
+        <View style={[styles.inputContainer, error ? styles.inputError : undefined]}>
           {leftIcon && <View style={styles.iconLeft}>{leftIcon}</View>}
           <TextInput
             ref={ref}
             style={[
               styles.input,
-              leftIcon && styles.inputWithLeftIcon,
-              rightIcon && styles.inputWithRightIcon,
+              leftIcon ? styles.inputWithLeftIcon : undefined,
+              rightIcon ? styles.inputWithRightIcon : undefined,
               style,
             ]}
             placeholderTextColor={colors.textMuted}

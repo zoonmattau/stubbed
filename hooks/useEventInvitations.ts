@@ -70,6 +70,7 @@ export function useEventInvitations() {
         // Update invitation status
         const { error: updateError } = await supabase
           .from('event_tag_invitations')
+          // @ts-ignore - Supabase type inference issue with update params
           .update({
             status: 'accepted',
             responded_at: new Date().toISOString(),
@@ -82,14 +83,16 @@ export function useEventInvitations() {
         // with their own entry (they can add their own notes/rating later)
         const attendedEvent = invitation.attended_event;
         if (attendedEvent) {
-          const { error: copyError } = await supabase.from('attended_events').insert({
-            user_id: user.id,
-            event_id: attendedEvent.event_id,
-            section: attendedEvent.section,
-            seat_info: attendedEvent.seat_info,
-            // Don't copy personal fields like rating, notes, ticket_price
-            // Let user fill those in themselves
-          });
+          const { error: copyError } = await supabase.from('attended_events')
+            // @ts-ignore - Supabase type inference issue with insert params
+            .insert({
+              user_id: user.id,
+              event_id: attendedEvent.event_id,
+              section: attendedEvent.section,
+              seat_info: attendedEvent.seat_info,
+              // Don't copy personal fields like rating, notes, ticket_price
+              // Let user fill those in themselves
+            });
 
           if (copyError) {
             // If duplicate, that's fine - user already has this event
@@ -115,6 +118,7 @@ export function useEventInvitations() {
       try {
         const { error: updateError } = await supabase
           .from('event_tag_invitations')
+          // @ts-ignore - Supabase type inference issue with update params
           .update({
             status: 'declined',
             responded_at: new Date().toISOString(),
@@ -147,6 +151,7 @@ export function useEventInvitations() {
 
         const { error: insertError } = await supabase
           .from('event_tag_invitations')
+          // @ts-ignore - Supabase type inference issue with insert params
           .insert(invitations);
 
         if (insertError) throw insertError;

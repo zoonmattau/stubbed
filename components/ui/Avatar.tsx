@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Image, Text, StyleSheet, ViewStyle } from 'react-native';
+import { View, Image, Text, StyleSheet, ViewStyle, ImageStyle } from 'react-native';
 import { colors, borderRadius, fontSize, fontWeight } from '@/constants/theme';
 
 interface AvatarProps {
@@ -20,24 +20,25 @@ export function Avatar({ source, name, size = 'md', style }: AvatarProps) {
         .slice(0, 2)
     : '?';
 
-  const containerStyles = [
-    styles.container,
-    { width: sizeValue, height: sizeValue, borderRadius: sizeValue / 2 },
-    style,
-  ];
+  const sizeStyle = { width: sizeValue, height: sizeValue, borderRadius: sizeValue / 2 };
 
   if (source) {
+    const imageStyle: ImageStyle = {
+      ...sizeStyle,
+      overflow: 'hidden',
+      backgroundColor: colors.surfaceLight,
+    };
     return (
       <Image
         source={{ uri: source }}
-        style={[containerStyles, styles.image]}
+        style={[imageStyle, style as ImageStyle]}
         resizeMode="cover"
       />
     );
   }
 
   return (
-    <View style={[containerStyles, styles.placeholder]}>
+    <View style={[styles.container, sizeStyle, styles.placeholder, style]}>
       <Text style={[styles.initials, { fontSize: sizeValue * 0.4 }]}>{initials}</Text>
     </View>
   );

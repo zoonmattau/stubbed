@@ -51,37 +51,41 @@ export const useStatsStore = create<StatsState>((set, get) => ({
       });
 
       // Fetch sport breakdown with validation
+      // @ts-expect-error - RPC type inference issues with Supabase
       const sportResponse = await supabase.rpc('get_sport_breakdown', {
         p_user_id: userId,
       });
-      const sportResult = validateRpcResponse<typeof sportResponse.data>(sportResponse, {
+      const sportResult = validateRpcResponse<any[]>(sportResponse, {
         defaultValue: [],
         errorPrefix: 'Failed to load sport breakdown',
       });
 
       // Fetch team breakdown with validation
+      // @ts-expect-error - RPC type inference issues with Supabase
       const teamResponse = await supabase.rpc('get_team_breakdown', {
         p_user_id: userId,
       });
-      const teamResult = validateRpcResponse<typeof teamResponse.data>(teamResponse, {
+      const teamResult = validateRpcResponse<any[]>(teamResponse, {
         defaultValue: [],
         errorPrefix: 'Failed to load team breakdown',
       });
 
       // Fetch venue breakdown with validation
+      // @ts-expect-error - RPC type inference issues with Supabase
       const venueResponse = await supabase.rpc('get_venue_breakdown', {
         p_user_id: userId,
       });
-      const venueResult = validateRpcResponse<typeof venueResponse.data>(venueResponse, {
+      const venueResult = validateRpcResponse<any[]>(venueResponse, {
         defaultValue: [],
         errorPrefix: 'Failed to load venue breakdown',
       });
 
       // Fetch monthly trend with validation
+      // @ts-expect-error - RPC type inference issues with Supabase
       const trendResponse = await supabase.rpc('get_monthly_trend', {
         p_user_id: userId,
       });
-      const trendResult = validateRpcResponse<typeof trendResponse.data>(trendResponse, {
+      const trendResult = validateRpcResponse<any[]>(trendResponse, {
         defaultValue: [],
         errorPrefix: 'Failed to load monthly trend',
       });
@@ -121,11 +125,13 @@ export const useStatsStore = create<StatsState>((set, get) => ({
 
       if (error) throw error;
 
-      const unlockedIds = new Set((unlockedData || []).map((ua) => ua.achievement_id));
+      // Type assertion for Supabase join query result
+      const typedData = (unlockedData || []) as any[];
+      const unlockedIds = new Set(typedData.map((ua) => ua.achievement_id));
 
       // Map all achievements with unlock status
       const allAchievements: AchievementWithStatus[] = ACHIEVEMENTS.map((achievement) => {
-        const unlocked = unlockedData?.find(
+        const unlocked = typedData.find(
           (ua) => ua.achievement?.code === achievement.code
         );
         return {

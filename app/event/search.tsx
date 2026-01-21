@@ -224,9 +224,11 @@ export default function SearchEventsScreen() {
         results = await fetchESPNEvents(league.key as ESPNSportKey);
       } else {
         if (past) {
-          results = await fetchPastEvents(league.key as SportsDBLeagueKey);
+          const response = await fetchPastEvents(league.key as SportsDBLeagueKey);
+          results = response.success ? response.data : [];
         } else {
-          results = await fetchNextEvents(league.key as SportsDBLeagueKey);
+          const response = await fetchNextEvents(league.key as SportsDBLeagueKey);
+          results = response.success ? response.data : [];
         }
       }
       setEvents(results);

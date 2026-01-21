@@ -38,10 +38,12 @@ const LIVE_SPORTS: SportCategory[] = [
   { id: 'basketball', name: 'Basketball', icon: 'basketball', color: '#f97316', route: '/sports/basketball' },
   { id: 'cricket', name: 'Cricket', icon: 'baseball', color: '#22c55e', route: '/sports/cricket' },
   { id: 'golf', name: 'Golf', icon: 'golf', color: '#10b981', route: '/sports/golf' },
+  { id: 'hockey', name: 'Ice Hockey', icon: 'snow', color: '#0ea5e9', route: '/sports/hockey' },
   { id: 'motorsport', name: 'Motorsport', icon: 'car-sport', color: '#ef4444', route: '/sports/motorsport' },
   { id: 'netball', name: 'Netball', icon: 'people', color: '#ec4899', route: '/sports/netball' },
   { id: 'nrl', name: 'NRL', icon: 'football-outline', color: '#8b5cf6', route: '/sports/nrl' },
   { id: 'rugby', name: 'Rugby Union', icon: 'american-football', color: '#f59e0b', route: '/sports/rugby' },
+  { id: 'soccer', name: 'Soccer Cups', icon: 'football', color: '#16a34a', route: '/sports/soccer' },
   { id: 'tennis', name: 'Tennis', icon: 'tennisball', color: '#84cc16', route: '/tennis' },
   { id: 'combat', name: 'UFC & Boxing', icon: 'fitness', color: '#f97316', route: '/sports/combat' },
 ];

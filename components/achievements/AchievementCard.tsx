@@ -24,7 +24,7 @@ export function AchievementCard({
   return (
     <Card
       onPress={onPress}
-      style={[styles.container, !isUnlocked && styles.locked]}
+      style={[styles.container, !isUnlocked ? styles.locked : undefined]}
     >
       <View style={styles.content}>
         <View

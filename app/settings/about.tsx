@@ -53,19 +53,19 @@ export default function AboutScreen() {
           </TouchableOpacity>
           <TouchableOpacity
             style={[styles.linkItem, styles.linkItemBorder]}
-            onPress={() => Linking.openURL('https://stubbed.app/terms')}
+            onPress={() => router.push('/legal/terms' as any)}
           >
             <Ionicons name="document-text-outline" size={22} color={colors.text} />
             <Text style={styles.linkText}>Terms of Service</Text>
-            <Ionicons name="open-outline" size={18} color={colors.textMuted} />
+            <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
           </TouchableOpacity>
           <TouchableOpacity
             style={[styles.linkItem, styles.linkItemBorder]}
-            onPress={() => Linking.openURL('https://stubbed.app/privacy')}
+            onPress={() => router.push('/legal/privacy-policy' as any)}
           >
             <Ionicons name="shield-outline" size={22} color={colors.text} />
             <Text style={styles.linkText}>Privacy Policy</Text>
-            <Ionicons name="open-outline" size={18} color={colors.textMuted} />
+            <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
           </TouchableOpacity>
           <TouchableOpacity
             style={[styles.linkItem, styles.linkItemBorder]}
@@ -110,7 +110,7 @@ export default function AboutScreen() {
       {/* Credits */}
       <View style={styles.footer}>
         <Text style={styles.footerText}>Made with love for sports fans everywhere</Text>
-        <Text style={styles.copyright}>2024 Stubbed. All rights reserved.</Text>
+        <Text style={styles.copyright}>2025 Stubbed. All rights reserved.</Text>
       </View>
     </ScrollView>
   );

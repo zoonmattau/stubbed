@@ -6,7 +6,7 @@ interface CardProps {
   children: React.ReactNode;
   variant?: 'default' | 'elevated' | 'outlined';
   padding?: 'none' | 'sm' | 'md' | 'lg';
-  style?: ViewStyle;
+  style?: ViewStyle | (ViewStyle | undefined | false)[];
   onPress?: () => void;
 }
 

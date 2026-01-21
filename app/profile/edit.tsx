@@ -64,6 +64,7 @@ export default function EditProfileScreen() {
     try {
       const { error } = await supabase
         .from('profiles')
+        // @ts-ignore - Supabase type inference issue with update params
         .update({
           display_name: displayName.trim() || null,
           username: username.trim().toLowerCase(),
@@ -84,7 +85,7 @@ export default function EditProfileScreen() {
       }
 
       // Refresh profile data
-      await fetchProfile(user.id);
+      await fetchProfile();
 
       showAlert('Success', 'Profile updated successfully');
       router.back();
@@ -198,10 +199,10 @@ export default function EditProfileScreen() {
       {/* Save Button */}
       <View style={styles.buttonContainer}>
         <Button
-          label={isSaving ? 'Saving...' : 'Save Changes'}
+          title={isSaving ? 'Saving...' : 'Save Changes'}
           onPress={handleSave}
           disabled={isSaving}
-          fullWidth
+          style={{ width: '100%' }}
         />
       </View>
     </ScrollView>

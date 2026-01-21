@@ -203,9 +203,47 @@ export const SPORTSDB_LEAGUES = {
   brasileirao: { id: '4351', name: 'Brasileirão', sport: 'Soccer' },
   liga_argentina: { id: '4406', name: 'Liga Argentina', sport: 'Soccer' },
 
-  // Other
+  // European Soccer (complementary to ESPN)
+  europa_league: { id: '4481', name: 'Europa League', sport: 'Soccer' },
+  conference_league: { id: '5163', name: 'Conference League', sport: 'Soccer' },
+  fa_cup: { id: '4482', name: 'FA Cup', sport: 'Soccer' },
+  copa_del_rey: { id: '4483', name: 'Copa del Rey', sport: 'Soccer' },
+  dfb_pokal: { id: '4484', name: 'DFB-Pokal', sport: 'Soccer' },
+  coppa_italia: { id: '4487', name: 'Coppa Italia', sport: 'Soccer' },
+  coupe_de_france: { id: '4488', name: 'Coupe de France', sport: 'Soccer' },
+  efl_cup: { id: '4570', name: 'EFL Cup', sport: 'Soccer' },
+
+  // South American/International Soccer
+  copa_libertadores: { id: '4359', name: 'Copa Libertadores', sport: 'Soccer' },
+  copa_sudamericana: { id: '4360', name: 'Copa Sudamericana', sport: 'Soccer' },
+  copa_america: { id: '4499', name: 'Copa America', sport: 'Soccer' },
+  world_cup: { id: '4429', name: 'FIFA World Cup', sport: 'Soccer' },
+  world_cup_qualifying: { id: '4570', name: 'World Cup Qualifying', sport: 'Soccer' },
+  nations_league: { id: '5131', name: 'UEFA Nations League', sport: 'Soccer' },
+
+  // More Cricket (international)
+  icc_world_cup: { id: '4726', name: 'ICC Cricket World Cup', sport: 'Cricket' },
+  icc_t20_wc: { id: '5065', name: 'ICC T20 World Cup', sport: 'Cricket' },
+  test_championship: { id: '5173', name: 'ICC World Test Championship', sport: 'Cricket' },
+  cpl: { id: '4732', name: 'Caribbean Premier League', sport: 'Cricket' },
+  sa20: { id: '5234', name: 'SA20', sport: 'Cricket' },
+  ilt20: { id: '5235', name: 'ILT20', sport: 'Cricket' },
+
+  // More Rugby
+  premiership_rugby: { id: '4405', name: 'Premiership Rugby', sport: 'Rugby Union' },
+  top_14: { id: '4401', name: 'Top 14', sport: 'Rugby Union' },
+  united_rugby: { id: '5161', name: 'United Rugby Championship', sport: 'Rugby Union' },
+
+  // More Basketball
   wnba_sdb: { id: '4431', name: 'WNBA', sport: 'Basketball' },
   euroleague: { id: '4485', name: 'EuroLeague', sport: 'Basketball' },
+  nbl: { id: '4422', name: 'NBL Australia', sport: 'Basketball' },
+  nba_sdb: { id: '4387', name: 'NBA', sport: 'Basketball' },
+
+  // Ice Hockey (complementary)
+  khl: { id: '4513', name: 'KHL', sport: 'Ice Hockey' },
+  shl: { id: '4541', name: 'SHL', sport: 'Ice Hockey' },
+  liiga: { id: '4538', name: 'Liiga', sport: 'Ice Hockey' },
 } as const;
 
 export type SportsDBLeagueKey = keyof typeof SPORTSDB_LEAGUES;
@@ -736,13 +774,16 @@ function parseStanding(standing: SportsDBStanding): StandingResult {
 
 // Group leagues by sport type for UI
 export const SPORTSDB_CATEGORIES = {
-  'Cricket': ['bbl', 'ipl', 'the_hundred', 'psl', 't20_blast'],
+  'Cricket': ['bbl', 'ipl', 'the_hundred', 'psl', 't20_blast', 'icc_world_cup', 'icc_t20_wc', 'test_championship', 'cpl', 'sa20', 'ilt20'],
   'Tennis': ['atp_tour', 'wta_tour'],
   'Golf': ['pga_tour', 'lpga_tour', 'european_tour'],
   'Motorsport': ['formula_1', 'motogp', 'v8_supercars', 'nascar', 'indycar', 'wrc'],
   'Combat Sports': ['ufc', 'boxing'],
-  'Rugby Union': ['super_rugby_sdb', 'six_nations', 'rugby_championship'],
-  'Basketball': ['wnba_sdb', 'euroleague'],
+  'Rugby Union': ['super_rugby_sdb', 'six_nations', 'rugby_championship', 'premiership_rugby', 'top_14', 'united_rugby'],
+  'Basketball': ['wnba_sdb', 'euroleague', 'nbl', 'nba_sdb'],
+  'European Soccer Cups': ['europa_league', 'conference_league', 'fa_cup', 'copa_del_rey', 'dfb_pokal', 'coppa_italia', 'coupe_de_france', 'efl_cup'],
+  'International Soccer': ['copa_libertadores', 'copa_sudamericana', 'copa_america', 'world_cup', 'nations_league'],
   'Other Soccer': ['eredivisie', 'primeira_liga', 'scottish_premiership', 'brasileirao', 'liga_argentina'],
   'Australian Sports': ['afl_sdb', 'nrl_sdb', 'aleague_sdb', 'super_netball'],
+  'Ice Hockey': ['khl', 'shl', 'liiga'],
 } as const;

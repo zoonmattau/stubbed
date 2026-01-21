@@ -46,7 +46,7 @@ export function TaggedUsersList({ userIds, textNames }: TaggedUsersListProps) {
   }
 
   const handleUserPress = (userId: string) => {
-    router.push(`/profile/${userId}`);
+    router.push(`/profile/${userId}` as any);
   };
 
   return (

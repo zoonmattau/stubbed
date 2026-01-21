@@ -514,15 +514,131 @@ export interface Database {
           updated_at?: string;
         };
       };
+      user_settings: {
+        Row: {
+          user_id: string;
+          push_enabled: boolean;
+          notify_friend_requests: boolean;
+          notify_achievements: boolean;
+          notify_event_reminders: boolean;
+          email_enabled: boolean;
+          email_weekly_digest: boolean;
+          profile_public: boolean;
+          show_stats: boolean;
+          show_events: boolean;
+          allow_tagging: boolean;
+          show_on_leaderboards: boolean;
+          updated_at: string;
+        };
+        Insert: {
+          user_id: string;
+          push_enabled?: boolean;
+          notify_friend_requests?: boolean;
+          notify_achievements?: boolean;
+          notify_event_reminders?: boolean;
+          email_enabled?: boolean;
+          email_weekly_digest?: boolean;
+          profile_public?: boolean;
+          show_stats?: boolean;
+          show_events?: boolean;
+          allow_tagging?: boolean;
+          show_on_leaderboards?: boolean;
+          updated_at?: string;
+        };
+        Update: {
+          user_id?: string;
+          push_enabled?: boolean;
+          notify_friend_requests?: boolean;
+          notify_achievements?: boolean;
+          notify_event_reminders?: boolean;
+          email_enabled?: boolean;
+          email_weekly_digest?: boolean;
+          profile_public?: boolean;
+          show_stats?: boolean;
+          show_events?: boolean;
+          allow_tagging?: boolean;
+          show_on_leaderboards?: boolean;
+          updated_at?: string;
+        };
+      };
+      event_tag_invitations: {
+        Row: {
+          id: string;
+          from_user_id: string;
+          to_user_id: string;
+          attended_event_id: string;
+          status: 'pending' | 'accepted' | 'declined';
+          message: string | null;
+          created_at: string;
+          responded_at: string | null;
+        };
+        Insert: {
+          id?: string;
+          from_user_id: string;
+          to_user_id: string;
+          attended_event_id: string;
+          status?: 'pending' | 'accepted' | 'declined';
+          message?: string | null;
+          created_at?: string;
+          responded_at?: string | null;
+        };
+        Update: {
+          id?: string;
+          from_user_id?: string;
+          to_user_id?: string;
+          attended_event_id?: string;
+          status?: 'pending' | 'accepted' | 'declined';
+          message?: string | null;
+          created_at?: string;
+          responded_at?: string | null;
+        };
+      };
     };
     Views: {
       [_ in never]: never;
     };
     Functions: {
-      [_ in never]: never;
+      get_sport_breakdown: {
+        Args: { p_user_id: string };
+        Returns: {
+          sport_id: string;
+          sport_name: string;
+          event_count: number;
+          win_count: number;
+          loss_count: number;
+          draw_count: number;
+        }[];
+      };
+      get_team_breakdown: {
+        Args: { p_user_id: string };
+        Returns: {
+          team_id: string;
+          team_name: string;
+          event_count: number;
+          win_count: number;
+          loss_count: number;
+          draw_count: number;
+        }[];
+      };
+      get_venue_breakdown: {
+        Args: { p_user_id: string };
+        Returns: {
+          venue_id: string;
+          venue_name: string;
+          event_count: number;
+        }[];
+      };
+      get_monthly_trend: {
+        Args: { p_user_id: string };
+        Returns: {
+          month: string;
+          event_count: number;
+        }[];
+      };
     };
     Enums: {
-      [_ in never]: never;
+      friendship_status: 'pending' | 'accepted' | 'declined' | 'blocked';
+      invitation_status: 'pending' | 'accepted' | 'declined';
     };
   };
 }
