@@ -1,16 +1,19 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
+  Modal,
+  FlatList,
 } from 'react-native';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Card } from '@/components/ui';
 import { useEventsStore } from '@/stores/eventsStore';
 import { colors, spacing, fontSize, fontWeight, borderRadius } from '@/constants/theme';
+import type { AttendedEventWithDetails } from '@/types';
 
 interface VenueStats {
   venueName: string;
@@ -23,10 +26,13 @@ interface VenueStats {
   wins: number;
   losses: number;
   draws: number;
+  eventIds: string[];
 }
 
 export default function VenuesStatsScreen() {
   const { attendedEvents } = useEventsStore();
+  const [selectedVenue, setSelectedVenue] = useState<VenueStats | null>(null);
+  const [showEventsModal, setShowEventsModal] = useState(false);
 
   const venueStats = useMemo(() => {
     const stats: Record<string, VenueStats> = {};
@@ -54,10 +60,12 @@ export default function VenuesStatsScreen() {
           wins: 0,
           losses: 0,
           draws: 0,
+          eventIds: [],
         };
       }
 
       stats[venueName].totalVisits++;
+      stats[venueName].eventIds.push(attended.id);
 
       if (sport && !stats[venueName].sports.includes(sport)) {
         stats[venueName].sports.push(sport);
@@ -87,6 +95,23 @@ export default function VenuesStatsScreen() {
     return Object.values(stats).sort((a, b) => b.totalVisits - a.totalVisits);
   }, [attendedEvents]);
 
+  // Get events for selected venue
+  const venueEvents = useMemo(() => {
+    if (!selectedVenue) return [];
+    return attendedEvents.filter(e => selectedVenue.eventIds.includes(e.id))
+      .sort((a, b) => new Date(b.event?.event_date || 0).getTime() - new Date(a.event?.event_date || 0).getTime());
+  }, [selectedVenue, attendedEvents]);
+
+  const handleVenuePress = (venue: VenueStats) => {
+    setSelectedVenue(venue);
+    setShowEventsModal(true);
+  };
+
+  const handleEventPress = (eventId: string) => {
+    setShowEventsModal(false);
+    router.push(`/event/${eventId}`);
+  };
+
   const formatDate = (dateStr: string) => {
     const date = new Date(dateStr);
     return date.toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' });
@@ -115,8 +140,13 @@ export default function VenuesStatsScreen() {
         </Text>
 
         {venueStats.map((venue, index) => (
-          <Card key={venue.venueName} style={styles.venueCard}>
-            <View style={styles.venueHeader}>
+          <TouchableOpacity
+            key={venue.venueName}
+            onPress={() => handleVenuePress(venue)}
+            activeOpacity={0.7}
+          >
+            <Card style={styles.venueCard}>
+              <View style={styles.venueHeader}>
               <View style={styles.rankBadge}>
                 <Text style={styles.rankText}>#{index + 1}</Text>
               </View>
@@ -171,7 +201,13 @@ export default function VenuesStatsScreen() {
                 )}
               </View>
             )}
-          </Card>
+
+            <View style={styles.viewEventsHint}>
+              <Text style={styles.viewEventsText}>Tap to view events</Text>
+              <Ionicons name="chevron-forward" size={14} color={colors.textMuted} />
+            </View>
+            </Card>
+          </TouchableOpacity>
         ))}
 
         {venueStats.length === 0 && (
@@ -184,6 +220,68 @@ export default function VenuesStatsScreen() {
           </View>
         )}
       </ScrollView>
+
+      {/* Events at Venue Modal */}
+      <Modal
+        visible={showEventsModal}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setShowEventsModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <View>
+                <Text style={styles.modalTitle}>{selectedVenue?.venueName}</Text>
+                {selectedVenue?.city && (
+                  <Text style={styles.modalSubtitle}>{selectedVenue.city}</Text>
+                )}
+              </View>
+              <TouchableOpacity onPress={() => setShowEventsModal(false)}>
+                <Ionicons name="close" size={24} color={colors.text} />
+              </TouchableOpacity>
+            </View>
+
+            <FlatList
+              data={venueEvents}
+              keyExtractor={(item) => item.id}
+              renderItem={({ item }) => (
+                <TouchableOpacity
+                  style={styles.eventItem}
+                  onPress={() => handleEventPress(item.id)}
+                  activeOpacity={0.7}
+                >
+                  <View style={styles.eventInfo}>
+                    <Text style={styles.eventTeams}>
+                      {item.event?.home_team?.name || item.event?.home_team_name || 'Home'} vs{' '}
+                      {item.event?.away_team?.name || item.event?.away_team_name || 'Away'}
+                    </Text>
+                    <View style={styles.eventMeta}>
+                      <Text style={styles.eventDate}>{formatDate(item.event?.event_date || '')}</Text>
+                      {item.event?.sport?.name && (
+                        <View style={styles.sportBadge}>
+                          <Text style={styles.sportBadgeText}>{item.event.sport.name}</Text>
+                        </View>
+                      )}
+                    </View>
+                    {item.event?.home_score && item.event?.away_score && (
+                      <Text style={styles.eventScore}>
+                        {item.event.home_score} - {item.event.away_score}
+                      </Text>
+                    )}
+                  </View>
+                  <Ionicons name="chevron-forward" size={20} color={colors.textMuted} />
+                </TouchableOpacity>
+              )}
+              ListEmptyComponent={
+                <View style={styles.emptyList}>
+                  <Text style={styles.emptyListText}>No events found</Text>
+                </View>
+              }
+            />
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -345,5 +443,98 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     textAlign: 'center',
     marginTop: spacing.sm,
+  },
+  viewEventsHint: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.xs,
+    marginTop: spacing.sm,
+    paddingTop: spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  viewEventsText: {
+    fontSize: fontSize.xs,
+    color: colors.textMuted,
+  },
+  // Modal styles
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-end',
+  },
+  modalContent: {
+    backgroundColor: colors.background,
+    borderTopLeftRadius: borderRadius.xl,
+    borderTopRightRadius: borderRadius.xl,
+    maxHeight: '80%',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    padding: spacing.lg,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  modalTitle: {
+    fontSize: fontSize.lg,
+    fontWeight: fontWeight.bold,
+    color: colors.text,
+  },
+  modalSubtitle: {
+    fontSize: fontSize.sm,
+    color: colors.textSecondary,
+    marginTop: 2,
+  },
+  eventItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  eventInfo: {
+    flex: 1,
+  },
+  eventTeams: {
+    fontSize: fontSize.md,
+    fontWeight: fontWeight.medium,
+    color: colors.text,
+  },
+  eventMeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginTop: spacing.xs,
+  },
+  eventDate: {
+    fontSize: fontSize.sm,
+    color: colors.textSecondary,
+  },
+  sportBadge: {
+    backgroundColor: colors.primary + '20',
+    paddingHorizontal: spacing.xs,
+    paddingVertical: 2,
+    borderRadius: borderRadius.sm,
+  },
+  sportBadgeText: {
+    fontSize: fontSize.xs,
+    color: colors.primary,
+    fontWeight: fontWeight.medium,
+  },
+  eventScore: {
+    fontSize: fontSize.sm,
+    color: colors.textSecondary,
+    marginTop: spacing.xs,
+  },
+  emptyList: {
+    padding: spacing.xl,
+    alignItems: 'center',
+  },
+  emptyListText: {
+    fontSize: fontSize.sm,
+    color: colors.textMuted,
   },
 });

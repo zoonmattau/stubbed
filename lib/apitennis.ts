@@ -4,6 +4,11 @@
 const API_KEY = process.env.EXPO_PUBLIC_APITENNIS_KEY || '';
 const BASE_URL = 'https://api.api-tennis.com/tennis/';
 
+// Check if API key is configured
+export function isApiKeyConfigured(): boolean {
+  return API_KEY.length > 0;
+}
+
 // Types
 export interface ApiTennisMatch {
   event_key: string;

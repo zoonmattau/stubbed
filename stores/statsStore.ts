@@ -38,12 +38,31 @@ export const useStatsStore = create<StatsState>((set, get) => ({
     set({ isLoading: true, error: null });
 
     try {
-      // Fetch user stats
-      const statsResponse = await supabase
+      // Fetch user stats - first check if record exists
+      let statsResponse = await supabase
         .from('user_stats')
         .select('*')
         .eq('user_id', userId)
         .single();
+
+      // If stats record doesn't exist, create it
+      if (statsResponse.error && statsResponse.error.code === 'PGRST116') {
+        console.log('[Stats] Creating user_stats record for user:', userId);
+        const { error: insertError } = await supabase.from('user_stats').insert({
+          user_id: userId,
+        });
+
+        if (insertError && insertError.code !== '23505') {
+          console.error('[Stats] Error creating user_stats:', insertError);
+        }
+
+        // Fetch again after creating
+        statsResponse = await supabase
+          .from('user_stats')
+          .select('*')
+          .eq('user_id', userId)
+          .single();
+      }
 
       const statsResult = validateSingleResponse<UserStats>(statsResponse, {
         allowEmpty: true,

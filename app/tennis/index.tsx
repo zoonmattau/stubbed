@@ -18,6 +18,7 @@ import {
   fetchTennisMatches,
   fetchTennisRankings,
   getDateRange,
+  isApiKeyConfigured,
   TennisMatchResult,
   TennisRankingResult,
   CATEGORY_ORDER,
@@ -37,6 +38,7 @@ export default function TennisScreen() {
   const [wtaRankings, setWtaRankings] = useState<TennisRankingResult[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [apiError, setApiError] = useState<string | null>(null);
 
   // Collapsible state: { "tournamentName": true/false, "tournamentName:category": true/false }
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({});
@@ -124,6 +126,16 @@ export default function TennisScreen() {
   };
 
   const loadData = useCallback(async () => {
+    setApiError(null);
+
+    // Check if API key is configured
+    if (!isApiKeyConfigured()) {
+      setApiError('Tennis API key not configured. Please add EXPO_PUBLIC_APITENNIS_KEY to your environment.');
+      setIsLoading(false);
+      setRefreshing(false);
+      return;
+    }
+
     try {
       if (activeTab === 'live') {
         const matches = await fetchTennisLiveScores();
@@ -142,6 +154,7 @@ export default function TennisScreen() {
       }
     } catch (error) {
       console.error('Error loading tennis data:', error);
+      setApiError('Failed to load tennis data. Please try again.');
     } finally {
       setIsLoading(false);
       setRefreshing(false);
@@ -438,6 +451,19 @@ export default function TennisScreen() {
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={colors.primary} />
           <Text style={styles.loadingText}>Loading tennis data...</Text>
+        </View>
+      );
+    }
+
+    if (apiError) {
+      return (
+        <View style={styles.emptyContainer}>
+          <Ionicons name="alert-circle-outline" size={48} color={colors.error} />
+          <Text style={styles.emptyTitle}>API Error</Text>
+          <Text style={styles.emptyText}>{apiError}</Text>
+          <TouchableOpacity style={styles.retryButton} onPress={onRefresh}>
+            <Text style={styles.retryButtonText}>Try Again</Text>
+          </TouchableOpacity>
         </View>
       );
     }
@@ -975,5 +1001,17 @@ const styles = StyleSheet.create({
     fontSize: fontSize.xs,
     fontWeight: fontWeight.semibold,
     color: colors.primary,
+  },
+  retryButton: {
+    marginTop: spacing.lg,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.lg,
+    backgroundColor: colors.primary,
+    borderRadius: borderRadius.md,
+  },
+  retryButtonText: {
+    fontSize: fontSize.sm,
+    fontWeight: fontWeight.semibold,
+    color: colors.white,
   },
 });

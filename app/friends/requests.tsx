@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, FlatList, TextInput, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, FlatList, TextInput, TouchableOpacity, Alert, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Card, Button } from '@/components/ui';
 import { FriendCard } from '@/components/social';
@@ -13,18 +13,92 @@ export default function FriendRequestsScreen() {
   const [requests] = useState<FriendWithProfile[]>(mockRequests);
   const [searchUsername, setSearchUsername] = useState('');
 
-  const handleAccept = (_id: string) => {
-    // TODO: Implement accept friend request
+  const handleAccept = (id: string) => {
+    const doAccept = () => {
+      // TODO: Implement actual accept friend request API call
+      console.log('Accepting friend request:', id);
+      if (Platform.OS === 'web') {
+        window.alert('Friend request accepted!');
+      } else {
+        Alert.alert('Success', 'Friend request accepted!');
+      }
+    };
+
+    if (Platform.OS === 'web') {
+      const confirmed = window.confirm('Accept this friend request?');
+      if (confirmed) {
+        doAccept();
+      }
+    } else {
+      Alert.alert(
+        'Accept Friend Request',
+        'Accept this friend request?',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Accept', onPress: doAccept },
+        ]
+      );
+    }
   };
 
-  const handleDecline = (_id: string) => {
-    // TODO: Implement decline friend request
+  const handleDecline = (id: string) => {
+    const doDecline = () => {
+      // TODO: Implement actual decline friend request API call
+      console.log('Declining friend request:', id);
+      if (Platform.OS === 'web') {
+        window.alert('Friend request declined');
+      } else {
+        Alert.alert('Success', 'Friend request declined');
+      }
+    };
+
+    if (Platform.OS === 'web') {
+      const confirmed = window.confirm('Decline this friend request?');
+      if (confirmed) {
+        doDecline();
+      }
+    } else {
+      Alert.alert(
+        'Decline Friend Request',
+        'Are you sure you want to decline this friend request?',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Decline', style: 'destructive', onPress: doDecline },
+        ]
+      );
+    }
   };
 
   const handleSendRequest = () => {
     if (searchUsername.trim()) {
-      // TODO: Implement send friend request
-      setSearchUsername('');
+      const username = searchUsername.trim();
+      const confirmSend = () => {
+        // TODO: Implement actual send friend request API call
+        console.log('Sending friend request to:', username);
+        setSearchUsername('');
+        // Show success message
+        if (Platform.OS === 'web') {
+          window.alert(`Friend request sent to @${username}`);
+        } else {
+          Alert.alert('Request Sent', `Friend request sent to @${username}`);
+        }
+      };
+
+      if (Platform.OS === 'web') {
+        const confirmed = window.confirm(`Send friend request to @${username}?`);
+        if (confirmed) {
+          confirmSend();
+        }
+      } else {
+        Alert.alert(
+          'Send Friend Request',
+          `Send friend request to @${username}?`,
+          [
+            { text: 'Cancel', style: 'cancel' },
+            { text: 'Send', onPress: confirmSend },
+          ]
+        );
+      }
     }
   };
 

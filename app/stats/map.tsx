@@ -542,7 +542,7 @@ const styles = StyleSheet.create({
   },
   gridItem: {
     width: (screenWidth - spacing.lg * 2 - spacing.md * 2) / 3,
-    aspectRatio: 1,
+    minHeight: 100,
     borderRadius: borderRadius.lg,
     padding: spacing.md,
     alignItems: 'center',

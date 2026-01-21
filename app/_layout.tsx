@@ -45,13 +45,7 @@ export default function RootLayout() {
       </Head>
       <Stack
         screenOptions={{
-          headerStyle: {
-            backgroundColor: colors.background,
-          },
-          headerTintColor: colors.text,
-          headerTitleStyle: {
-            fontWeight: '600',
-          },
+          headerShown: false,
           contentStyle: {
             backgroundColor: colors.background,
           },
@@ -59,69 +53,14 @@ export default function RootLayout() {
       >
         <Stack.Screen name="(auth)" options={{ headerShown: false }} />
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-        <Stack.Screen
-          name="event/[id]"
-          options={{
-            title: 'Event Details',
-            presentation: 'card',
-          }}
-        />
-        <Stack.Screen
-          name="event/search"
-          options={{
-            title: 'Search Events',
-            presentation: 'modal',
-          }}
-        />
-        <Stack.Screen
-          name="event/manual"
-          options={{
-            title: 'Add Event',
-            presentation: 'modal',
-          }}
-        />
-        <Stack.Screen
-          name="friends/index"
-          options={{
-            title: 'Friends',
-          }}
-        />
-        <Stack.Screen
-          name="friends/[id]"
-          options={{
-            title: 'Profile',
-          }}
-        />
-        <Stack.Screen
-          name="friends/requests"
-          options={{
-            title: 'Friend Requests',
-          }}
-        />
-        <Stack.Screen
-          name="achievements/index"
-          options={{
-            title: 'Achievements',
-          }}
-        />
-        <Stack.Screen
-          name="settings"
-          options={{
-            headerShown: false,
-          }}
-        />
-        <Stack.Screen
-          name="stats/map"
-          options={{
-            title: 'World Map',
-          }}
-        />
-        <Stack.Screen
-          name="profile/edit"
-          options={{
-            title: 'Edit Profile',
-          }}
-        />
+        <Stack.Screen name="event" options={{ headerShown: false }} />
+        <Stack.Screen name="friends" options={{ headerShown: false }} />
+        <Stack.Screen name="achievements" options={{ headerShown: false }} />
+        <Stack.Screen name="settings" options={{ headerShown: false }} />
+        <Stack.Screen name="stats" options={{ headerShown: false }} />
+        <Stack.Screen name="profile" options={{ headerShown: false }} />
+        <Stack.Screen name="sports" options={{ headerShown: false }} />
+        <Stack.Screen name="tennis" options={{ headerShown: false }} />
       </Stack>
     </>
   );

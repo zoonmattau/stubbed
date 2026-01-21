@@ -52,43 +52,6 @@ export default function HelpScreen() {
       <Text style={styles.title}>Help & Support</Text>
       <Text style={styles.subtitle}>Get help with using Stubbed</Text>
 
-      {/* Contact Support */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Contact Us</Text>
-        <Card padding="none">
-          <TouchableOpacity style={styles.contactItem} onPress={handleContact}>
-            <View style={[styles.contactIcon, { backgroundColor: `${colors.primary}15` }]}>
-              <Ionicons name="mail" size={24} color={colors.primary} />
-            </View>
-            <View style={styles.contactInfo}>
-              <Text style={styles.contactLabel}>Email Support</Text>
-              <Text style={styles.contactDescription}>support@stubbed.app</Text>
-            </View>
-            <Ionicons name="chevron-forward" size={20} color={colors.textMuted} />
-          </TouchableOpacity>
-          <TouchableOpacity style={[styles.contactItem, styles.itemBorder]}>
-            <View style={[styles.contactIcon, { backgroundColor: `${colors.info}15` }]}>
-              <Ionicons name="chatbubbles" size={24} color={colors.info} />
-            </View>
-            <View style={styles.contactInfo}>
-              <Text style={styles.contactLabel}>Live Chat</Text>
-              <Text style={styles.contactDescription}>Chat with our team</Text>
-            </View>
-            <Ionicons name="chevron-forward" size={20} color={colors.textMuted} />
-          </TouchableOpacity>
-          <TouchableOpacity style={[styles.contactItem, styles.itemBorder]}>
-            <View style={[styles.contactIcon, { backgroundColor: `${colors.success}15` }]}>
-              <Ionicons name="document-text" size={24} color={colors.success} />
-            </View>
-            <View style={styles.contactInfo}>
-              <Text style={styles.contactLabel}>Documentation</Text>
-              <Text style={styles.contactDescription}>Browse our guides</Text>
-            </View>
-            <Ionicons name="chevron-forward" size={20} color={colors.textMuted} />
-          </TouchableOpacity>
-        </Card>
-      </View>
-
       {/* FAQ */}
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Frequently Asked Questions</Text>

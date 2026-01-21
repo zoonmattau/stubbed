@@ -76,6 +76,7 @@ export interface Event {
   away_score: string | null;
   winner_team_id: string | null;
   is_draw: boolean;
+  is_abandoned: boolean;
   is_verified: boolean;
   created_by: string | null;
   created_at: string;
@@ -100,7 +101,7 @@ export interface AttendedEvent {
   went_with_user_ids: string[] | null;
   is_favorite: boolean;
   supported_team: 'home' | 'away' | 'neutral' | null;
-  result: 'win' | 'loss' | 'draw' | null;
+  result: 'win' | 'loss' | 'draw' | 'no_result' | null;
   created_at: string;
 }
 

@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { supabase } from '@/lib/supabase';
+import { getPendingProfile, clearPendingProfile } from '@/lib/pendingProfile';
 import type { User, Session, Subscription } from '@supabase/supabase-js';
 import type { Profile } from '@/types';
 
@@ -70,22 +71,63 @@ export const useAuthStore = create<AuthState>((set, get) => ({
             }
 
             if (!existingProfile) {
-              // Create profile from user metadata
+              // Check for pending profile data from registration
+              const pendingProfile = await getPendingProfile();
               const metadata = session.user.user_metadata;
+
+              // Build display name from pending profile or fallback to metadata
+              let displayName = metadata?.username || session.user.email?.split('@')[0];
+              let firstName: string | undefined;
+              let lastName: string | undefined;
+              let dateOfBirth: string | undefined;
+              const username = pendingProfile?.username || metadata?.username || session.user.email?.split('@')[0];
+
+              if (pendingProfile) {
+                firstName = pendingProfile.firstName;
+                lastName = pendingProfile.lastName;
+
+                if (firstName && lastName) {
+                  displayName = `${firstName} ${lastName}`;
+                }
+
+                // Convert DD-MM-YYYY to YYYY-MM-DD for PostgreSQL
+                if (pendingProfile.dateOfBirth) {
+                  const [day, month, year] = pendingProfile.dateOfBirth.split('-');
+                  dateOfBirth = `${year}-${month}-${day}`;
+                }
+              }
+
               const { error: insertError } = await supabase.from('profiles').insert({
                 id: session.user.id,
-                username: metadata?.username || session.user.email?.split('@')[0],
-                display_name: metadata?.username,
+                username,
+                display_name: displayName,
                 email: session.user.email,
+                first_name: firstName,
+                last_name: lastName,
+                date_of_birth: dateOfBirth,
               });
               if (insertError) {
                 console.error('[Auth] Error creating profile:', insertError);
               }
 
+              // Clear pending profile after successful creation
+              if (!insertError) {
+                await clearPendingProfile();
+              }
+            }
+
+            // Always ensure user_stats exists (separate from profile creation)
+            const { data: existingStats } = await supabase
+              .from('user_stats')
+              .select('user_id')
+              .eq('user_id', session.user.id)
+              .single();
+
+            if (!existingStats) {
               const { error: statsError } = await supabase.from('user_stats').insert({
                 user_id: session.user.id,
               });
-              if (statsError) {
+              if (statsError && statsError.code !== '23505') { // Ignore duplicate key error
                 console.error('[Auth] Error creating user_stats:', statsError);
               }
             }

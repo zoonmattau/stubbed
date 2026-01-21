@@ -47,7 +47,8 @@ export default function PrivacyScreen() {
     }
   };
 
-  if (isLoading) {
+  // Show loading only briefly while fetching, then show content with defaults
+  if (isLoading && !settings) {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color={colors.primary} />

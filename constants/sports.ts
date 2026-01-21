@@ -7,13 +7,14 @@ export interface SportDefinition {
   color: string;
   competitions: string[];
   scoreFormat: 'goals' | 'points' | 'cricket' | 'tennis' | 'sets' | 'racing' | 'position';
+  isIndividualSport?: boolean;
 }
 
 export const SPORTS: SportDefinition[] = [
   {
     id: 'afl',
     name: 'AFL',
-    icon: 'football',
+    icon: 'american-football',
     color: colors.sportAFL,
     competitions: ['AFL Premiership', 'AFLW'],
     scoreFormat: 'points',
@@ -21,7 +22,7 @@ export const SPORTS: SportDefinition[] = [
   {
     id: 'nrl',
     name: 'NRL',
-    icon: 'football-outline',
+    icon: 'american-football-outline',
     color: colors.sportNRL,
     competitions: ['NRL Premiership', 'State of Origin', 'NRLW'],
     scoreFormat: 'points',
@@ -54,7 +55,32 @@ export const SPORTS: SportDefinition[] = [
     name: 'Soccer',
     icon: 'football',
     color: colors.sportSoccer,
-    competitions: ['A-League Men', 'A-League Women', 'FFA Cup', 'Socceroos'],
+    competitions: [
+      // Australian
+      'A-League Men',
+      'A-League Women',
+      'Australia Cup',
+      'Socceroos',
+      'Matildas',
+      // European Club
+      'Premier League',
+      'La Liga',
+      'Serie A',
+      'Bundesliga',
+      'Ligue 1',
+      'Champions League',
+      'Europa League',
+      'Conference League',
+      // International
+      'World Cup',
+      'Euros',
+      'Asian Cup',
+      'Copa America',
+      // Other
+      'MLS',
+      'J-League',
+      'Other',
+    ],
     scoreFormat: 'goals',
   },
   {
@@ -64,6 +90,7 @@ export const SPORTS: SportDefinition[] = [
     color: colors.sportTennis,
     competitions: ['Australian Open', 'ATP', 'WTA'],
     scoreFormat: 'tennis',
+    isIndividualSport: true,
   },
   {
     id: 'basketball',
@@ -161,6 +188,7 @@ export const SPORTS: SportDefinition[] = [
       'PGA Championship',
     ],
     scoreFormat: 'points',
+    isIndividualSport: true,
   },
   {
     id: 'mma',
@@ -169,6 +197,7 @@ export const SPORTS: SportDefinition[] = [
     color: colors.sportMMA,
     competitions: ['UFC', 'Bellator', 'ONE Championship', 'PFL'],
     scoreFormat: 'points',
+    isIndividualSport: true,
   },
   {
     id: 'netball',
@@ -240,6 +269,16 @@ export function getSportById(id: string): SportDefinition | undefined {
 export function getSportColor(sportId: string): string {
   const sport = getSportById(sportId);
   return sport?.color || colors.sportDefault;
+}
+
+export function isIndividualSport(sportId: string): boolean {
+  const sport = getSportById(sportId);
+  return sport?.isIndividualSport ?? false;
+}
+
+export function isRacingSport(sportId: string): boolean {
+  const sport = getSportById(sportId);
+  return sport?.scoreFormat === 'racing' || sport?.scoreFormat === 'position';
 }
 
 export function formatScore(

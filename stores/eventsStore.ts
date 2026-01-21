@@ -227,20 +227,55 @@ export const useEventsStore = create<EventsState>((set, get) => ({
 
   deleteAttendedEvent: async (attendanceId) => {
     try {
+      console.log('[Events] Deleting attendance:', attendanceId);
+
+      // First verify the record exists and belongs to current user
+      const { data: { user } } = await supabase.auth.getUser();
+      console.log('[Events] Current user:', user?.id);
+
+      if (!user) {
+        return { success: false, error: 'You must be logged in to delete events' };
+      }
+
+      // Check if the record exists
+      const { data: existing, error: checkError } = await supabase
+        .from('attended_events')
+        .select('id, user_id')
+        .eq('id', attendanceId)
+        .single();
+
+      console.log('[Events] Existing record:', existing, 'Check error:', checkError);
+
+      if (checkError || !existing) {
+        return { success: false, error: 'Event not found' };
+      }
+
+      if (existing.user_id !== user.id) {
+        return { success: false, error: 'You can only delete your own events' };
+      }
+
+      // Now delete
       const { error } = await supabase
         .from('attended_events')
         .delete()
         .eq('id', attendanceId);
 
-      if (error) throw error;
+      console.log('[Events] Delete result - error:', error);
+
+      if (error) {
+        console.error('[Events] Delete error:', error);
+        throw error;
+      }
 
       // Update local state
       set((state) => ({
         attendedEvents: state.attendedEvents.filter((event) => event.id !== attendanceId),
       }));
 
+      console.log('[Events] Delete successful, local state updated');
       return { success: true };
     } catch (error) {
+      console.error('[Events] Delete failed:', error);
       return { success: false, error: (error as Error).message };
     }
   },

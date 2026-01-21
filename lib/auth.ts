@@ -1,5 +1,9 @@
+import { Platform } from 'react-native';
 import { supabase } from './supabase';
+import { storePendingProfile } from './pendingProfile';
 import type { AuthError, User } from '@supabase/supabase-js';
+
+const siteUrl = process.env.EXPO_PUBLIC_SITE_URL || 'https://stubbed.com.au';
 
 export interface AuthResult {
   user: User | null;
@@ -16,6 +20,10 @@ export async function signUp(
     dateOfBirth?: string;
   }
 ): Promise<AuthResult> {
+  const redirectTo = Platform.OS === 'web'
+    ? `${siteUrl}/auth/callback`
+    : 'stubbed://auth/callback';
+
   const { data, error } = await supabase.auth.signUp({
     email,
     password,
@@ -23,6 +31,7 @@ export async function signUp(
       data: {
         username,
       },
+      emailRedirectTo: redirectTo,
     },
   });
 
@@ -30,36 +39,14 @@ export async function signUp(
     return { user: null, error };
   }
 
-  // Create profile after successful signup
+  // Store profile data locally - it will be saved after email verification
   if (data.user) {
-    const displayName = profile?.firstName && profile?.lastName
-      ? `${profile.firstName} ${profile.lastName}`
-      : username;
-
-    // Convert DD-MM-YYYY to YYYY-MM-DD for PostgreSQL
-    let formattedDob: string | undefined;
-    if (profile?.dateOfBirth) {
-      const [day, month, year] = profile.dateOfBirth.split('-');
-      formattedDob = `${year}-${month}-${day}`;
-    }
-
-    const { error: profileError } = await supabase.from('profiles').upsert({
-      id: data.user.id,
+    await storePendingProfile({
       username,
-      display_name: displayName,
+      firstName: profile?.firstName,
+      lastName: profile?.lastName,
+      dateOfBirth: profile?.dateOfBirth,
       email,
-      first_name: profile?.firstName,
-      last_name: profile?.lastName,
-      date_of_birth: formattedDob,
-    }, { onConflict: 'id' });
-
-    if (profileError) {
-      console.error('Error creating profile:', profileError);
-    }
-
-    // Initialize user stats
-    await supabase.from('user_stats').insert({
-      user_id: data.user.id,
     });
   }
 
@@ -107,8 +94,12 @@ export async function signOut(): Promise<{ error: AuthError | null }> {
 export async function resetPassword(
   email: string
 ): Promise<{ error: AuthError | null }> {
+  const redirectTo = Platform.OS === 'web'
+    ? `${siteUrl}/auth/reset-password`
+    : 'stubbed://reset-password';
+
   const { error } = await supabase.auth.resetPasswordForEmail(email, {
-    redirectTo: 'stubbed://reset-password',
+    redirectTo,
   });
   return { error };
 }

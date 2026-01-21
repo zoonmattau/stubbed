@@ -18,8 +18,8 @@ import { supabase } from '@/lib/supabase';
 import { colors, spacing, fontSize, fontWeight, borderRadius } from '@/constants/theme';
 
 export default function EditProfileScreen() {
-  const { user, profile, fetchProfile } = useAuthStore();
-  const [isLoading, setIsLoading] = useState(false);
+  const { user, profile, fetchProfile, isLoading: authLoading } = useAuthStore();
+  const [isInitialLoading, setIsInitialLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
 
   const [displayName, setDisplayName] = useState('');
@@ -27,6 +27,16 @@ export default function EditProfileScreen() {
   const [bio, setBio] = useState('');
   const [favoriteSport, setFavoriteSport] = useState('');
   const [favoriteTeam, setFavoriteTeam] = useState('');
+
+  useEffect(() => {
+    const loadProfile = async () => {
+      if (!profile && user?.id) {
+        await fetchProfile();
+      }
+      setIsInitialLoading(false);
+    };
+    loadProfile();
+  }, [user?.id]);
 
   useEffect(() => {
     if (profile) {
@@ -97,10 +107,19 @@ export default function EditProfileScreen() {
     }
   };
 
-  if (!profile) {
+  if (isInitialLoading || authLoading) {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color={colors.primary} />
+      </View>
+    );
+  }
+
+  if (!profile) {
+    return (
+      <View style={styles.loadingContainer}>
+        <Text style={{ color: colors.text, marginBottom: spacing.md }}>Unable to load profile</Text>
+        <Button title="Go Back" onPress={() => router.back()} variant="outline" />
       </View>
     );
   }

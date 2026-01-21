@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -9,6 +9,8 @@ import {
   Alert,
   Platform,
   ActivityIndicator,
+  Modal,
+  Image,
 } from 'react-native';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -16,15 +18,16 @@ import { Card, Avatar, Badge, Button } from '@/components/ui';
 import { ProgressBar } from '@/components/stats';
 import { useAuthStore } from '@/stores/authStore';
 import { useStatsStore } from '@/stores/statsStore';
-import { useEventsStore } from '@/stores/eventsStore';
-import { seedDummyData } from '@/lib/seedDummyData';
+import { useFavoritesStore } from '@/stores/favoritesStore';
 import { colors, spacing, fontSize, fontWeight, borderRadius } from '@/constants/theme';
 
 export default function ProfileScreen() {
   const { user, profile, signOut } = useAuthStore();
   const { stats, achievements, isLoading: statsLoading, fetchStats, fetchAchievements } = useStatsStore();
-  const { fetchAttendedEvents } = useEventsStore();
-  const [isSeeding, setIsSeeding] = React.useState(false);
+  const { teams: favoriteTeams, addTeamManual, removeTeam } = useFavoritesStore();
+
+  const [showAddTeamModal, setShowAddTeamModal] = useState(false);
+  const [newTeamName, setNewTeamName] = useState('');
 
   useEffect(() => {
     if (user?.id) {
@@ -33,10 +36,47 @@ export default function ProfileScreen() {
     }
   }, [user?.id]);
 
+  const handleAddFavoriteTeam = () => {
+    if (!newTeamName.trim()) return;
+    addTeamManual({ name: newTeamName.trim() });
+    setNewTeamName('');
+    setShowAddTeamModal(false);
+  };
+
+  const handleRemoveFavoriteTeam = (teamId: string, teamName: string) => {
+    const doRemove = () => removeTeam(teamId);
+
+    if (Platform.OS === 'web') {
+      if (window.confirm(`Remove ${teamName} from your favorites?`)) {
+        doRemove();
+      }
+    } else {
+      Alert.alert(
+        'Remove Team',
+        `Remove ${teamName} from your favorites?`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Remove', style: 'destructive', onPress: doRemove },
+        ]
+      );
+    }
+  };
+
   const handleSignOut = async () => {
     const doSignOut = async () => {
-      await signOut();
-      router.replace('/(auth)/login');
+      try {
+        console.log('[Profile] Signing out...');
+        await signOut();
+        console.log('[Profile] Signed out, redirecting...');
+        router.replace('/(auth)/login');
+      } catch (error) {
+        console.error('[Profile] Sign out error:', error);
+        if (Platform.OS === 'web') {
+          window.alert('Failed to sign out. Please try again.');
+        } else {
+          Alert.alert('Error', 'Failed to sign out. Please try again.');
+        }
+      }
     };
 
     if (Platform.OS === 'web') {
@@ -56,70 +96,32 @@ export default function ProfileScreen() {
     }
   };
 
-  const handleSeedData = async () => {
-    if (!user?.id) {
-      if (Platform.OS === 'web') {
-        window.alert('You must be logged in to seed data');
-      } else {
-        Alert.alert('Error', 'You must be logged in to seed data');
-      }
-      return;
-    }
-
-    const doSeed = async () => {
-      setIsSeeding(true);
-      try {
-        const result = await seedDummyData(user.id);
-        if (result.success) {
-          // Refresh data
-          await Promise.all([
-            fetchStats(user.id),
-            fetchAchievements(user.id),
-            fetchAttendedEvents(user.id),
-          ]);
-          if (Platform.OS === 'web') {
-            window.alert(`Added ${result.eventsCreated} demo events to your account!`);
-          } else {
-            Alert.alert('Success', `Added ${result.eventsCreated} demo events to your account!`);
-          }
-        } else {
-          if (Platform.OS === 'web') {
-            window.alert('Failed to seed data. Please try again.');
-          } else {
-            Alert.alert('Error', 'Failed to seed data. Please try again.');
-          }
-        }
-      } catch (error) {
-        console.error('Seed error:', error);
-        if (Platform.OS === 'web') {
-          window.alert('Something went wrong. Please try again.');
-        } else {
-          Alert.alert('Error', 'Something went wrong. Please try again.');
-        }
-      } finally {
-        setIsSeeding(false);
-      }
-    };
-
-    if (Platform.OS === 'web') {
-      const confirmed = window.confirm('This will add 16 sample events to your account spanning the last 12 months. Continue?');
-      if (confirmed) {
-        doSeed();
-      }
-    } else {
-      Alert.alert(
-        'Seed Demo Data',
-        'This will add 16 sample events to your account spanning the last 12 months. Continue?',
-        [
-          { text: 'Cancel', style: 'cancel' },
-          { text: 'Add Demo Data', onPress: doSeed },
-        ]
-      );
-    }
-  };
-
   const unlockedAchievements = achievements.filter((a) => a.unlocked);
   const totalPoints = unlockedAchievements.reduce((sum, a) => sum + a.points, 0);
+
+  // Get best display name, avoiding generic app-related names
+  const getDisplayName = () => {
+    // Priority 1: first_name if it exists
+    if (profile?.first_name) {
+      return profile.first_name;
+    }
+
+    // Priority 2: display_name, but filter out generic names
+    if (profile?.display_name) {
+      const genericNames = ['sports', 'stubbed', 'user', 'tracker', 'app'];
+      const firstName = profile.display_name.split(' ')[0];
+      if (!genericNames.includes(firstName.toLowerCase())) {
+        return firstName;
+      }
+    }
+
+    // Priority 3: username
+    if (profile?.username) {
+      return profile.username;
+    }
+
+    return 'User';
+  };
 
   // Calculate level based on points
   const level = Math.floor(totalPoints / 100) + 1;
@@ -138,9 +140,9 @@ export default function ProfileScreen() {
           />
           <View style={styles.profileInfo}>
             <Text style={styles.displayName}>
-              {(profile?.display_name || 'Sports Fan').split(' ')[0]}
+              {getDisplayName()}
             </Text>
-            <Text style={styles.username}>@{profile?.username}</Text>
+            <Text style={styles.username}>@{profile?.username || 'unknown'}</Text>
             {profile?.bio && <Text style={styles.bio}>{profile.bio}</Text>}
           </View>
         </View>
@@ -279,6 +281,102 @@ export default function ProfileScreen() {
         </Card>
       </View>
 
+      {/* Favorite Teams */}
+      <View style={styles.section}>
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>Favorite Teams</Text>
+          <TouchableOpacity onPress={() => setShowAddTeamModal(true)}>
+            <Ionicons name="add-circle" size={24} color={colors.primary} />
+          </TouchableOpacity>
+        </View>
+        <Text style={styles.favoriteTeamsHint}>
+          Your supported team will be auto-selected when adding events
+        </Text>
+        <Card>
+          {favoriteTeams.length > 0 ? (
+            <View style={styles.favoriteTeamsList}>
+              {favoriteTeams.map((team) => (
+                <View key={team.id} style={styles.favoriteTeamItem}>
+                  {team.badge ? (
+                    <Image source={{ uri: team.badge }} style={styles.favoriteTeamBadge} />
+                  ) : (
+                    <View style={styles.favoriteTeamBadgePlaceholder}>
+                      <Ionicons name="shield" size={20} color={colors.primary} />
+                    </View>
+                  )}
+                  <View style={styles.favoriteTeamInfo}>
+                    <Text style={styles.favoriteTeamName}>{team.name}</Text>
+                    {team.sport && team.sport !== 'Unknown' && (
+                      <Text style={styles.favoriteTeamSport}>{team.sport}</Text>
+                    )}
+                  </View>
+                  <TouchableOpacity
+                    onPress={() => handleRemoveFavoriteTeam(team.id, team.name)}
+                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                  >
+                    <Ionicons name="close-circle" size={22} color={colors.error} />
+                  </TouchableOpacity>
+                </View>
+              ))}
+            </View>
+          ) : (
+            <View style={styles.emptyFavoriteTeams}>
+              <Ionicons name="heart-outline" size={32} color={colors.textMuted} />
+              <Text style={styles.emptyText}>
+                No favorite teams yet. Add teams to auto-select them when adding events!
+              </Text>
+            </View>
+          )}
+        </Card>
+      </View>
+
+      {/* Add Team Modal */}
+      <Modal
+        visible={showAddTeamModal}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setShowAddTeamModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Add Favorite Team</Text>
+              <TouchableOpacity onPress={() => setShowAddTeamModal(false)}>
+                <Ionicons name="close" size={24} color={colors.text} />
+              </TouchableOpacity>
+            </View>
+            <Text style={styles.modalHint}>
+              Enter the team name exactly as it appears in events
+            </Text>
+            <TextInput
+              style={styles.modalInput}
+              value={newTeamName}
+              onChangeText={setNewTeamName}
+              placeholder="e.g. Melbourne Storm, Collingwood"
+              placeholderTextColor={colors.textMuted}
+              autoFocus
+            />
+            <View style={styles.modalButtons}>
+              <Button
+                title="Cancel"
+                variant="outline"
+                onPress={() => {
+                  setNewTeamName('');
+                  setShowAddTeamModal(false);
+                }}
+                style={styles.modalButton}
+              />
+              <Button
+                title="Add Team"
+                onPress={handleAddFavoriteTeam}
+                disabled={!newTeamName.trim()}
+                style={styles.modalButton}
+              />
+            </View>
+          </View>
+        </View>
+      </Modal>
+
       {/* Menu Options */}
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Settings</Text>
@@ -298,20 +396,9 @@ export default function ProfileScreen() {
             <Text style={styles.menuItemText}>Help & Support</Text>
             <Ionicons name="chevron-forward" size={20} color={colors.textMuted} />
           </TouchableOpacity>
-          <TouchableOpacity style={styles.menuItem} onPress={() => router.push('/settings/about')}>
+          <TouchableOpacity style={[styles.menuItem, styles.menuItemLast]} onPress={() => router.push('/settings/about')}>
             <Ionicons name="information-circle-outline" size={22} color={colors.text} />
             <Text style={styles.menuItemText}>About</Text>
-            <Ionicons name="chevron-forward" size={20} color={colors.textMuted} />
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.menuItem, styles.menuItemLast]}
-            onPress={handleSeedData}
-            disabled={isSeeding}
-          >
-            <Ionicons name="flask-outline" size={22} color={colors.success} />
-            <Text style={styles.menuItemText}>
-              {isSeeding ? 'Adding Demo Data...' : 'Add Demo Data'}
-            </Text>
             <Ionicons name="chevron-forward" size={20} color={colors.textMuted} />
           </TouchableOpacity>
         </Card>
@@ -559,5 +646,97 @@ const styles = StyleSheet.create({
     fontSize: fontSize.sm,
     color: colors.textMuted,
     marginBottom: spacing.xl,
+  },
+  // Favorite Teams styles
+  favoriteTeamsHint: {
+    fontSize: fontSize.xs,
+    color: colors.textSecondary,
+    marginBottom: spacing.sm,
+  },
+  favoriteTeamsList: {
+    gap: spacing.sm,
+  },
+  favoriteTeamItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    paddingVertical: spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  favoriteTeamBadge: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+  },
+  favoriteTeamBadgePlaceholder: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: `${colors.primary}20`,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  favoriteTeamInfo: {
+    flex: 1,
+  },
+  favoriteTeamName: {
+    fontSize: fontSize.md,
+    fontWeight: fontWeight.medium,
+    color: colors.text,
+  },
+  favoriteTeamSport: {
+    fontSize: fontSize.xs,
+    color: colors.textSecondary,
+  },
+  emptyFavoriteTeams: {
+    alignItems: 'center',
+    padding: spacing.xl,
+  },
+  // Modal styles
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    padding: spacing.lg,
+  },
+  modalContent: {
+    backgroundColor: colors.background,
+    borderRadius: borderRadius.xl,
+    padding: spacing.lg,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: spacing.md,
+  },
+  modalTitle: {
+    fontSize: fontSize.lg,
+    fontWeight: fontWeight.bold,
+    color: colors.text,
+  },
+  modalHint: {
+    fontSize: fontSize.sm,
+    color: colors.textSecondary,
+    marginBottom: spacing.md,
+  },
+  modalInput: {
+    backgroundColor: colors.surface,
+    borderRadius: borderRadius.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.md,
+    fontSize: fontSize.md,
+    color: colors.text,
+    borderWidth: 1,
+    borderColor: colors.border,
+    marginBottom: spacing.lg,
+  },
+  modalButtons: {
+    flexDirection: 'row',
+    gap: spacing.md,
+  },
+  modalButton: {
+    flex: 1,
   },
 });

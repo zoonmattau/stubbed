@@ -9,6 +9,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   Image,
+  Switch,
 } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -19,9 +20,10 @@ import { Button, Input, Card, Badge } from '@/components/ui';
 import { UserTagPicker } from '@/components/social/UserTagPicker';
 import { useAuthStore } from '@/stores/authStore';
 import { useEventsStore } from '@/stores/eventsStore';
+import { useFavoritesStore } from '@/stores/favoritesStore';
 import { useEventInvitations } from '@/hooks/useEventInvitations';
 import { colors, spacing, fontSize, fontWeight, borderRadius } from '@/constants/theme';
-import { SPORTS } from '@/constants/sports';
+import { SPORTS, isIndividualSport, isRacingSport } from '@/constants/sports';
 import { pickImage, uploadEventPhoto } from '@/lib/storage';
 import type { ESPNSearchResult } from '@/lib/espn';
 
@@ -142,6 +144,7 @@ export default function ManualEventScreen() {
   }, [espnEvent]);
 
   const { createInvitations } = useEventInvitations();
+  const { isTeamNameFavorite } = useFavoritesStore();
 
   const [isLoading, setIsLoading] = useState(false);
   const [selectedSport, setSelectedSport] = useState<string>('');
@@ -151,6 +154,9 @@ export default function ManualEventScreen() {
   const [selectedFriendIds, setSelectedFriendIds] = useState<string[]>([]);
   const [textNames, setTextNames] = useState<string[]>([]);
   const [supportedTeam, setSupportedTeam] = useState<'home' | 'away' | 'neutral' | null>(null);
+  const [autoSetSupport, setAutoSetSupport] = useState(false); // Track if we auto-set
+  const [timeAmPm, setTimeAmPm] = useState<'AM' | 'PM'>('PM');
+  const [isAbandoned, setIsAbandoned] = useState(false);
 
   const handleBack = () => {
     if (router.canGoBack()) {
@@ -207,10 +213,20 @@ export default function ManualEventScreen() {
     formState: { errors },
     setValue,
     reset,
+    watch,
   } = useForm<EventForm>({
     resolver: zodResolver(eventSchema),
     defaultValues,
   });
+
+  // Watch team names for support section
+  const homeTeamName = watch('home_team');
+  const awayTeamName = watch('away_team');
+
+  // Determine if this is an individual sport (tennis, golf, mma)
+  const isIndividual = isIndividualSport(selectedSport);
+  const isRacing = isRacingSport(selectedSport);
+  const participantLabel = isIndividual ? 'Player' : 'Team';
 
   useEffect(() => {
     fetchSports();
@@ -228,6 +244,24 @@ export default function ManualEventScreen() {
     }
   }, [espnData, defaultValues, reset, setValue]);
 
+  // Auto-set supported team based on favorite teams
+  useEffect(() => {
+    // Only auto-set if user hasn't manually selected yet
+    if (supportedTeam && !autoSetSupport) return;
+
+    const homeFavorite = homeTeamName && isTeamNameFavorite(homeTeamName);
+    const awayFavorite = awayTeamName && isTeamNameFavorite(awayTeamName);
+
+    if (homeFavorite && !awayFavorite) {
+      setSupportedTeam('home');
+      setAutoSetSupport(true);
+    } else if (awayFavorite && !homeFavorite) {
+      setSupportedTeam('away');
+      setAutoSetSupport(true);
+    }
+    // If both are favorites or neither, don't auto-set
+  }, [homeTeamName, awayTeamName, isTeamNameFavorite]);
+
   const handleSelectSport = (sportId: string) => {
     setSelectedSport(sportId);
     setValue('sport_id', sportId);
@@ -244,6 +278,24 @@ export default function ManualEventScreen() {
     setPhotos(photos.filter((_, i) => i !== index));
   };
 
+  // Convert 12-hour time to 24-hour format
+  const convertTo24Hour = (time: string, amPm: 'AM' | 'PM'): string => {
+    if (!time) return '';
+    const [hourStr, minuteStr] = time.split(':');
+    let hour = parseInt(hourStr, 10);
+    const minute = minuteStr || '00';
+
+    if (isNaN(hour)) return time;
+
+    if (amPm === 'PM' && hour !== 12) {
+      hour += 12;
+    } else if (amPm === 'AM' && hour === 12) {
+      hour = 0;
+    }
+
+    return `${hour.toString().padStart(2, '0')}:${minute}`;
+  };
+
   const onSubmit = async (data: EventForm) => {
     if (!user?.id) {
       Alert.alert('Error', 'You must be logged in to add events');
@@ -253,6 +305,9 @@ export default function ManualEventScreen() {
     setIsLoading(true);
 
     try {
+      // Convert time to 24-hour format if provided
+      const formattedTime = data.event_time ? convertTo24Hour(data.event_time, timeAmPm) : null;
+
       // Upload photos first
       const photoUrls: string[] = [];
       for (const photoUri of photos) {
@@ -269,9 +324,12 @@ export default function ManualEventScreen() {
 
       // Determine winner and result from user's perspective
       let isDraw = false;
-      let userResult: 'win' | 'loss' | 'draw' | null = null;
+      let userResult: 'win' | 'loss' | 'draw' | 'no_result' | null = null;
 
-      if (data.home_score && data.away_score) {
+      // Check if match was abandoned/washed out
+      if (isAbandoned) {
+        userResult = 'no_result';
+      } else if (data.home_score && data.away_score) {
         const homeNum = parseInt(data.home_score, 10);
         const awayNum = parseInt(data.away_score, 10);
         if (!isNaN(homeNum) && !isNaN(awayNum)) {
@@ -294,15 +352,16 @@ export default function ManualEventScreen() {
         {
           sport_id: data.sport_id,
           event_date: data.event_date,
-          event_time: data.event_time || null,
+          event_time: formattedTime,
           home_team_name: data.home_team,
           away_team_name: data.away_team,
           venue_name: data.venue,
           competition: data.competition || null,
           round: data.round || null,
-          home_score: data.home_score || null,
-          away_score: data.away_score || null,
+          home_score: isAbandoned ? null : data.home_score || null,
+          away_score: isAbandoned ? null : data.away_score || null,
           is_draw: isDraw,
+          is_abandoned: isAbandoned,
         },
         {
           section: data.section || null,
@@ -330,11 +389,20 @@ export default function ManualEventScreen() {
       }
 
       if (result.success) {
-        Alert.alert('Success', 'Event added to your history!', [
-          { text: 'OK', onPress: handleBack },
-        ]);
+        if (Platform.OS === 'web') {
+          window.alert('Event added to your history!');
+          handleBack();
+        } else {
+          Alert.alert('Success', 'Event added to your history!', [
+            { text: 'OK', onPress: handleBack },
+          ]);
+        }
       } else {
-        Alert.alert('Error', result.error || 'Failed to add event');
+        if (Platform.OS === 'web') {
+          window.alert(result.error || 'Failed to add event');
+        } else {
+          Alert.alert('Error', result.error || 'Failed to add event');
+        }
       }
     } catch (error) {
       console.error('Error adding event:', error);
@@ -447,44 +515,82 @@ export default function ManualEventScreen() {
           )}
         </View>
 
-        {/* Teams */}
+        {/* Teams/Players/Race */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Match Details</Text>
-          <Controller
-            control={control}
-            name="home_team"
-            render={({ field: { onChange, onBlur, value } }) => (
-              <Input
-                label="Home Team *"
-                placeholder="Enter home team name"
-                value={value}
-                onChangeText={onChange}
-                onBlur={onBlur}
-                error={errors.home_team?.message}
+          <Text style={styles.sectionTitle}>
+            {isRacing ? 'Race Details' : isIndividual ? 'Match Details' : 'Match Details'}
+          </Text>
+          {isRacing ? (
+            <>
+              {/* Racing sports: Event name and optional position */}
+              <Controller
+                control={control}
+                name="home_team"
+                render={({ field: { onChange, onBlur, value } }) => (
+                  <Input
+                    label="Race/Event Name *"
+                    placeholder="e.g. Melbourne Cup, Race 7"
+                    value={value}
+                    onChangeText={onChange}
+                    onBlur={onBlur}
+                    error={errors.home_team?.message}
+                  />
+                )}
               />
-            )}
-          />
-          <Controller
-            control={control}
-            name="away_team"
-            render={({ field: { onChange, onBlur, value } }) => (
-              <Input
-                label="Away Team *"
-                placeholder="Enter away team name"
-                value={value}
-                onChangeText={onChange}
-                onBlur={onBlur}
-                error={errors.away_team?.message}
+              <Controller
+                control={control}
+                name="away_team"
+                render={({ field: { onChange, onBlur, value } }) => (
+                  <Input
+                    label="Your Selection (Optional)"
+                    placeholder="e.g. Horse/Driver name you backed"
+                    value={value}
+                    onChangeText={onChange}
+                    onBlur={onBlur}
+                  />
+                )}
               />
-            )}
-          />
+            </>
+          ) : (
+            <>
+              {/* Regular sports: Home/Away teams or Player 1/2 */}
+              <Controller
+                control={control}
+                name="home_team"
+                render={({ field: { onChange, onBlur, value } }) => (
+                  <Input
+                    label={isIndividual ? 'Player 1 *' : 'Home Team *'}
+                    placeholder={isIndividual ? 'Enter player name' : 'Enter home team name'}
+                    value={value}
+                    onChangeText={onChange}
+                    onBlur={onBlur}
+                    error={errors.home_team?.message}
+                  />
+                )}
+              />
+              <Controller
+                control={control}
+                name="away_team"
+                render={({ field: { onChange, onBlur, value } }) => (
+                  <Input
+                    label={isIndividual ? 'Player 2 *' : 'Away Team *'}
+                    placeholder={isIndividual ? 'Enter player name' : 'Enter away team name'}
+                    value={value}
+                    onChangeText={onChange}
+                    onBlur={onBlur}
+                    error={errors.away_team?.message}
+                  />
+                )}
+              />
+            </>
+          )}
           <Controller
             control={control}
             name="venue"
             render={({ field: { onChange, onBlur, value } }) => (
               <Input
-                label="Venue *"
-                placeholder="Enter venue name"
+                label={isRacing ? 'Track/Venue *' : 'Venue *'}
+                placeholder={isRacing ? 'e.g. Flemington, Randwick' : 'Enter venue name'}
                 value={value}
                 onChangeText={onChange}
                 onBlur={onBlur}
@@ -514,19 +620,49 @@ export default function ManualEventScreen() {
               />
             </View>
             <View style={styles.halfWidth}>
-              <Controller
-                control={control}
-                name="event_time"
-                render={({ field: { onChange, onBlur, value } }) => (
-                  <Input
-                    label="Time"
-                    placeholder="HH:MM"
-                    value={value}
-                    onChangeText={onChange}
-                    onBlur={onBlur}
-                  />
-                )}
-              />
+              <Text style={styles.timeLabel}>Time</Text>
+              <View style={styles.timeInputRow}>
+                <Controller
+                  control={control}
+                  name="event_time"
+                  render={({ field: { onChange, onBlur, value } }) => (
+                    <View style={styles.timeInputWrapper}>
+                      <Input
+                        placeholder="HH:MM"
+                        value={value}
+                        onChangeText={onChange}
+                        onBlur={onBlur}
+                      />
+                    </View>
+                  )}
+                />
+                <View style={styles.amPmInlineContainer}>
+                  <TouchableOpacity
+                    style={[
+                      styles.amPmInlineButton,
+                      timeAmPm === 'AM' && styles.amPmButtonActive,
+                    ]}
+                    onPress={() => setTimeAmPm('AM')}
+                  >
+                    <Text style={[
+                      styles.amPmText,
+                      timeAmPm === 'AM' && styles.amPmTextActive,
+                    ]}>AM</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[
+                      styles.amPmInlineButton,
+                      timeAmPm === 'PM' && styles.amPmButtonActive,
+                    ]}
+                    onPress={() => setTimeAmPm('PM')}
+                  >
+                    <Text style={[
+                      styles.amPmText,
+                      timeAmPm === 'PM' && styles.amPmTextActive,
+                    ]}>PM</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
             </View>
           </View>
         </View>
@@ -567,18 +703,18 @@ export default function ManualEventScreen() {
           </View>
         </View>
 
-        {/* Score */}
+        {/* Score / Result */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Final Score</Text>
-          <View style={styles.row}>
-            <View style={styles.halfWidth}>
+          <Text style={styles.sectionTitle}>{isRacing ? 'Result (Optional)' : 'Final Score'}</Text>
+          {isRacing ? (
+            <>
               <Controller
                 control={control}
                 name="home_score"
                 render={({ field: { onChange, onBlur, value } }) => (
                   <Input
-                    label="Home Score"
-                    placeholder="e.g. 85"
+                    label="Your Selection's Position"
+                    placeholder="e.g. 1st, 2nd, DNF (leave blank if unknown)"
                     value={value}
                     onChangeText={onChange}
                     onBlur={onBlur}
@@ -586,15 +722,17 @@ export default function ManualEventScreen() {
                   />
                 )}
               />
-            </View>
-            <View style={styles.halfWidth}>
+              <Text style={styles.helperText}>Leave blank if you don't know the result</Text>
+            </>
+          ) : selectedSport === 'tennis' ? (
+            <>
               <Controller
                 control={control}
-                name="away_score"
+                name="home_score"
                 render={({ field: { onChange, onBlur, value } }) => (
                   <Input
-                    label="Away Score"
-                    placeholder="e.g. 72"
+                    label="Match Score"
+                    placeholder="e.g. 6-4, 6-3, 7-5"
                     value={value}
                     onChangeText={onChange}
                     onBlur={onBlur}
@@ -602,69 +740,135 @@ export default function ManualEventScreen() {
                   />
                 )}
               />
+              <Text style={styles.helperText}>Enter the set scores (e.g. 6-4, 6-3 for a 2-set match)</Text>
+            </>
+          ) : (
+            <View style={styles.row}>
+              <View style={styles.halfWidth}>
+                <Controller
+                  control={control}
+                  name="home_score"
+                  render={({ field: { onChange, onBlur, value } }) => (
+                    <Input
+                      label={isIndividual ? 'Player 1 Score' : 'Home Score'}
+                      placeholder="e.g. 85"
+                      value={value}
+                      onChangeText={onChange}
+                      onBlur={onBlur}
+                      keyboardType="default"
+                    />
+                  )}
+                />
+              </View>
+              <View style={styles.halfWidth}>
+                <Controller
+                  control={control}
+                  name="away_score"
+                  render={({ field: { onChange, onBlur, value } }) => (
+                    <Input
+                      label={isIndividual ? 'Player 2 Score' : 'Away Score'}
+                      placeholder="e.g. 72"
+                      value={value}
+                      onChangeText={onChange}
+                      onBlur={onBlur}
+                      keyboardType="default"
+                    />
+                  )}
+                />
+              </View>
             </View>
-          </View>
+          )}
+
+          {/* Abandoned/Washed Out Toggle - only for non-racing sports */}
+          {!isRacing && (
+            <View style={styles.abandonedToggle}>
+              <View style={styles.abandonedInfo}>
+                <Text style={styles.abandonedLabel}>Match Abandoned / Washed Out</Text>
+                <Text style={styles.abandonedDescription}>
+                  {selectedSport === 'cricket' ? 'Rain delay, bad light, etc.' : 'Match did not complete'}
+                </Text>
+              </View>
+              <Switch
+                value={isAbandoned}
+                onValueChange={setIsAbandoned}
+                trackColor={{ false: colors.border, true: colors.primary }}
+                thumbColor={colors.white}
+              />
+            </View>
+          )}
         </View>
 
-        {/* Who Did You Support */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Who did you support?</Text>
-          <Text style={styles.supportSubtitle}>Earn bonus points when your team wins!</Text>
-          <View style={styles.supportOptions}>
-            <TouchableOpacity
-              style={[
-                styles.supportOption,
-                supportedTeam === 'home' && styles.supportOptionActive,
-              ]}
-              onPress={() => setSupportedTeam('home')}
-            >
-              <Ionicons
-                name="home"
-                size={20}
-                color={supportedTeam === 'home' ? colors.white : colors.text}
-              />
-              <Text style={[
-                styles.supportOptionText,
-                supportedTeam === 'home' && styles.supportOptionTextActive,
-              ]}>Home Team</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[
-                styles.supportOption,
-                supportedTeam === 'away' && styles.supportOptionActive,
-              ]}
-              onPress={() => setSupportedTeam('away')}
-            >
-              <Ionicons
-                name="airplane"
-                size={20}
-                color={supportedTeam === 'away' ? colors.white : colors.text}
-              />
-              <Text style={[
-                styles.supportOptionText,
-                supportedTeam === 'away' && styles.supportOptionTextActive,
-              ]}>Away Team</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[
-                styles.supportOption,
-                supportedTeam === 'neutral' && styles.supportOptionActive,
-                supportedTeam === 'neutral' && styles.supportOptionNeutral,
-              ]}
-              onPress={() => setSupportedTeam('neutral')}
-            >
-              <Ionicons
-                name="eye"
-                size={20}
-                color={supportedTeam === 'neutral' ? colors.white : colors.text}
-              />
-              <Text style={[
-                styles.supportOptionText,
-                supportedTeam === 'neutral' && styles.supportOptionTextActive,
-              ]}>Neutral</Text>
-            </TouchableOpacity>
+        {/* Who Did You Support - hidden for racing sports */}
+        {!isRacing && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Who did you support?</Text>
+            <Text style={styles.supportSubtitle}>
+              {isIndividual ? 'Earn bonus points when your player wins!' : 'Earn bonus points when your team wins!'}
+            </Text>
+            {autoSetSupport && supportedTeam && supportedTeam !== 'neutral' && (
+              <View style={styles.autoSelectHint}>
+                <Ionicons name="heart" size={14} color={colors.primary} />
+                <Text style={styles.autoSelectHintText}>
+                  Auto-selected from your favorite teams
+                </Text>
+              </View>
+            )}
+            <View style={styles.supportOptions}>
+              <TouchableOpacity
+                style={[
+                  styles.supportOption,
+                  supportedTeam === 'home' && styles.supportOptionActive,
+                ]}
+                onPress={() => { setSupportedTeam('home'); setAutoSetSupport(false); }}
+              >
+                <Ionicons
+                  name={isIndividual ? 'person' : 'home'}
+                  size={20}
+                  color={supportedTeam === 'home' ? colors.white : colors.text}
+                />
+                <Text style={[
+                  styles.supportOptionText,
+                  supportedTeam === 'home' && styles.supportOptionTextActive,
+                ]} numberOfLines={1}>{homeTeamName || (isIndividual ? 'Player 1' : 'Home')}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.supportOption,
+                  supportedTeam === 'away' && styles.supportOptionActive,
+                ]}
+                onPress={() => { setSupportedTeam('away'); setAutoSetSupport(false); }}
+              >
+                <Ionicons
+                  name={isIndividual ? 'person-outline' : 'airplane'}
+                  size={20}
+                  color={supportedTeam === 'away' ? colors.white : colors.text}
+                />
+                <Text style={[
+                  styles.supportOptionText,
+                  supportedTeam === 'away' && styles.supportOptionTextActive,
+                ]} numberOfLines={1}>{awayTeamName || (isIndividual ? 'Player 2' : 'Away')}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.supportOption,
+                  supportedTeam === 'neutral' && styles.supportOptionActive,
+                  supportedTeam === 'neutral' && styles.supportOptionNeutral,
+                ]}
+                onPress={() => { setSupportedTeam('neutral'); setAutoSetSupport(false); }}
+              >
+                <Ionicons
+                  name="eye"
+                  size={20}
+                  color={supportedTeam === 'neutral' ? colors.white : colors.text}
+                />
+                <Text style={[
+                  styles.supportOptionText,
+                  supportedTeam === 'neutral' && styles.supportOptionTextActive,
+                ]}>Neutral</Text>
+              </TouchableOpacity>
+            </View>
           </View>
-        </View>
+        )}
 
         {/* Your Experience */}
         <View style={styles.section}>
@@ -808,6 +1012,11 @@ const styles = StyleSheet.create({
     fontWeight: fontWeight.semibold,
     color: colors.text,
     marginBottom: spacing.md,
+  },
+  helperText: {
+    fontSize: fontSize.xs,
+    color: colors.textMuted,
+    marginTop: spacing.xs,
   },
   sportsList: {
     flexDirection: 'row',
@@ -958,6 +1167,22 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     marginBottom: spacing.md,
   },
+  autoSelectHint: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    marginBottom: spacing.md,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    backgroundColor: `${colors.primary}15`,
+    borderRadius: borderRadius.sm,
+    alignSelf: 'flex-start',
+  },
+  autoSelectHintText: {
+    fontSize: fontSize.xs,
+    color: colors.primary,
+    fontWeight: fontWeight.medium,
+  },
   supportOptions: {
     flexDirection: 'row',
     gap: spacing.sm,
@@ -989,5 +1214,82 @@ const styles = StyleSheet.create({
   },
   supportOptionTextActive: {
     color: colors.white,
+  },
+  timeLabel: {
+    fontSize: fontSize.sm,
+    fontWeight: fontWeight.medium,
+    color: colors.textSecondary,
+    marginBottom: spacing.xs,
+  },
+  timeInputRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.xs,
+  },
+  timeInputWrapper: {
+    flex: 1,
+  },
+  amPmContainer: {
+    flexDirection: 'row',
+    gap: spacing.xs,
+    marginTop: spacing.sm,
+  },
+  amPmInlineContainer: {
+    flexDirection: 'row',
+    gap: 2,
+  },
+  amPmButton: {
+    flex: 1,
+    paddingVertical: spacing.sm,
+    borderRadius: borderRadius.md,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignItems: 'center',
+  },
+  amPmInlineButton: {
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.sm,
+    borderRadius: borderRadius.md,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignItems: 'center',
+  },
+  amPmButtonActive: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  amPmText: {
+    fontSize: fontSize.sm,
+    fontWeight: fontWeight.medium,
+    color: colors.textSecondary,
+  },
+  amPmTextActive: {
+    color: colors.white,
+  },
+  abandonedToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.md,
+    backgroundColor: colors.surfaceLight,
+    borderRadius: borderRadius.lg,
+    marginTop: spacing.md,
+  },
+  abandonedInfo: {
+    flex: 1,
+    marginRight: spacing.md,
+  },
+  abandonedLabel: {
+    fontSize: fontSize.md,
+    fontWeight: fontWeight.medium,
+    color: colors.text,
+  },
+  abandonedDescription: {
+    fontSize: fontSize.xs,
+    color: colors.textSecondary,
+    marginTop: 2,
   },
 });

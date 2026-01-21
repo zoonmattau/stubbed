@@ -34,8 +34,11 @@ interface FavoritesState {
 
   // Team actions
   addTeam: (team: SportsDBTeamResult) => void;
+  addTeamManual: (team: { name: string; sport?: string; league?: string; badge?: string }) => void;
   removeTeam: (teamId: string) => void;
   isTeamFavorite: (teamId: string) => boolean;
+  isTeamNameFavorite: (teamName: string) => boolean;
+  findFavoriteTeamByName: (teamName: string) => FavoriteTeam | undefined;
 
   // Utility
   clearAll: () => void;
@@ -95,6 +98,27 @@ export const useFavoritesStore = create<FavoritesState>()(
         }));
       },
 
+      addTeamManual: (team) => {
+        // Check if team with same name already exists
+        const existing = get().teams.find(
+          (t) => t.name.toLowerCase() === team.name.toLowerCase()
+        );
+        if (existing) return;
+
+        const favorite: FavoriteTeam = {
+          id: `manual_${Date.now()}`,
+          name: team.name,
+          sport: team.sport || 'Unknown',
+          league: team.league || '',
+          badge: team.badge,
+          addedAt: Date.now(),
+        };
+
+        set((state) => ({
+          teams: [favorite, ...state.teams],
+        }));
+      },
+
       removeTeam: (teamId) => {
         set((state) => ({
           teams: state.teams.filter((t) => t.id !== teamId),
@@ -103,6 +127,16 @@ export const useFavoritesStore = create<FavoritesState>()(
 
       isTeamFavorite: (teamId) => {
         return get().teams.some((t) => t.id === teamId);
+      },
+
+      isTeamNameFavorite: (teamName) => {
+        const normalizedName = teamName.toLowerCase().trim();
+        return get().teams.some((t) => t.name.toLowerCase().trim() === normalizedName);
+      },
+
+      findFavoriteTeamByName: (teamName) => {
+        const normalizedName = teamName.toLowerCase().trim();
+        return get().teams.find((t) => t.name.toLowerCase().trim() === normalizedName);
       },
 
       clearAll: () => {

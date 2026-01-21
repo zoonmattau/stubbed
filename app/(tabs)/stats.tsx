@@ -24,7 +24,7 @@ import type { AttendedEventWithDetails } from '@/types';
 
 const { width } = Dimensions.get('window');
 
-type FilterType = 'wins' | 'draws' | 'losses' | 'month' | null;
+type FilterType = 'wins' | 'draws' | 'losses' | 'month' | 'sport' | 'team' | 'venue' | null;
 
 export default function StatsScreen() {
   const { user } = useAuthStore();
@@ -56,31 +56,20 @@ export default function StatsScreen() {
     setRefreshing(false);
   };
 
-  // Calculate win/loss/draw stats from attended events
+  // Calculate win/loss/draw stats from attended events using the result field
   const winLossStats = React.useMemo(() => {
     let wins = 0;
     let losses = 0;
     let draws = 0;
 
     attendedEvents.forEach((attended) => {
-      const event = attended.event;
-      if (!event) return;
-
-      if (event.is_draw) {
-        draws++;
-      } else if (event.winner_team_id) {
+      // Use the result field which properly tracks based on supported team
+      if (attended.result === 'win') {
         wins++;
-      } else if (event.home_score && event.away_score) {
-        // Has scores but no winner_team_id set
-        const homeScore = parseInt(event.home_score, 10);
-        const awayScore = parseInt(event.away_score, 10);
-        if (!isNaN(homeScore) && !isNaN(awayScore)) {
-          if (homeScore === awayScore) {
-            draws++;
-          } else {
-            wins++; // Count as a win since we saw a result
-          }
-        }
+      } else if (attended.result === 'loss') {
+        losses++;
+      } else if (attended.result === 'draw') {
+        draws++;
       }
     });
 
@@ -88,34 +77,27 @@ export default function StatsScreen() {
     return { wins, losses, draws, total };
   }, [attendedEvents]);
 
-  // Get events filtered by result type
+  // Get events filtered by result type using the result field
   const getEventsByResult = (type: 'wins' | 'draws' | 'losses'): AttendedEventWithDetails[] => {
     return attendedEvents.filter((attended) => {
-      const event = attended.event;
-      if (!event) return false;
-
-      if (type === 'draws') {
-        if (event.is_draw) return true;
-        if (event.home_score && event.away_score) {
-          const homeScore = parseInt(event.home_score, 10);
-          const awayScore = parseInt(event.away_score, 10);
-          return !isNaN(homeScore) && !isNaN(awayScore) && homeScore === awayScore;
-        }
-        return false;
-      }
-
-      if (type === 'wins') {
-        if (event.winner_team_id) return true;
-        if (event.home_score && event.away_score && !event.is_draw) {
-          const homeScore = parseInt(event.home_score, 10);
-          const awayScore = parseInt(event.away_score, 10);
-          return !isNaN(homeScore) && !isNaN(awayScore) && homeScore !== awayScore;
-        }
-        return false;
-      }
-
+      if (type === 'wins') return attended.result === 'win';
+      if (type === 'losses') return attended.result === 'loss';
+      if (type === 'draws') return attended.result === 'draw';
       return false;
     });
+  };
+
+  // Helper to get the supported team name for an event
+  const getSupportedTeamName = (attended: AttendedEventWithDetails): string | null => {
+    if (!attended.supported_team || attended.supported_team === 'neutral') return null;
+    const event = attended.event;
+    if (!event) return null;
+
+    if (attended.supported_team === 'home') {
+      return event.home_team?.short_name || event.home_team?.name || 'Home';
+    } else {
+      return event.away_team?.short_name || event.away_team?.name || 'Away';
+    }
   };
 
   // Get events filtered by month
@@ -130,10 +112,44 @@ export default function StatsScreen() {
   };
 
   // Get filtered events based on current filter
+  // Get events filtered by sport
+  const getEventsBySport = (sportName: string): AttendedEventWithDetails[] => {
+    return attendedEvents.filter((attended) => {
+      return attended.event?.sport?.name?.toLowerCase() === sportName.toLowerCase();
+    });
+  };
+
+  // Get events filtered by team
+  const getEventsByTeam = (teamName: string): AttendedEventWithDetails[] => {
+    return attendedEvents.filter((attended) => {
+      const event = attended.event;
+      if (!event) return false;
+      const homeTeam = event.home_team?.name?.toLowerCase() || '';
+      const awayTeam = event.away_team?.name?.toLowerCase() || '';
+      return homeTeam === teamName.toLowerCase() || awayTeam === teamName.toLowerCase();
+    });
+  };
+
+  // Get events filtered by venue
+  const getEventsByVenue = (venueName: string): AttendedEventWithDetails[] => {
+    return attendedEvents.filter((attended) => {
+      return attended.event?.venue?.name?.toLowerCase() === venueName.toLowerCase();
+    });
+  };
+
   const filteredEvents = useMemo(() => {
     if (!filterType || !filterValue) return [];
     if (filterType === 'month') {
       return getEventsByMonth(filterValue);
+    }
+    if (filterType === 'sport') {
+      return getEventsBySport(filterValue);
+    }
+    if (filterType === 'team') {
+      return getEventsByTeam(filterValue);
+    }
+    if (filterType === 'venue') {
+      return getEventsByVenue(filterValue);
     }
     return getEventsByResult(filterType as 'wins' | 'draws' | 'losses');
   }, [filterType, filterValue, attendedEvents]);
@@ -143,6 +159,9 @@ export default function StatsScreen() {
     if (filterType === 'wins') return 'Wins';
     if (filterType === 'draws') return 'Draws';
     if (filterType === 'losses') return 'Losses';
+    if (filterType === 'sport') return filterValue || 'Sport';
+    if (filterType === 'team') return filterValue || 'Team';
+    if (filterType === 'venue') return filterValue || 'Venue';
     if (filterType === 'month' && filterValue) {
       const [year, month] = filterValue.split('-');
       const date = new Date(parseInt(year), parseInt(month) - 1);
@@ -391,13 +410,14 @@ export default function StatsScreen() {
       {/* Sports Breakdown - Visual Chart */}
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Events by Sport</Text>
-        <Text style={styles.sectionSubtitle}>Breakdown of all sports you've attended</Text>
+        <Text style={styles.sectionSubtitle}>Tap a sport to see those events</Text>
         <Card>
           {sportDonutData.length > 0 ? (
             <DonutChart
               data={sportDonutData}
               centerValue={stats?.total_events || attendedEvents.length}
               centerLabel="total events"
+              onSegmentPress={(segment) => openFilter('sport', segment.label)}
             />
           ) : (
             <View style={styles.emptyBreakdown}>
@@ -424,7 +444,7 @@ export default function StatsScreen() {
             <InteractiveBarChart
               data={teamChartData}
               maxItems={5}
-              onItemPress={() => router.push('/stats/teams')}
+              onItemPress={(item) => openFilter('team', item.label)}
               onSeeAllPress={() => router.push('/stats/teams')}
               showSeeAll={teamBreakdown.length > 5}
             />
@@ -453,7 +473,7 @@ export default function StatsScreen() {
             <InteractiveBarChart
               data={venueChartData}
               maxItems={5}
-              onItemPress={() => router.push('/stats/venues')}
+              onItemPress={(item) => openFilter('venue', item.label)}
               onSeeAllPress={() => router.push('/stats/venues')}
               showSeeAll={venueBreakdown.length > 5}
             />
@@ -479,18 +499,14 @@ export default function StatsScreen() {
         </TouchableOpacity>
         <Card onPress={() => router.push('/stats/map')}>
           <View style={styles.mapPreview}>
-            <Ionicons name="globe-outline" size={48} color={colors.primary} />
-            <Text style={styles.mapPreviewText}>
-              View your events by location
-            </Text>
-            <View style={styles.mapPreviewStats}>
-              <View style={styles.mapPreviewStat}>
-                <Ionicons name="flag" size={16} color={colors.info} />
-                <Text style={styles.mapPreviewStatText}>
-                  {new Set(attendedEvents.map(e => e.event?.venue?.city).filter(Boolean)).size} cities
-                </Text>
-              </View>
+            <Ionicons name="globe-outline" size={32} color={colors.primary} />
+            <View style={styles.mapPreviewContent}>
+              <Text style={styles.mapPreviewText}>View your events by location</Text>
+              <Text style={styles.mapPreviewStatText}>
+                {new Set(attendedEvents.map(e => e.event?.venue?.city).filter(Boolean)).size} cities visited
+              </Text>
             </View>
+            <Ionicons name="chevron-forward" size={20} color={colors.textMuted} />
           </View>
         </Card>
       </View>
@@ -557,9 +573,28 @@ export default function StatsScreen() {
                         <Text style={styles.modalEventLeague} numberOfLines={1}>{event.competition}</Text>
                       )}
                     </View>
-                    <Text style={styles.modalEventTeams} numberOfLines={1}>
-                      {event.home_team?.short_name || event.home_team?.name || 'Home'} vs {event.away_team?.short_name || event.away_team?.name || 'Away'}
-                    </Text>
+                    <View style={styles.modalTeamsRow}>
+                      <Text style={[
+                        styles.modalEventTeam,
+                        item.supported_team === 'home' && styles.modalEventTeamSupported
+                      ]} numberOfLines={1}>
+                        {event.home_team?.short_name || event.home_team?.name || 'Home'}
+                        {item.supported_team === 'home' && ' ★'}
+                      </Text>
+                      <Text style={styles.modalVsText}> vs </Text>
+                      <Text style={[
+                        styles.modalEventTeam,
+                        item.supported_team === 'away' && styles.modalEventTeamSupported
+                      ]} numberOfLines={1}>
+                        {event.away_team?.short_name || event.away_team?.name || 'Away'}
+                        {item.supported_team === 'away' && ' ★'}
+                      </Text>
+                    </View>
+                    {item.supported_team && item.supported_team !== 'neutral' && (
+                      <Text style={styles.supportedTeamLabel}>
+                        Supporting: {getSupportedTeamName(item)}
+                      </Text>
+                    )}
                     <View style={styles.modalEventBottom}>
                       {(event.home_score !== null && event.away_score !== null) && (
                         <Text style={styles.modalEventScore}>{event.home_score} - {event.away_score}</Text>
@@ -724,28 +759,23 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
   },
   mapPreview: {
+    flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: spacing.lg,
+    padding: spacing.md,
+    gap: spacing.md,
+  },
+  mapPreviewContent: {
+    flex: 1,
   },
   mapPreviewText: {
     fontSize: fontSize.md,
     color: colors.text,
-    marginTop: spacing.md,
     fontWeight: fontWeight.medium,
-  },
-  mapPreviewStats: {
-    flexDirection: 'row',
-    gap: spacing.lg,
-    marginTop: spacing.md,
-  },
-  mapPreviewStat: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs,
   },
   mapPreviewStatText: {
     fontSize: fontSize.sm,
     color: colors.textSecondary,
+    marginTop: 2,
   },
   // Modal styles
   modalContainer: {
@@ -808,6 +838,30 @@ const styles = StyleSheet.create({
     fontSize: fontSize.md,
     fontWeight: fontWeight.semibold,
     color: colors.text,
+    marginBottom: spacing.xs,
+  },
+  modalTeamsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    marginBottom: spacing.xs,
+  },
+  modalEventTeam: {
+    fontSize: fontSize.md,
+    fontWeight: fontWeight.medium,
+    color: colors.text,
+  },
+  modalEventTeamSupported: {
+    fontWeight: fontWeight.bold,
+    color: colors.primary,
+  },
+  modalVsText: {
+    fontSize: fontSize.md,
+    color: colors.textSecondary,
+  },
+  supportedTeamLabel: {
+    fontSize: fontSize.xs,
+    color: colors.primary,
     marginBottom: spacing.xs,
   },
   modalEventBottom: {

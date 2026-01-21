@@ -46,6 +46,8 @@ export default function RegisterScreen() {
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [emailSent, setEmailSent] = useState(false);
+  const [registeredEmail, setRegisteredEmail] = useState('');
 
   const handleBack = () => {
     if (router.canGoBack()) {
@@ -88,8 +90,36 @@ export default function RegisterScreen() {
       return;
     }
 
-    router.replace('/(tabs)');
+    setRegisteredEmail(data.email);
+    setEmailSent(true);
+    setIsLoading(false);
   };
+
+  if (emailSent) {
+    return (
+      <View style={styles.container}>
+        <View style={styles.confirmationContainer}>
+          <View style={styles.iconContainer}>
+            <Ionicons name="mail" size={64} color={colors.primary} />
+          </View>
+          <Text style={styles.confirmationTitle}>Check Your Email</Text>
+          <Text style={styles.confirmationText}>
+            We've sent a confirmation link to{'\n'}
+            <Text style={styles.emailHighlight}>{registeredEmail}</Text>
+          </Text>
+          <Text style={styles.confirmationSubtext}>
+            Click the link in the email to verify your account and complete registration.
+          </Text>
+          <Button
+            title="Back to Login"
+            onPress={() => router.replace('/(auth)/login')}
+            size="lg"
+            style={styles.confirmationButton}
+          />
+        </View>
+      </View>
+    );
+  }
 
   return (
     <KeyboardAvoidingView
@@ -376,5 +406,49 @@ const styles = StyleSheet.create({
     color: colors.primary,
     fontSize: fontSize.md,
     fontWeight: fontWeight.semibold,
+  },
+  confirmationContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: spacing.xl,
+  },
+  iconContainer: {
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    backgroundColor: `${colors.primary}20`,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: spacing.xl,
+  },
+  confirmationTitle: {
+    fontSize: fontSize['2xl'],
+    fontWeight: fontWeight.bold,
+    color: colors.text,
+    marginBottom: spacing.md,
+    textAlign: 'center',
+  },
+  confirmationText: {
+    fontSize: fontSize.md,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    marginBottom: spacing.sm,
+    lineHeight: 24,
+  },
+  emailHighlight: {
+    color: colors.primary,
+    fontWeight: fontWeight.semibold,
+  },
+  confirmationSubtext: {
+    fontSize: fontSize.sm,
+    color: colors.textMuted,
+    textAlign: 'center',
+    marginBottom: spacing['2xl'],
+    paddingHorizontal: spacing.lg,
+    lineHeight: 20,
+  },
+  confirmationButton: {
+    width: '100%',
   },
 });

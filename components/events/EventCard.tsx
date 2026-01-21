@@ -122,9 +122,6 @@ export function EventCard({ event, attendance, onPress, compact = false, mini = 
                             {inn}
                           </Text>
                         ))}
-                        <Text style={[styles.miniCricketTotal, homeWon && styles.miniCricketTotalWinner]}>
-                          ({homeScoreData.total})
-                        </Text>
                       </View>
                       <Text style={styles.miniCricketDivider}>v</Text>
                       <View style={styles.miniCricketScoreColumn}>
@@ -133,9 +130,6 @@ export function EventCard({ event, attendance, onPress, compact = false, mini = 
                             {inn}
                           </Text>
                         ))}
-                        <Text style={[styles.miniCricketTotal, awayWon && styles.miniCricketTotalWinner]}>
-                          ({awayScoreData.total})
-                        </Text>
                       </View>
                     </View>
                   ) : (
@@ -183,17 +177,9 @@ export function EventCard({ event, attendance, onPress, compact = false, mini = 
             </View>
           </View>
 
-          {/* Bottom row - Venue and rating */}
+          {/* Bottom row - Rating on left, Venue on right */}
           <View style={styles.miniFooter}>
-            {event.venue?.name ? (
-              <View style={styles.miniVenue}>
-                <Ionicons name="location" size={12} color={colors.textSecondary} />
-                <Text style={styles.miniVenueText} numberOfLines={1}>{event.venue.name}</Text>
-              </View>
-            ) : (
-              <View />
-            )}
-            {attendance?.rating && (
+            {attendance?.rating ? (
               <View style={styles.miniRating}>
                 {[1, 2, 3, 4, 5].map((star) => {
                   const fullStar = star <= Math.floor(attendance.rating!);
@@ -208,12 +194,52 @@ export function EventCard({ event, attendance, onPress, compact = false, mini = 
                   );
                 })}
               </View>
+            ) : (
+              <View />
+            )}
+            {event.venue?.name ? (
+              <View style={styles.miniVenue}>
+                <Ionicons name="location" size={12} color={colors.textSecondary} />
+                <Text style={styles.miniVenueText} numberOfLines={1}>{event.venue.name}</Text>
+              </View>
+            ) : (
+              <View />
             )}
           </View>
         </View>
       </Card>
     );
   }
+
+  // Regular card - calculate winner info
+  const isCricketRegular = event.sport?.name?.toLowerCase() === 'cricket';
+  const parseScoreRegular = (score: string | number | null | undefined): number => {
+    if (score === null || score === undefined) return 0;
+    const scoreStr = String(score);
+    if (isCricketRegular) {
+      if (scoreStr.includes('+')) {
+        return scoreStr.split('+').reduce((total, inning) => {
+          const runs = inning.includes('/') ? parseInt(inning.split('/')[0], 10) : parseInt(inning, 10);
+          return total + (runs || 0);
+        }, 0);
+      }
+      if (scoreStr.includes('/')) {
+        return parseInt(scoreStr.split('/')[0], 10) || 0;
+      }
+    }
+    return parseInt(scoreStr, 10) || 0;
+  };
+
+  const homeScoreNumRegular = parseScoreRegular(event.home_score);
+  const awayScoreNumRegular = parseScoreRegular(event.away_score);
+  const hasScoreRegular = event.home_score !== null && event.away_score !== null;
+  const homeWonRegular = hasScoreRegular && homeScoreNumRegular > awayScoreNumRegular;
+  const awayWonRegular = hasScoreRegular && awayScoreNumRegular > homeScoreNumRegular;
+  const isDrawRegular = hasScoreRegular && homeScoreNumRegular === awayScoreNumRegular;
+  const marginRegular = Math.abs(homeScoreNumRegular - awayScoreNumRegular);
+  const winnerNameRegular = homeWonRegular
+    ? (event.home_team?.short_name || event.home_team?.name || 'Home')
+    : (event.away_team?.short_name || event.away_team?.name || 'Away');
 
   return (
     <Card onPress={onPress} style={styles.container}>
@@ -247,17 +273,21 @@ export function EventCard({ event, attendance, onPress, compact = false, mini = 
                 </Text>
               </View>
             )}
-            <Text style={styles.teamName} numberOfLines={1}>
+            <Text style={[styles.teamName, homeWonRegular && styles.teamNameWinner]} numberOfLines={1}>
               {event.home_team?.name || 'Home Team'}
             </Text>
           </View>
 
           <View style={styles.scoreContainer}>
-            {event.home_score && event.away_score ? (
+            {hasScoreRegular ? (
               <>
-                <Text style={styles.score}>{event.home_score}</Text>
+                <Text style={[styles.score, homeWonRegular && styles.scoreWinner, awayWonRegular && styles.scoreLoser]}>
+                  {event.home_score}
+                </Text>
                 <Text style={styles.scoreDivider}>-</Text>
-                <Text style={styles.score}>{event.away_score}</Text>
+                <Text style={[styles.score, awayWonRegular && styles.scoreWinner, homeWonRegular && styles.scoreLoser]}>
+                  {event.away_score}
+                </Text>
               </>
             ) : (
               <Text style={styles.vs}>vs</Text>
@@ -277,11 +307,20 @@ export function EventCard({ event, attendance, onPress, compact = false, mini = 
                 </Text>
               </View>
             )}
-            <Text style={styles.teamName} numberOfLines={1}>
+            <Text style={[styles.teamName, awayWonRegular && styles.teamNameWinner]} numberOfLines={1}>
               {event.away_team?.name || 'Away Team'}
             </Text>
           </View>
         </View>
+
+        {/* Result message */}
+        {hasScoreRegular && (
+          <View style={styles.resultContainer}>
+            <Text style={styles.resultText}>
+              {isDrawRegular ? 'Draw' : `${winnerNameRegular} won by ${marginRegular}${isCricketRegular ? ' runs' : ''}`}
+            </Text>
+          </View>
+        )}
 
         {!compact && (event.event_time || event.venue?.name) && (
           <View style={styles.details}>
@@ -495,12 +534,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.xs,
-    flex: 1,
+    justifyContent: 'flex-end',
   },
   miniVenueText: {
     fontSize: fontSize.xs,
     color: colors.textSecondary,
-    flex: 1,
+    textAlign: 'right',
   },
   miniRating: {
     flexDirection: 'row',
@@ -576,6 +615,10 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     fontWeight: fontWeight.medium,
   },
+  teamNameWinner: {
+    fontWeight: fontWeight.bold,
+    color: colors.primary,
+  },
   scoreContainer: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -586,6 +629,12 @@ const styles = StyleSheet.create({
     fontWeight: fontWeight.bold,
     color: colors.text,
   },
+  scoreWinner: {
+    color: colors.primary,
+  },
+  scoreLoser: {
+    color: colors.textMuted,
+  },
   scoreDivider: {
     fontSize: fontSize.xl,
     color: colors.textSecondary,
@@ -593,6 +642,15 @@ const styles = StyleSheet.create({
   },
   vs: {
     fontSize: fontSize.lg,
+    color: colors.textSecondary,
+    fontWeight: fontWeight.medium,
+  },
+  resultContainer: {
+    alignItems: 'center',
+    marginTop: spacing.sm,
+  },
+  resultText: {
+    fontSize: fontSize.xs,
     color: colors.textSecondary,
     fontWeight: fontWeight.medium,
   },
