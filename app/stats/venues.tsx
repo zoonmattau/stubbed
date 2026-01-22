@@ -248,7 +248,7 @@ export default function VenuesStatsScreen() {
               renderItem={({ item }) => (
                 <TouchableOpacity
                   style={styles.eventItem}
-                  onPress={() => handleEventPress(item.id)}
+                  onPress={() => handleEventPress(item.event_id)}
                   activeOpacity={0.7}
                 >
                   <View style={styles.eventInfo}>

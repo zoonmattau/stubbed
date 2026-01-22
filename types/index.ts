@@ -104,6 +104,22 @@ export interface AttendedEvent {
   supported_team: 'home' | 'away' | 'neutral' | null;
   result: 'win' | 'loss' | 'draw' | 'no_result' | null;
   created_at: string;
+  // User-submitted event data for consensus
+  submitted_home_score?: string | null;
+  submitted_away_score?: string | null;
+  submitted_round?: string | null;
+  submitted_event_time?: string | null;
+  submitted_competition?: string | null;
+  submitted_at?: string | null;
+}
+
+// Consensus result for an event field
+export interface EventConsensus {
+  field_name: string;
+  consensus_value: string | null;
+  vote_count: number;
+  total_votes: number;
+  has_conflict: boolean;
 }
 
 export interface EventLineup {

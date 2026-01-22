@@ -1002,9 +1002,6 @@ const styles = StyleSheet.create({
   notificationTeamLogo: {
     width: 24,
     height: 24,
-    borderRadius: 12,
-    borderWidth: 2,
-    borderColor: colors.surface,
   },
   notificationTeamLogoOverlap: {
     marginLeft: -8,

@@ -6,6 +6,7 @@ import { colors, spacing, fontSize, fontWeight, borderRadius } from '@/constants
 import { formatDate, formatTime } from '@/utils/dates';
 import { getSportColor, SPORTS } from '@/constants/sports';
 import { parseTennisScore } from '@/utils/scores';
+import { useTeamLogos } from '@/hooks/useTeamLogos';
 import type { EventWithDetails, AttendedEventWithDetails } from '@/types';
 
 // Helper to get display name from sport code
@@ -27,6 +28,8 @@ interface EventCardProps {
 }
 
 export function EventCard({ event, attendance, onPress, compact = false, mini = false }: EventCardProps) {
+  const { getTeamLogo } = useTeamLogos();
+
   // Use text fields as fallback for manually entered events
   const homeTeamName = event.home_team?.name || event.home_team_name || 'Home Team';
   const awayTeamName = event.away_team?.name || event.away_team_name || 'Away Team';
@@ -36,6 +39,10 @@ export function EventCard({ event, attendance, onPress, compact = false, mini = 
   const sportName = getSportDisplayName(event.sport?.name || event.sport_name);
   const sportColor = getSportColor(sportName.toLowerCase());
 
+  // Get logos - try FK first, then lookup by name
+  const homeTeamLogo = event.home_team?.logo_url || getTeamLogo(homeTeamName);
+  const awayTeamLogo = event.away_team?.logo_url || getTeamLogo(awayTeamName);
+
   // Mini version - fun card style with team logos and gradient
   if (mini) {
     const isCricket = sportName.toLowerCase() === 'cricket';
@@ -44,27 +51,36 @@ export function EventCard({ event, attendance, onPress, compact = false, mini = 
     // For tennis, parse the score string to determine winner
     const tennisResult = isTennis ? parseTennisScore(event.home_score) : null;
 
+    // Parse cricket score to get runs and wickets
+    const parseCricketScore = (score: string | number | null | undefined): { runs: number; wickets: number } => {
+      if (score === null || score === undefined) return { runs: 0, wickets: 10 };
+      const scoreStr = String(score);
+      if (scoreStr.includes('+')) {
+        // Test match with multiple innings - sum runs, use last innings wickets
+        const innings = scoreStr.split('+').map(s => s.trim());
+        const totalRuns = innings.reduce((total, inning) => {
+          const runs = inning.includes('/') ? parseInt(inning.split('/')[0], 10) : parseInt(inning, 10);
+          return total + (runs || 0);
+        }, 0);
+        const lastInning = innings[innings.length - 1];
+        const wickets = lastInning.includes('/') ? parseInt(lastInning.split('/')[1], 10) || 10 : 10;
+        return { runs: totalRuns, wickets };
+      }
+      if (scoreStr.includes('/')) {
+        const [runs, wickets] = scoreStr.split('/');
+        return { runs: parseInt(runs, 10) || 0, wickets: parseInt(wickets, 10) || 10 };
+      }
+      return { runs: parseInt(scoreStr, 10) || 0, wickets: 10 };
+    };
+
     // For cricket, extract runs from "450/10" format
     // Also supports combined innings like "450+280" or "450/10+280/10"
     const parseScore = (score: string | number | null | undefined): number => {
       if (score === null || score === undefined) return 0;
-      const scoreStr = String(score);
-
       if (isCricket) {
-        // Handle combined innings format: "450+280" or "450/10+280/10"
-        if (scoreStr.includes('+')) {
-          return scoreStr.split('+').reduce((total, inning) => {
-            const runs = inning.includes('/')
-              ? parseInt(inning.split('/')[0], 10)
-              : parseInt(inning, 10);
-            return total + (runs || 0);
-          }, 0);
-        }
-        // Single innings: "450/10"
-        if (scoreStr.includes('/')) {
-          return parseInt(scoreStr.split('/')[0], 10) || 0;
-        }
+        return parseCricketScore(score).runs;
       }
+      const scoreStr = String(score);
       return parseInt(scoreStr, 10) || 0;
     };
 
@@ -113,6 +129,20 @@ export function EventCard({ event, attendance, onPress, compact = false, mini = 
     const homeScoreData = isCricket ? formatCricketScore(event.home_score) : null;
     const awayScoreData = isCricket ? formatCricketScore(event.away_score) : null;
 
+    // Calculate cricket result text - wickets if team batting second wins, runs otherwise
+    const getCricketResultText = (): string => {
+      if (homeWon) {
+        // Home team batted first and won = won by runs
+        return `${Math.abs(homeScoreNum - awayScoreNum)} runs`;
+      } else if (awayWon) {
+        // Away team batted second and won = won by wickets remaining
+        const awayParsed = parseCricketScore(event.away_score);
+        const wicketsRemaining = 10 - awayParsed.wickets;
+        return `${wicketsRemaining} wicket${wicketsRemaining !== 1 ? 's' : ''}`;
+      }
+      return '';
+    };
+
     return (
       <Card onPress={onPress} style={styles.miniContainer}>
         <View style={styles.miniContent}>
@@ -131,8 +161,8 @@ export function EventCard({ event, attendance, onPress, compact = false, mini = 
           <View style={styles.miniMatchup}>
             {/* Home Team */}
             <View style={styles.miniTeam}>
-              {event.home_team?.logo_url ? (
-                <Image source={{ uri: event.home_team.logo_url }} style={styles.miniTeamLogo} />
+              {homeTeamLogo ? (
+                <Image source={{ uri: homeTeamLogo }} style={styles.miniTeamLogo} />
               ) : (
                 <View style={[styles.miniTeamLogoPlaceholder, { backgroundColor: sportColor }]}>
                   <Text style={styles.miniTeamLogoText}>
@@ -197,7 +227,11 @@ export function EventCard({ event, attendance, onPress, compact = false, mini = 
                   ) : (
                     <View style={styles.miniMarginContainer}>
                       <Text style={styles.miniMarginText}>
-                        {winnerName} won{isTennis ? ` ${margin} set${margin !== 1 ? 's' : ''} to ${(tennisResult?.winner === 'home' ? tennisResult?.player2Sets : tennisResult?.player1Sets) || 0}` : ` by ${margin}${isCricket ? ' runs' : ''}`}
+                        {winnerName} won{isTennis
+                          ? ` ${margin} set${margin !== 1 ? 's' : ''} to ${(tennisResult?.winner === 'home' ? tennisResult?.player2Sets : tennisResult?.player1Sets) || 0}`
+                          : isCricket
+                          ? ` by ${getCricketResultText()}`
+                          : ` by ${margin}`}
                       </Text>
                     </View>
                   )}
@@ -209,8 +243,8 @@ export function EventCard({ event, attendance, onPress, compact = false, mini = 
 
             {/* Away Team */}
             <View style={styles.miniTeam}>
-              {event.away_team?.logo_url ? (
-                <Image source={{ uri: event.away_team.logo_url }} style={styles.miniTeamLogo} />
+              {awayTeamLogo ? (
+                <Image source={{ uri: awayTeamLogo }} style={styles.miniTeamLogo} />
               ) : (
                 <View style={[styles.miniTeamLogoPlaceholder, { backgroundColor: sportColor }]}>
                   <Text style={styles.miniTeamLogoText}>
@@ -264,20 +298,33 @@ export function EventCard({ event, attendance, onPress, compact = false, mini = 
   const isTennisRegular = sportName.toLowerCase() === 'tennis';
   const tennisResultRegular = isTennisRegular ? parseTennisScore(event.home_score) : null;
 
+  // Parse cricket score to get runs and wickets
+  const parseCricketScoreRegular = (score: string | number | null | undefined): { runs: number; wickets: number } => {
+    if (score === null || score === undefined) return { runs: 0, wickets: 10 };
+    const scoreStr = String(score);
+    if (scoreStr.includes('+')) {
+      const innings = scoreStr.split('+').map(s => s.trim());
+      const totalRuns = innings.reduce((total, inning) => {
+        const runs = inning.includes('/') ? parseInt(inning.split('/')[0], 10) : parseInt(inning, 10);
+        return total + (runs || 0);
+      }, 0);
+      const lastInning = innings[innings.length - 1];
+      const wickets = lastInning.includes('/') ? parseInt(lastInning.split('/')[1], 10) || 10 : 10;
+      return { runs: totalRuns, wickets };
+    }
+    if (scoreStr.includes('/')) {
+      const [runs, wickets] = scoreStr.split('/');
+      return { runs: parseInt(runs, 10) || 0, wickets: parseInt(wickets, 10) || 10 };
+    }
+    return { runs: parseInt(scoreStr, 10) || 0, wickets: 10 };
+  };
+
   const parseScoreRegular = (score: string | number | null | undefined): number => {
     if (score === null || score === undefined) return 0;
-    const scoreStr = String(score);
     if (isCricketRegular) {
-      if (scoreStr.includes('+')) {
-        return scoreStr.split('+').reduce((total, inning) => {
-          const runs = inning.includes('/') ? parseInt(inning.split('/')[0], 10) : parseInt(inning, 10);
-          return total + (runs || 0);
-        }, 0);
-      }
-      if (scoreStr.includes('/')) {
-        return parseInt(scoreStr.split('/')[0], 10) || 0;
-      }
+      return parseCricketScoreRegular(score).runs;
     }
+    const scoreStr = String(score);
     return parseInt(scoreStr, 10) || 0;
   };
 
@@ -308,6 +355,20 @@ export function EventCard({ event, attendance, onPress, compact = false, mini = 
     winnerNameRegular = homeWonRegular ? homeTeamShort : awayTeamShort;
   }
 
+  // Calculate cricket result text - wickets if team batting second wins, runs otherwise
+  const getCricketResultTextRegular = (): string => {
+    const awayParsed = parseCricketScoreRegular(event.away_score);
+    if (homeWonRegular) {
+      // Home team batted first and won = won by runs
+      return `${Math.abs(homeScoreNumRegular - awayScoreNumRegular)} runs`;
+    } else if (awayWonRegular) {
+      // Away team batted second and won = won by wickets remaining
+      const wicketsRemaining = 10 - awayParsed.wickets;
+      return `${wicketsRemaining} wicket${wicketsRemaining !== 1 ? 's' : ''}`;
+    }
+    return '';
+  };
+
   return (
     <Card onPress={onPress} style={styles.container}>
       <View style={[styles.sportIndicator, { backgroundColor: sportColor }]} />
@@ -328,9 +389,9 @@ export function EventCard({ event, attendance, onPress, compact = false, mini = 
 
         <View style={styles.teams}>
           <View style={styles.team}>
-            {event.home_team?.logo_url ? (
+            {homeTeamLogo ? (
               <Image
-                source={{ uri: event.home_team.logo_url }}
+                source={{ uri: homeTeamLogo }}
                 style={styles.teamLogo}
               />
             ) : (
@@ -376,9 +437,9 @@ export function EventCard({ event, attendance, onPress, compact = false, mini = 
           </View>
 
           <View style={[styles.team, styles.teamRight]}>
-            {event.away_team?.logo_url ? (
+            {awayTeamLogo ? (
               <Image
-                source={{ uri: event.away_team.logo_url }}
+                source={{ uri: awayTeamLogo }}
                 style={styles.teamLogo}
               />
             ) : (
@@ -398,9 +459,13 @@ export function EventCard({ event, attendance, onPress, compact = false, mini = 
         {hasScoreRegular && (
           <View style={styles.resultContainer}>
             <Text style={styles.resultText}>
-              {isDrawRegular ? 'Draw' : isTennisRegular && tennisResultRegular
+              {isDrawRegular
+                ? 'Draw'
+                : isTennisRegular && tennisResultRegular
                 ? `${winnerNameRegular} won ${tennisResultRegular.winner === 'home' ? tennisResultRegular.player1Sets : tennisResultRegular.player2Sets}-${tennisResultRegular.winner === 'home' ? tennisResultRegular.player2Sets : tennisResultRegular.player1Sets}`
-                : `${winnerNameRegular} won by ${marginRegular}${isCricketRegular ? ' runs' : ''}`}
+                : isCricketRegular
+                ? `${winnerNameRegular} won by ${getCricketResultTextRegular()}`
+                : `${winnerNameRegular} won by ${marginRegular}`}
             </Text>
           </View>
         )}
@@ -494,7 +559,6 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: colors.surfaceLighter,
   },
   miniTeamLogoPlaceholder: {
     width: 44,
@@ -678,7 +742,6 @@ const styles = StyleSheet.create({
   teamLogo: {
     width: 40,
     height: 40,
-    borderRadius: 20,
   },
   teamLogoPlaceholder: {
     width: 40,

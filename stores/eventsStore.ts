@@ -9,6 +9,7 @@ import type {
   Sport,
   Team,
   Venue,
+  EventConsensus,
 } from '@/types';
 
 interface EventsState {
@@ -39,6 +40,13 @@ interface EventsState {
   ) => Promise<{ success: boolean; error?: string }>;
   deleteAttendedEvent: (attendanceId: string) => Promise<{ success: boolean; error?: string }>;
   searchEvents: (query: string) => Promise<EventWithDetails[]>;
+  getEventConsensus: (eventId: string) => Promise<{ consensus: EventConsensus[]; hasConflicts: boolean }>;
+  resolveEventConflict: (
+    eventId: string,
+    attendanceId: string,
+    field: string,
+    value: string
+  ) => Promise<{ success: boolean; error?: string }>;
 }
 
 export const useEventsStore = create<EventsState>((set, get) => ({
@@ -163,52 +171,173 @@ export const useEventsStore = create<EventsState>((set, get) => ({
       if (eventData.id) {
         eventId = eventData.id;
       } else {
-        // Build the event insert data explicitly - DO NOT include sport_id (it's a text code, not a UUID)
-        const insertData: Record<string, unknown> = {
-          created_by: userId,
-          event_date: eventData.event_date,
-          event_time: eventData.event_time || null,
-          competition: eventData.competition || null,
-          round: eventData.round || null,
-          home_score: eventData.home_score || null,
-          away_score: eventData.away_score || null,
-          is_draw: eventData.is_draw || false,
-          is_abandoned: eventData.is_abandoned || false,
-          // Store sport as text name (sport_id from form is actually the sport code like 'afl', 'tennis')
-          sport_name: sport_id || null,
-          // Store team/venue as text fields (fallback for display)
-          home_team_name: home_team_name || null,
-          away_team_name: away_team_name || null,
-          venue_name: venue_name || null,
-          // Also store FKs if we found matching teams/venues (for logos)
-          home_team_id: homeTeamId,
-          away_team_id: awayTeamId,
-          venue_id: venueId,
-        };
+        // Try to find an existing event with same teams and date (deduplication)
+        let existingEvent = null;
 
-        // Create new event
-        const { data: newEvent, error: eventError } = await supabase
-          .from('events')
-          .insert(insertData)
-          .select()
-          .single();
+        // Build query to find matching event
+        if (eventData.event_date && (homeTeamId || home_team_name) && (awayTeamId || away_team_name)) {
+          let query = supabase
+            .from('events')
+            .select('id, home_score, away_score, round, competition, event_time, venue_id, venue_name')
+            .eq('event_date', eventData.event_date);
 
-        if (eventError) throw eventError;
-        eventId = newEvent.id;
+          // Match by team IDs if available (more reliable)
+          if (homeTeamId && awayTeamId) {
+            query = query.eq('home_team_id', homeTeamId).eq('away_team_id', awayTeamId);
+          } else {
+            // Fall back to name matching (case-insensitive)
+            if (home_team_name) {
+              query = query.ilike('home_team_name', home_team_name);
+            }
+            if (away_team_name) {
+              query = query.ilike('away_team_name', away_team_name);
+            }
+          }
+
+          const { data: matchingEvents } = await query.limit(1);
+          if (matchingEvents && matchingEvents.length > 0) {
+            existingEvent = matchingEvents[0];
+          }
+        }
+
+        if (existingEvent) {
+          // Use the existing event
+          eventId = existingEvent.id;
+          console.log('[EventStore] Found existing event, reusing:', eventId);
+
+          // Fill in any missing fields on the existing event with data from this attendance
+          const updates: Record<string, unknown> = {};
+
+          // Scores - only update if existing doesn't have them
+          if (eventData.home_score && !existingEvent.home_score) {
+            updates.home_score = eventData.home_score;
+            updates.away_score = eventData.away_score;
+            updates.is_draw = eventData.is_draw || false;
+          }
+
+          // Round - fill in if missing
+          if (eventData.round && !existingEvent.round) {
+            updates.round = eventData.round;
+          }
+
+          // Competition - fill in if missing
+          if (eventData.competition && !existingEvent.competition) {
+            updates.competition = eventData.competition;
+          }
+
+          // Event time - fill in if missing
+          if (eventData.event_time && !existingEvent.event_time) {
+            updates.event_time = eventData.event_time;
+          }
+
+          // Venue - fill in if missing (prefer ID over name)
+          if (venueId && !existingEvent.venue_id) {
+            updates.venue_id = venueId;
+            updates.venue_name = venue_name;
+          } else if (venue_name && !existingEvent.venue_name) {
+            updates.venue_name = venue_name;
+          }
+
+          // Apply updates if any
+          if (Object.keys(updates).length > 0) {
+            await supabase
+              .from('events')
+              .update(updates)
+              .eq('id', eventId);
+            console.log('[EventStore] Updated existing event with missing fields:', Object.keys(updates));
+          }
+        } else {
+          // Build the event insert data explicitly - DO NOT include sport_id (it's a text code, not a UUID)
+          const insertData: Record<string, unknown> = {
+            created_by: userId,
+            event_date: eventData.event_date,
+            event_time: eventData.event_time || null,
+            competition: eventData.competition || null,
+            round: eventData.round || null,
+            home_score: eventData.home_score || null,
+            away_score: eventData.away_score || null,
+            is_draw: eventData.is_draw || false,
+            is_abandoned: eventData.is_abandoned || false,
+            // Store sport as text name (sport_id from form is actually the sport code like 'afl', 'tennis')
+            sport_name: sport_id || null,
+            // Store team/venue as text fields (fallback for display)
+            home_team_name: home_team_name || null,
+            away_team_name: away_team_name || null,
+            venue_name: venue_name || null,
+            // Also store FKs if we found matching teams/venues (for logos)
+            home_team_id: homeTeamId,
+            away_team_id: awayTeamId,
+            venue_id: venueId,
+          };
+
+          // Create new event
+          const { data: newEvent, error: eventError } = await supabase
+            .from('events')
+            .insert(insertData)
+            .select()
+            .single();
+
+          if (eventError) throw eventError;
+          eventId = newEvent.id;
+          console.log('[EventStore] Created new event:', eventId);
+        }
       }
 
       // Create attendance record
-      const { data: newAttendance, error: attendanceError } = await supabase
+      // Try with consensus fields first, fall back to basic insert if columns don't exist
+      let newAttendance;
+      let attendanceError;
+
+      // First try with the new consensus fields
+      const insertData: Record<string, unknown> = {
+        ...attendanceData,
+        user_id: userId,
+        event_id: eventId,
+      };
+
+      // Try to include consensus fields (may not exist if migration not run)
+      const insertDataWithConsensus = {
+        ...insertData,
+        submitted_home_score: eventData.home_score || null,
+        submitted_away_score: eventData.away_score || null,
+        submitted_round: eventData.round || null,
+        submitted_event_time: eventData.event_time || null,
+        submitted_competition: eventData.competition || null,
+        submitted_at: new Date().toISOString(),
+      };
+
+      // Try with consensus fields first
+      const result = await supabase
         .from('attended_events')
-        .insert({
-          ...attendanceData,
-          user_id: userId,
-          event_id: eventId,
-        })
+        .insert(insertDataWithConsensus)
         .select()
         .single();
 
+      if (result.error?.message?.includes('column') && result.error?.message?.includes('does not exist')) {
+        // Consensus columns don't exist yet, fall back to basic insert
+        console.log('[EventStore] Consensus columns not found, using basic insert');
+        const basicResult = await supabase
+          .from('attended_events')
+          .insert(insertData)
+          .select()
+          .single();
+        newAttendance = basicResult.data;
+        attendanceError = basicResult.error;
+      } else {
+        newAttendance = result.data;
+        attendanceError = result.error;
+      }
+
       if (attendanceError) throw attendanceError;
+
+      // Try to apply consensus (function may not exist if migration not run)
+      try {
+        await supabase.rpc('apply_event_consensus', { p_event_id: eventId });
+        console.log('[EventStore] Applied consensus for event:', eventId);
+      } catch (consensusError) {
+        // Consensus function doesn't exist yet, that's ok
+        console.log('[EventStore] Consensus function not available, skipping');
+      }
 
       // Refresh events
       await get().fetchAttendedEvents(userId);
@@ -344,5 +473,50 @@ export const useEventsStore = create<EventsState>((set, get) => ({
 
     if (error) return [];
     return (data as EventWithDetails[]) || [];
+  },
+
+  getEventConsensus: async (eventId) => {
+    try {
+      const { data, error } = await supabase.rpc('get_event_consensus', {
+        p_event_id: eventId,
+      });
+
+      if (error) throw error;
+
+      const consensus = (data || []) as EventConsensus[];
+      const hasConflicts = consensus.some((c) => c.has_conflict);
+
+      return { consensus, hasConflicts };
+    } catch (error) {
+      console.error('[EventStore] Error getting consensus:', error);
+      return { consensus: [], hasConflicts: false };
+    }
+  },
+
+  resolveEventConflict: async (eventId, attendanceId, field, value) => {
+    try {
+      // Update the user's submitted value
+      const updateField = `submitted_${field}`;
+      const { error: updateError } = await supabase
+        .from('attended_events')
+        .update({ [updateField]: value, submitted_at: new Date().toISOString() })
+        .eq('id', attendanceId);
+
+      if (updateError) throw updateError;
+
+      // Re-apply consensus to update the event
+      await supabase.rpc('apply_event_consensus', { p_event_id: eventId });
+
+      // Refresh the attended events to get updated data
+      const { user } = await supabase.auth.getUser();
+      if (user?.user?.id) {
+        await get().fetchAttendedEvents(user.user.id);
+      }
+
+      return { success: true };
+    } catch (error) {
+      console.error('[EventStore] Error resolving conflict:', error);
+      return { success: false, error: (error as Error).message };
+    }
   },
 }));

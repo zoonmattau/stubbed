@@ -15,8 +15,10 @@ import { useLocalSearchParams, router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Card, Badge, Button, StarRating } from '@/components/ui';
 import { TaggedUsersList } from '@/components/social/TaggedUsersList';
+import { ConflictResolver } from '@/components/events/ConflictResolver';
 import { useAuthStore } from '@/stores/authStore';
 import { useEventsStore } from '@/stores/eventsStore';
+import { useTeamLogos } from '@/hooks/useTeamLogos';
 import { colors, spacing, fontSize, fontWeight, borderRadius } from '@/constants/theme';
 import { formatDate, formatTime } from '@/utils/dates';
 import { getSportColor, getSportById, SPORTS } from '@/constants/sports';
@@ -37,6 +39,7 @@ export default function EventDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { user } = useAuthStore();
   const { attendedEvents, updateAttendedEvent, deleteAttendedEvent, fetchAttendedEvents, isLoading } = useEventsStore();
+  const { getTeamLogo } = useTeamLogos();
 
   const [attendance, setAttendance] = useState<AttendedEventWithDetails | null>(null);
   const [hasFetched, setHasFetched] = useState(false);
@@ -97,6 +100,10 @@ export default function EventDetailScreen() {
   const sportName = getSportDisplayName(event.sport?.name || event.sport_name);
   const sportColor = getSportColor(sportName.toLowerCase());
 
+  // Get logos - try FK first, then lookup by name
+  const homeTeamLogo = event.home_team?.logo_url || getTeamLogo(homeTeamName);
+  const awayTeamLogo = event.away_team?.logo_url || getTeamLogo(awayTeamName);
+
   // Calculate winner info
   const isCricket = sportName.toLowerCase() === 'cricket';
   const isTennis = sportName.toLowerCase() === 'tennis';
@@ -104,25 +111,44 @@ export default function EventDetailScreen() {
   // Tennis: parse from home_score field which contains "6-4, 6-3" format
   const tennisResult = isTennis ? parseTennisScore(event.home_score) : null;
 
+  // Parse cricket score to get runs and wickets
+  const parseCricketScore = (score: string | number | null | undefined): { runs: number; wickets: number } => {
+    if (score === null || score === undefined) return { runs: 0, wickets: 10 };
+    const scoreStr = String(score);
+    if (scoreStr.includes('+')) {
+      // Test match with multiple innings - sum runs, use last innings wickets
+      const innings = scoreStr.split('+').map(s => s.trim());
+      const totalRuns = innings.reduce((total, inning) => {
+        const runs = inning.includes('/') ? parseInt(inning.split('/')[0], 10) : parseInt(inning, 10);
+        return total + (runs || 0);
+      }, 0);
+      const lastInning = innings[innings.length - 1];
+      const wickets = lastInning.includes('/') ? parseInt(lastInning.split('/')[1], 10) || 10 : 10;
+      return { runs: totalRuns, wickets };
+    }
+    if (scoreStr.includes('/')) {
+      const [runs, wickets] = scoreStr.split('/');
+      return { runs: parseInt(runs, 10) || 0, wickets: parseInt(wickets, 10) || 10 };
+    }
+    return { runs: parseInt(scoreStr, 10) || 0, wickets: 10 };
+  };
+
   const parseScore = (score: string | number | null | undefined): number => {
     if (score === null || score === undefined) return 0;
     const scoreStr = String(score);
     if (isCricket) {
-      if (scoreStr.includes('+')) {
-        return scoreStr.split('+').reduce((total, inning) => {
-          const runs = inning.includes('/') ? parseInt(inning.split('/')[0], 10) : parseInt(inning, 10);
-          return total + (runs || 0);
-        }, 0);
-      }
-      if (scoreStr.includes('/')) {
-        return parseInt(scoreStr.split('/')[0], 10) || 0;
-      }
+      return parseCricketScore(score).runs;
     }
     return parseInt(scoreStr, 10) || 0;
   };
 
   const homeScoreNum = parseScore(event.home_score);
   const awayScoreNum = parseScore(event.away_score);
+
+  // For cricket: parse wickets to determine win type
+  // Convention: home team bats first, so if away wins, they won by wickets
+  const homeCricketScore = isCricket ? parseCricketScore(event.home_score) : null;
+  const awayCricketScore = isCricket ? parseCricketScore(event.away_score) : null;
 
   // Tennis uses different logic: winner by sets won
   const hasScore = isTennis
@@ -137,6 +163,21 @@ export default function EventDetailScreen() {
   const isDraw = isTennis
     ? tennisResult?.winner === 'draw'
     : hasScore && homeScoreNum === awayScoreNum;
+
+  // Calculate margin/wickets for result text
+  const getCricketResultText = (): string => {
+    if (!homeCricketScore || !awayCricketScore) return '';
+    if (homeWon) {
+      // Home team batted first and won = won by runs
+      return `${Math.abs(homeScoreNum - awayScoreNum)} runs`;
+    } else if (awayWon) {
+      // Away team batted second and won = won by wickets remaining
+      const wicketsRemaining = 10 - awayCricketScore.wickets;
+      return `${wicketsRemaining} wicket${wicketsRemaining !== 1 ? 's' : ''}`;
+    }
+    return '';
+  };
+
   const margin = isTennis
     ? Math.abs((tennisResult?.player1Sets || 0) - (tennisResult?.player2Sets || 0))
     : Math.abs(homeScoreNum - awayScoreNum);
@@ -276,6 +317,20 @@ export default function EventDetailScreen() {
         </View>
       </View>
 
+      {/* Conflict Resolution Banner (if there are data conflicts) */}
+      <View style={{ paddingHorizontal: spacing.lg, marginTop: spacing.md }}>
+        <ConflictResolver
+          eventId={attendance.event_id}
+          attendanceId={attendance.id}
+          onResolved={() => {
+            // Refresh data after conflict resolution
+            if (user?.id) {
+              fetchAttendedEvents(user.id);
+            }
+          }}
+        />
+      </View>
+
       {/* Teams & Score */}
       <Card style={styles.matchCard}>
         {/* Competition & Round - moved up */}
@@ -296,9 +351,9 @@ export default function EventDetailScreen() {
             onPress={() => router.push(`/team/${encodeURIComponent(homeTeamName)}`)}
           >
             <View style={styles.teamLogoContainer}>
-              {event.home_team?.logo_url ? (
+              {homeTeamLogo ? (
                 <Image
-                  source={{ uri: event.home_team.logo_url }}
+                  source={{ uri: homeTeamLogo }}
                   style={styles.teamLogo}
                 />
               ) : (
@@ -365,7 +420,9 @@ export default function EventDetailScreen() {
                   <Text style={styles.resultText}>
                     {winnerName} won{isTennis
                       ? ` ${tennisResult?.player1Sets}-${tennisResult?.player2Sets}`
-                      : ` by ${margin}${isCricket ? ' runs' : ''}`}
+                      : isCricket
+                      ? ` by ${getCricketResultText()}`
+                      : ` by ${margin}`}
                   </Text>
                 )}
               </>
@@ -379,9 +436,9 @@ export default function EventDetailScreen() {
             onPress={() => router.push(`/team/${encodeURIComponent(awayTeamName)}`)}
           >
             <View style={styles.teamLogoContainer}>
-              {event.away_team?.logo_url ? (
+              {awayTeamLogo ? (
                 <Image
-                  source={{ uri: event.away_team.logo_url }}
+                  source={{ uri: awayTeamLogo }}
                   style={styles.teamLogo}
                 />
               ) : (
@@ -744,7 +801,6 @@ const styles = StyleSheet.create({
   teamLogo: {
     width: 60,
     height: 60,
-    borderRadius: 30,
   },
   teamLogoPlaceholder: {
     width: 60,

@@ -441,7 +441,7 @@ export default function ProfileScreen() {
                       <TouchableOpacity
                         key={attended.id}
                         style={[styles.recentActivityItem, index === arr.length - 1 && styles.recentActivityItemLast]}
-                        onPress={() => router.push(`/event/${attended.id}`)}
+                        onPress={() => router.push(`/event/${attended.event_id}`)}
                       >
                         <View style={styles.recentActivityLogos}>
                           {homeTeamLogo ? (
@@ -993,9 +993,6 @@ const styles = StyleSheet.create({
   recentActivityLogo: {
     width: 28,
     height: 28,
-    borderRadius: 14,
-    borderWidth: 2,
-    borderColor: colors.surface,
   },
   recentActivityLogoOverlap: {
     marginLeft: -10,
