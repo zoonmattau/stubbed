@@ -26,7 +26,7 @@ type CategoryFilter = 'all' | 'attendance' | 'diversity' | 'loyalty' | 'special'
 export default function AchievementsScreen() {
   const { user } = useAuthStore();
   const { achievements, fetchAchievements, stats } = useStatsStore();
-  const { attendedEvents } = useEventsStore();
+  const { attendedEvents, fetchAttendedEvents } = useEventsStore();
 
   // Get detailed points breakdown
   const pointsBreakdown = usePoints(attendedEvents);
@@ -37,6 +37,7 @@ export default function AchievementsScreen() {
   useEffect(() => {
     if (user?.id) {
       fetchAchievements(user.id);
+      fetchAttendedEvents(user.id);
     }
   }, [user?.id]);
 
@@ -47,9 +48,12 @@ export default function AchievementsScreen() {
   });
 
   const unlockedCount = achievements.filter((a) => a.unlocked).length;
-  const totalPoints = achievements
+  const achievementPoints = achievements
     .filter((a) => a.unlocked)
     .reduce((sum, a) => sum + a.points, 0);
+
+  // Total points = achievement points + activity points (matching home and profile)
+  const totalPoints = achievementPoints + pointsBreakdown.totalPoints;
 
   // Calculate current level using shared functions
   const currentLevel = useMemo(() => getCurrentLevel(totalPoints), [totalPoints]);
@@ -167,7 +171,10 @@ export default function AchievementsScreen() {
       <View style={styles.breakdownSection}>
         <Text style={styles.sectionTitle}>Points Breakdown</Text>
         <Card padding="none">
-          <View style={styles.breakdownItem}>
+          <TouchableOpacity
+            style={styles.breakdownItem}
+            onPress={() => router.push('/(tabs)/stats')}
+          >
             <View style={[styles.breakdownIcon, { backgroundColor: `${colors.primary}15` }]}>
               <Ionicons name="ticket" size={20} color={colors.primary} />
             </View>
@@ -178,8 +185,12 @@ export default function AchievementsScreen() {
               </Text>
             </View>
             <Text style={styles.breakdownValue}>+{pointsBreakdown.attendancePoints}</Text>
-          </View>
-          <View style={styles.breakdownItem}>
+            <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.breakdownItem}
+            onPress={() => router.push({ pathname: '/(tabs)/stats', params: { filter: 'wins' } })}
+          >
             <View style={[styles.breakdownIcon, { backgroundColor: `${colors.success}15` }]}>
               <Ionicons name="trophy" size={20} color={colors.success} />
             </View>
@@ -190,8 +201,12 @@ export default function AchievementsScreen() {
               </Text>
             </View>
             <Text style={styles.breakdownValue}>+{pointsBreakdown.winPoints}</Text>
-          </View>
-          <View style={styles.breakdownItem}>
+            <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.breakdownItem}
+            onPress={() => router.push({ pathname: '/(tabs)/stats', params: { filter: 'wins' } })}
+          >
             <View style={[styles.breakdownIcon, { backgroundColor: `${colors.warning}15` }]}>
               <Ionicons name="flame" size={20} color={colors.warning} />
             </View>
@@ -202,8 +217,12 @@ export default function AchievementsScreen() {
               </Text>
             </View>
             <Text style={styles.breakdownValue}>+{pointsBreakdown.streakBonuses}</Text>
-          </View>
-          <View style={styles.breakdownItem}>
+            <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.breakdownItem}
+            onPress={() => router.push('/(tabs)/stats')}
+          >
             <View style={[styles.breakdownIcon, { backgroundColor: `${colors.info}15` }]}>
               <Ionicons name="compass" size={20} color={colors.info} />
             </View>
@@ -214,15 +233,35 @@ export default function AchievementsScreen() {
               </Text>
             </View>
             <Text style={styles.breakdownValue}>+{pointsBreakdown.discoveryBonuses}</Text>
-          </View>
-          <View style={[styles.breakdownItem, styles.breakdownTotal]}>
+            <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.breakdownItem}
+            onPress={() => {
+              setShowUnlocked(true);
+              setFilter('all');
+            }}
+          >
             <View style={[styles.breakdownIcon, { backgroundColor: `${colors.gold}15` }]}>
-              <Ionicons name="star" size={20} color={colors.gold} />
+              <Ionicons name="medal" size={20} color={colors.gold} />
             </View>
             <View style={styles.breakdownInfo}>
-              <Text style={[styles.breakdownLabel, styles.breakdownTotalLabel]}>Total Activity Points</Text>
+              <Text style={styles.breakdownLabel}>Achievements</Text>
+              <Text style={styles.breakdownDescription}>
+                {unlockedCount} achievements unlocked
+              </Text>
             </View>
-            <Text style={[styles.breakdownValue, styles.breakdownTotalValue]}>{pointsBreakdown.totalPoints}</Text>
+            <Text style={styles.breakdownValue}>+{achievementPoints}</Text>
+            <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
+          </TouchableOpacity>
+          <View style={[styles.breakdownItem, styles.breakdownTotal]}>
+            <View style={[styles.breakdownIcon, { backgroundColor: `${colors.primary}15` }]}>
+              <Ionicons name="star" size={20} color={colors.primary} />
+            </View>
+            <View style={styles.breakdownInfo}>
+              <Text style={[styles.breakdownLabel, styles.breakdownTotalLabel]}>Total Points</Text>
+            </View>
+            <Text style={[styles.breakdownValue, styles.breakdownTotalValue]}>{totalPoints}</Text>
           </View>
         </Card>
       </View>

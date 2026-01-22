@@ -7,6 +7,9 @@ import {
   RefreshControl,
   TouchableOpacity,
   ImageBackground,
+  Alert,
+  Platform,
+  Image,
 } from 'react-native';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -16,7 +19,8 @@ import { EventCard } from '@/components/events';
 import { useAuthStore } from '@/stores/authStore';
 import { useEventsStore } from '@/stores/eventsStore';
 import { useStatsStore } from '@/stores/statsStore';
-import { usePoints } from '@/hooks/usePoints';
+import { usePoints, POINTS } from '@/hooks/usePoints';
+import { useEventInvitations } from '@/hooks/useEventInvitations';
 import { colors, spacing, fontSize, fontWeight, borderRadius } from '@/constants/theme';
 import { LEVELS, getCurrentLevel, getNextLevel, getLevelProgress } from '@/constants/levels';
 
@@ -24,6 +28,13 @@ export default function HomeScreen() {
   const { user, profile } = useAuthStore();
   const { attendedEvents, fetchAttendedEvents } = useEventsStore();
   const { fetchStats, fetchAchievements } = useStatsStore();
+  const {
+    pendingInvitations,
+    pendingCount,
+    refresh: refreshInvitations,
+    acceptInvitation,
+    declineInvitation,
+  } = useEventInvitations();
 
   const [refreshing, setRefreshing] = React.useState(false);
 
@@ -39,6 +50,7 @@ export default function HomeScreen() {
       fetchAttendedEvents(user.id),
       fetchStats(user.id),
       fetchAchievements(user.id),
+      refreshInvitations(),
     ]);
   };
 
@@ -48,10 +60,107 @@ export default function HomeScreen() {
     setRefreshing(false);
   };
 
+  const handleAcceptInvitation = async (id: string) => {
+    const result = await acceptInvitation(id);
+    if (result.success) {
+      if (Platform.OS === 'web') {
+        window.alert('Event added to your history!');
+      } else {
+        Alert.alert('Success', 'Event added to your history!');
+      }
+      await loadData();
+    } else {
+      if (Platform.OS === 'web') {
+        window.alert(result.error || 'Failed to accept invitation');
+      } else {
+        Alert.alert('Error', result.error || 'Failed to accept invitation');
+      }
+    }
+  };
+
+  const handleDeclineInvitation = async (id: string) => {
+    const result = await declineInvitation(id);
+    if (!result.success) {
+      if (Platform.OS === 'web') {
+        window.alert(result.error || 'Failed to decline invitation');
+      } else {
+        Alert.alert('Error', result.error || 'Failed to decline invitation');
+      }
+    }
+  };
+
   const recentEvents = attendedEvents.slice(0, 3);
 
-  // Calculate user points from attendance history
-  const { totalPoints: userPoints } = usePoints(attendedEvents);
+  // Get achievements for total points calculation
+  const { achievements } = useStatsStore();
+  const unlockedAchievements = achievements.filter((a) => a.unlocked);
+  const achievementPoints = unlockedAchievements.reduce((sum, a) => sum + a.points, 0);
+
+  // Calculate user points from attendance history + achievements (matching profile)
+  const { totalPoints: activityPoints } = usePoints(attendedEvents);
+  const userPoints = activityPoints + achievementPoints;
+
+  // Calculate points earned per event (including discovery bonuses)
+  const pointsPerEvent = useMemo(() => {
+    const pointsMap: Record<string, number> = {};
+    const seenTeams = new Set<string>();
+    const seenSports = new Set<string>();
+    const seenVenues = new Set<string>();
+
+    // Sort by date to calculate discovery bonuses correctly
+    const sortedEvents = [...attendedEvents].sort((a, b) => {
+      const dateA = new Date(a.event?.event_date || a.created_at);
+      const dateB = new Date(b.event?.event_date || b.created_at);
+      return dateA.getTime() - dateB.getTime();
+    });
+
+    sortedEvents.forEach((attended) => {
+      const event = attended.event;
+      if (!event) return;
+
+      let eventPoints = POINTS.ATTEND_EVENT;
+
+      // Win bonus
+      const isWin = attended.result === 'win';
+      const hasSupport = attended.supported_team && attended.supported_team !== 'neutral';
+      if (isWin && hasSupport) {
+        eventPoints += POINTS.TEAM_WIN;
+      }
+
+      // Discovery bonuses
+      const homeTeam = (event.home_team?.name || event.home_team_name || '').toLowerCase();
+      const awayTeam = (event.away_team?.name || event.away_team_name || '').toLowerCase();
+      const sport = (event.sport?.name || event.sport_name || '').toLowerCase();
+      const venue = (event.venue?.name || event.venue_name || '').toLowerCase();
+
+      if (homeTeam && !seenTeams.has(homeTeam)) {
+        seenTeams.add(homeTeam);
+        eventPoints += POINTS.NEW_TEAM;
+      }
+      if (awayTeam && !seenTeams.has(awayTeam)) {
+        seenTeams.add(awayTeam);
+        eventPoints += POINTS.NEW_TEAM;
+      }
+      if (sport && !seenSports.has(sport)) {
+        seenSports.add(sport);
+        eventPoints += POINTS.NEW_SPORT;
+      }
+      if (venue && !seenVenues.has(venue)) {
+        seenVenues.add(venue);
+        eventPoints += POINTS.NEW_VENUE;
+      }
+
+      pointsMap[attended.id] = eventPoints;
+    });
+
+    // Add achievement points to the most recent event (simplified attribution)
+    if (sortedEvents.length > 0 && achievementPoints > 0) {
+      const mostRecentId = sortedEvents[sortedEvents.length - 1].id;
+      pointsMap[mostRecentId] = (pointsMap[mostRecentId] || 0) + achievementPoints;
+    }
+
+    return pointsMap;
+  }, [attendedEvents, achievementPoints]);
 
   // Calculate local stats from attendedEvents (handles both FK and text fields)
   const localStats = useMemo(() => {
@@ -119,6 +228,91 @@ export default function HomeScreen() {
           />
         </TouchableOpacity>
       </View>
+
+      {/* Event Tag Notifications */}
+      {pendingCount > 0 && (
+        <View style={styles.notificationsSection}>
+          <View style={styles.notificationsHeader}>
+            <View style={styles.notificationsBadge}>
+              <Ionicons name="notifications" size={18} color={colors.white} />
+              <Text style={styles.notificationsBadgeText}>{pendingCount}</Text>
+            </View>
+            <Text style={styles.notificationsTitle}>Event Invitations</Text>
+          </View>
+          {pendingInvitations.slice(0, 3).map((invitation) => {
+            const event = invitation.attended_event?.event;
+            const fromUser = invitation.from_user;
+            const homeTeam = event?.home_team?.name || event?.home_team_name || 'Home';
+            const awayTeam = event?.away_team?.name || event?.away_team_name || 'Away';
+            const homeTeamLogo = event?.home_team?.logo_url;
+            const awayTeamLogo = event?.away_team?.logo_url;
+            return (
+              <Card key={invitation.id} style={styles.notificationCard}>
+                <View style={styles.notificationContent}>
+                  <View style={styles.notificationMain}>
+                    <View style={styles.notificationFrom}>
+                      <Avatar
+                        source={fromUser?.avatar_url}
+                        name={fromUser?.display_name || fromUser?.username}
+                        size="sm"
+                      />
+                      <Text style={styles.notificationFromText}>
+                        <Text style={styles.notificationFromName}>
+                          {fromUser?.display_name || fromUser?.username}
+                        </Text>
+                        {' tagged you in an event'}
+                      </Text>
+                    </View>
+                    <View style={styles.notificationEvent}>
+                      <View style={styles.notificationTeamLogos}>
+                        {homeTeamLogo ? (
+                          <Image source={{ uri: homeTeamLogo }} style={styles.notificationTeamLogo} />
+                        ) : (
+                          <View style={[styles.notificationTeamLogoPlaceholder, { backgroundColor: `${colors.primary}20` }]}>
+                            <Text style={styles.notificationTeamLogoText}>{homeTeam[0]}</Text>
+                          </View>
+                        )}
+                        {awayTeamLogo ? (
+                          <Image source={{ uri: awayTeamLogo }} style={[styles.notificationTeamLogo, styles.notificationTeamLogoOverlap]} />
+                        ) : (
+                          <View style={[styles.notificationTeamLogoPlaceholder, styles.notificationTeamLogoOverlap, { backgroundColor: `${colors.warning}20` }]}>
+                            <Text style={styles.notificationTeamLogoText}>{awayTeam[0]}</Text>
+                          </View>
+                        )}
+                      </View>
+                      <Text style={styles.notificationEventText} numberOfLines={1}>
+                        {homeTeam} vs {awayTeam}
+                      </Text>
+                    </View>
+                  </View>
+                  <View style={styles.notificationActions}>
+                    <TouchableOpacity
+                      style={[styles.notificationButton, styles.notificationButtonAccept]}
+                      onPress={() => handleAcceptInvitation(invitation.id)}
+                    >
+                      <Ionicons name="checkmark" size={18} color={colors.white} />
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.notificationButton, styles.notificationButtonDecline]}
+                      onPress={() => handleDeclineInvitation(invitation.id)}
+                    >
+                      <Ionicons name="close" size={18} color={colors.textMuted} />
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              </Card>
+            );
+          })}
+          {pendingCount > 3 && (
+            <TouchableOpacity style={styles.viewAllNotifications}>
+              <Text style={styles.viewAllNotificationsText}>
+                View all {pendingCount} invitations
+              </Text>
+              <Ionicons name="chevron-forward" size={16} color={colors.primary} />
+            </TouchableOpacity>
+          )}
+        </View>
+      )}
 
       {/* Hero Stats Card with Stadium Background */}
       <TouchableOpacity
@@ -232,8 +426,8 @@ export default function HomeScreen() {
                     const awayTeam = event.away_team?.name || event.away_team_name || 'Away';
                     const isWin = attended.result === 'win';
                     const hasSupport = attended.supported_team && attended.supported_team !== 'neutral';
-                    // Calculate points: base attendance (10) + team win bonus (15 if supported team won)
-                    const eventPoints = 10 + (isWin && hasSupport ? 15 : 0);
+                    // Use pre-calculated points including discovery bonuses and achievements
+                    const eventPoints = pointsPerEvent[attended.id] || POINTS.ATTEND_EVENT;
                     return (
                       <View key={attended.id} style={styles.recentPointItem}>
                         <View style={styles.recentPointIcon}>
@@ -246,7 +440,10 @@ export default function HomeScreen() {
                         <Text style={styles.recentPointText} numberOfLines={1}>
                           {homeTeam} vs {awayTeam}
                         </Text>
-                        <Text style={styles.recentPointValue}>+{eventPoints}</Text>
+                        <Text style={[
+                          styles.recentPointValue,
+                          currentLevel.color === '#10B981' && styles.recentPointValueDark
+                        ]}>+{eventPoints}</Text>
                       </View>
                     );
                   })}
@@ -258,19 +455,19 @@ export default function HomeScreen() {
                 <View style={styles.levelTipsGrid}>
                   <View style={styles.levelTipItem}>
                     <Ionicons name="ticket" size={14} color="rgba(255,255,255,0.9)" />
-                    <Text style={styles.levelTipText}>Attend event (+10)</Text>
+                    <Text style={styles.levelTipText}>Attend event (+{POINTS.ATTEND_EVENT})</Text>
                   </View>
                   <View style={styles.levelTipItem}>
                     <Ionicons name="trophy" size={14} color="rgba(255,255,255,0.9)" />
-                    <Text style={styles.levelTipText}>Team wins (+15)</Text>
+                    <Text style={styles.levelTipText}>Team wins (+{POINTS.TEAM_WIN})</Text>
                   </View>
                   <View style={styles.levelTipItem}>
                     <Ionicons name="flame" size={14} color="rgba(255,255,255,0.9)" />
-                    <Text style={styles.levelTipText}>3-win streak (+25)</Text>
+                    <Text style={styles.levelTipText}>3-win streak (+{POINTS.WIN_STREAK_3})</Text>
                   </View>
                   <View style={styles.levelTipItem}>
                     <Ionicons name="star" size={14} color="rgba(255,255,255,0.9)" />
-                    <Text style={styles.levelTipText}>New team (+5)</Text>
+                    <Text style={styles.levelTipText}>New team (+{POINTS.NEW_TEAM})</Text>
                   </View>
                 </View>
               </>
@@ -733,5 +930,134 @@ const styles = StyleSheet.create({
     fontSize: fontSize.xs,
     fontWeight: fontWeight.semibold,
     color: colors.success,
+  },
+  recentPointValueDark: {
+    color: '#065F46', // Dark green for contrast on green backgrounds
+  },
+
+  // Notifications Section
+  notificationsSection: {
+    marginBottom: spacing.lg,
+  },
+  notificationsHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginBottom: spacing.md,
+  },
+  notificationsBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.error,
+    borderRadius: borderRadius.full,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    gap: spacing.xs,
+  },
+  notificationsBadgeText: {
+    fontSize: fontSize.xs,
+    fontWeight: fontWeight.bold,
+    color: colors.white,
+  },
+  notificationsTitle: {
+    fontSize: fontSize.md,
+    fontWeight: fontWeight.semibold,
+    color: colors.text,
+  },
+  notificationCard: {
+    marginBottom: spacing.sm,
+    padding: spacing.md,
+  },
+  notificationContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+  },
+  notificationMain: {
+    flex: 1,
+    gap: spacing.sm,
+  },
+  notificationFrom: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  notificationFromText: {
+    fontSize: fontSize.sm,
+    color: colors.textSecondary,
+    flex: 1,
+  },
+  notificationFromName: {
+    fontWeight: fontWeight.medium,
+    color: colors.text,
+  },
+  notificationEvent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  notificationTeamLogos: {
+    flexDirection: 'row',
+  },
+  notificationTeamLogo: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: colors.surface,
+  },
+  notificationTeamLogoOverlap: {
+    marginLeft: -8,
+  },
+  notificationTeamLogoPlaceholder: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: colors.surface,
+  },
+  notificationTeamLogoText: {
+    fontSize: 10,
+    fontWeight: fontWeight.bold,
+    color: colors.text,
+  },
+  notificationEventText: {
+    fontSize: fontSize.sm,
+    fontWeight: fontWeight.medium,
+    color: colors.text,
+    flex: 1,
+  },
+  notificationActions: {
+    flexDirection: 'row',
+    gap: spacing.xs,
+  },
+  notificationButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  notificationButtonAccept: {
+    backgroundColor: colors.success,
+  },
+  notificationButtonDecline: {
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  viewAllNotifications: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.xs,
+    paddingVertical: spacing.sm,
+  },
+  viewAllNotificationsText: {
+    fontSize: fontSize.sm,
+    color: colors.primary,
+    fontWeight: fontWeight.medium,
   },
 });

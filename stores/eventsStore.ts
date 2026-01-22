@@ -124,6 +124,41 @@ export const useEventsStore = create<EventsState>((set, get) => ({
       // Extract team/venue/sport names that need special handling
       const { home_team_name, away_team_name, venue_name, sport_id, ...restEventData } = eventData;
 
+      // Try to find matching teams in the database by name (case-insensitive)
+      let homeTeamId: string | null = null;
+      let awayTeamId: string | null = null;
+      let venueId: string | null = null;
+
+      if (home_team_name) {
+        const { data: homeTeam } = await supabase
+          .from('teams')
+          .select('id')
+          .ilike('name', home_team_name)
+          .limit(1)
+          .single();
+        if (homeTeam) homeTeamId = homeTeam.id;
+      }
+
+      if (away_team_name) {
+        const { data: awayTeam } = await supabase
+          .from('teams')
+          .select('id')
+          .ilike('name', away_team_name)
+          .limit(1)
+          .single();
+        if (awayTeam) awayTeamId = awayTeam.id;
+      }
+
+      if (venue_name) {
+        const { data: venue } = await supabase
+          .from('venues')
+          .select('id')
+          .ilike('name', venue_name)
+          .limit(1)
+          .single();
+        if (venue) venueId = venue.id;
+      }
+
       // Check if this event already exists
       if (eventData.id) {
         eventId = eventData.id;
@@ -141,10 +176,14 @@ export const useEventsStore = create<EventsState>((set, get) => ({
           is_abandoned: eventData.is_abandoned || false,
           // Store sport as text name (sport_id from form is actually the sport code like 'afl', 'tennis')
           sport_name: sport_id || null,
-          // Store team/venue as text fields
+          // Store team/venue as text fields (fallback for display)
           home_team_name: home_team_name || null,
           away_team_name: away_team_name || null,
           venue_name: venue_name || null,
+          // Also store FKs if we found matching teams/venues (for logos)
+          home_team_id: homeTeamId,
+          away_team_id: awayTeamId,
+          venue_id: venueId,
         };
 
         // Create new event

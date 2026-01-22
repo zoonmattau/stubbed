@@ -268,6 +268,29 @@ export function useFriends() {
     [friends]
   );
 
+  // Search all users on the app (database search)
+  const searchAllUsers = useCallback(
+    async (query: string): Promise<Profile[]> => {
+      if (!query.trim() || query.length < 2) return [];
+
+      try {
+        const { data, error: searchError } = await supabase
+          .from('profiles')
+          .select('id, username, display_name, avatar_url, bio')
+          .or(`username.ilike.%${query}%,display_name.ilike.%${query}%`)
+          .neq('id', user?.id || '') // Exclude current user
+          .limit(10);
+
+        if (searchError) throw searchError;
+        return (data as Profile[]) || [];
+      } catch (err) {
+        console.error('Error searching users:', err);
+        return [];
+      }
+    },
+    [user?.id]
+  );
+
   // Fetch profiles by user IDs (for displaying tagged users)
   const fetchUsersByIds = useCallback(
     async (userIds: string[]): Promise<TaggedUser[]> => {
@@ -308,6 +331,7 @@ export function useFriends() {
     declineRequest,
     removeFriend,
     searchFriends,
+    searchAllUsers,
     fetchUsersByIds,
   };
 }

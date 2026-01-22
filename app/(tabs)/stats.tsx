@@ -635,7 +635,7 @@ export default function StatsScreen() {
             <View style={styles.mapPreviewContent}>
               <Text style={styles.mapPreviewText}>View your events by location</Text>
               <Text style={styles.mapPreviewStatText}>
-                {new Set(attendedEvents.map(e => e.event?.venue?.city).filter(Boolean)).size} cities visited
+                {new Set(attendedEvents.map(e => e.event?.venue?.name || e.event?.venue_name).filter(Boolean)).size} venues visited
               </Text>
             </View>
             <Ionicons name="chevron-forward" size={20} color={colors.textMuted} />

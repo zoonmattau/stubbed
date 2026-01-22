@@ -21,6 +21,7 @@ import { useStatsStore } from '@/stores/statsStore';
 import { useEventsStore } from '@/stores/eventsStore';
 import { useFavoritesStore } from '@/stores/favoritesStore';
 import { usePoints } from '@/hooks/usePoints';
+import { useTeamLogos } from '@/hooks/useTeamLogos';
 import { colors, spacing, fontSize, fontWeight, borderRadius } from '@/constants/theme';
 import { LEVELS, getCurrentLevel, getNextLevel, getLevelProgress } from '@/constants/levels';
 
@@ -29,6 +30,7 @@ export default function ProfileScreen() {
   const { achievements, fetchAchievements, recalculateAchievements } = useStatsStore();
   const { teams: allTeams, fetchTeams, attendedEvents, fetchAttendedEvents, isLoading: eventsLoading } = useEventsStore();
   const { teams: favoriteTeams, addTeamManual, removeTeam } = useFavoritesStore();
+  const { getTeamLogo } = useTeamLogos();
 
   const [showAddTeamModal, setShowAddTeamModal] = useState(false);
   const [newTeamName, setNewTeamName] = useState('');
@@ -365,6 +367,9 @@ export default function ProfileScreen() {
                 if (!event) return null;
                 const homeTeam = event.home_team?.name || event.home_team_name || 'Home';
                 const awayTeam = event.away_team?.name || event.away_team_name || 'Away';
+                // Try FK logo first, then lookup by team name
+                const homeTeamLogo = event.home_team?.logo_url || getTeamLogo(homeTeam);
+                const awayTeamLogo = event.away_team?.logo_url || getTeamLogo(awayTeam);
                 const eventDate = new Date(event.event_date || attended.created_at);
                 return (
                   <TouchableOpacity
@@ -372,8 +377,21 @@ export default function ProfileScreen() {
                     style={[styles.recentActivityItem, index === 2 && styles.recentActivityItemLast]}
                     onPress={() => router.push(`/event/${attended.id}`)}
                   >
-                    <View style={[styles.recentActivityIcon, { backgroundColor: `${colors.primary}15` }]}>
-                      <Ionicons name="ticket" size={16} color={colors.primary} />
+                    <View style={styles.recentActivityLogos}>
+                      {homeTeamLogo ? (
+                        <Image source={{ uri: homeTeamLogo }} style={styles.recentActivityLogo} />
+                      ) : (
+                        <View style={[styles.recentActivityLogoPlaceholder, { backgroundColor: `${colors.primary}20` }]}>
+                          <Text style={styles.recentActivityLogoText}>{homeTeam[0]}</Text>
+                        </View>
+                      )}
+                      {awayTeamLogo ? (
+                        <Image source={{ uri: awayTeamLogo }} style={[styles.recentActivityLogo, styles.recentActivityLogoOverlap]} />
+                      ) : (
+                        <View style={[styles.recentActivityLogoPlaceholder, styles.recentActivityLogoOverlap, { backgroundColor: `${colors.warning}20` }]}>
+                          <Text style={styles.recentActivityLogoText}>{awayTeam[0]}</Text>
+                        </View>
+                      )}
                     </View>
                     <View style={styles.recentActivityContent}>
                       <Text style={styles.recentActivityTitle} numberOfLines={1}>
@@ -871,6 +889,33 @@ const styles = StyleSheet.create({
     fontSize: fontSize.sm,
     fontWeight: fontWeight.semibold,
     color: colors.success,
+  },
+  recentActivityLogos: {
+    flexDirection: 'row',
+  },
+  recentActivityLogo: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    borderWidth: 2,
+    borderColor: colors.surface,
+  },
+  recentActivityLogoOverlap: {
+    marginLeft: -10,
+  },
+  recentActivityLogoPlaceholder: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: colors.surface,
+  },
+  recentActivityLogoText: {
+    fontSize: 10,
+    fontWeight: fontWeight.bold,
+    color: colors.text,
   },
   emptyActivity: {
     alignItems: 'center',

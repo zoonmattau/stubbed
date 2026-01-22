@@ -145,9 +145,9 @@ export default function MapStatsScreen() {
       const event = attended.event;
       if (!event) return;
 
-      // Try to determine location from venue city
-      const venueCity = event.venue?.city?.toLowerCase() || '';
-      const venueName = event.venue?.name?.toLowerCase() || '';
+      // Try to determine location from venue city (FK or text field)
+      const venueCity = (event.venue?.city || '').toLowerCase();
+      const venueName = (event.venue?.name || event.venue_name || '').toLowerCase();
 
       // Try to match city
       let location = CITY_TO_LOCATION[venueCity];
