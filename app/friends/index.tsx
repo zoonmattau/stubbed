@@ -96,14 +96,17 @@ export default function FriendsScreen() {
           </Text>
           <Button
             title="Find Friends"
-            onPress={() => {}}
+            onPress={() => router.push('/friends/requests')}
             style={styles.findFriendsButton}
           />
         </View>
       )}
 
       {/* Add Friend FAB */}
-      <TouchableOpacity style={styles.fab}>
+      <TouchableOpacity
+        style={styles.fab}
+        onPress={() => router.push('/friends/requests')}
+      >
         <Ionicons name="person-add" size={24} color={colors.white} />
       </TouchableOpacity>
     </View>

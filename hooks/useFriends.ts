@@ -291,6 +291,56 @@ export function useFriends() {
     [user?.id]
   );
 
+  // Search users with extended stats (for friend search with previews)
+  interface UserWithStats extends Profile {
+    total_events?: number;
+    favorite_sport?: string;
+    favorite_team?: string;
+  }
+
+  const searchUsersWithStats = useCallback(
+    async (query: string): Promise<UserWithStats[]> => {
+      if (!query.trim() || query.length < 2) return [];
+
+      try {
+        // Search profiles - stats will be fetched separately if needed
+        const { data, error: searchError } = await supabase
+          .from('profiles')
+          .select('id, username, display_name, avatar_url, bio, favorite_sport, favorite_team')
+          .or(`username.ilike.%${query}%,display_name.ilike.%${query}%`)
+          .neq('id', user?.id || '')
+          .limit(10);
+
+        if (searchError) throw searchError;
+
+        // Try to get event counts for these users
+        const userIds = (data || []).map((u: any) => u.id);
+        let eventCounts: Record<string, number> = {};
+
+        if (userIds.length > 0) {
+          const { data: eventsData } = await supabase
+            .from('attended_events')
+            .select('user_id')
+            .in('user_id', userIds);
+
+          // Count events per user
+          (eventsData || []).forEach((e: any) => {
+            eventCounts[e.user_id] = (eventCounts[e.user_id] || 0) + 1;
+          });
+        }
+
+        return (data || []).map((u: any) => ({
+          ...u,
+          total_events: eventCounts[u.id] || 0,
+        }));
+      } catch (err) {
+        console.error('Error searching users with stats:', err);
+        return [];
+      }
+    },
+    [user?.id]
+  );
+
   // Fetch profiles by user IDs (for displaying tagged users)
   const fetchUsersByIds = useCallback(
     async (userIds: string[]): Promise<TaggedUser[]> => {
@@ -318,6 +368,15 @@ export function useFriends() {
     [friends]
   );
 
+  // Refresh all data (friends, pending, sent)
+  const refreshAll = useCallback(async () => {
+    await Promise.all([
+      fetchFriends(),
+      fetchPendingRequests(),
+      fetchSentRequests(),
+    ]);
+  }, [fetchFriends, fetchPendingRequests, fetchSentRequests]);
+
   return {
     friends,
     friendProfiles,
@@ -326,12 +385,14 @@ export function useFriends() {
     isLoading,
     error,
     refresh: fetchFriends,
+    refreshAll,
     sendRequest,
     acceptRequest,
     declineRequest,
     removeFriend,
     searchFriends,
     searchAllUsers,
+    searchUsersWithStats,
     fetchUsersByIds,
   };
 }

@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo, useCallback } from 'react';
 import {
   View,
   Text,
@@ -12,7 +12,7 @@ import {
   Modal,
   Image,
 } from 'react-native';
-import { router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Card, Avatar, Badge, Button, Footer } from '@/components/ui';
 import { ProgressBar } from '@/components/stats';
@@ -20,7 +20,7 @@ import { useAuthStore } from '@/stores/authStore';
 import { useStatsStore } from '@/stores/statsStore';
 import { useEventsStore } from '@/stores/eventsStore';
 import { useFavoritesStore } from '@/stores/favoritesStore';
-import { usePoints } from '@/hooks/usePoints';
+import { usePoints, POINTS } from '@/hooks/usePoints';
 import { useTeamLogos } from '@/hooks/useTeamLogos';
 import { colors, spacing, fontSize, fontWeight, borderRadius } from '@/constants/theme';
 import { LEVELS, getCurrentLevel, getNextLevel, getLevelProgress } from '@/constants/levels';
@@ -37,16 +37,19 @@ export default function ProfileScreen() {
   const [filteredTeams, setFilteredTeams] = useState<typeof allTeams>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
 
-  useEffect(() => {
-    if (user?.id) {
-      // Fetch attended events first (fast, local calculation depends on this)
-      fetchAttendedEvents(user.id);
-      // Then fetch achievements
-      fetchAchievements(user.id);
-      // Recalculate achievements in background
-      recalculateAchievements(user.id);
-    }
-  }, [user?.id]);
+  // Refetch data when screen comes into focus (handles navigation back)
+  useFocusEffect(
+    useCallback(() => {
+      if (user?.id) {
+        // Fetch attended events first (fast, local calculation depends on this)
+        fetchAttendedEvents(user.id);
+        // Then fetch achievements
+        fetchAchievements(user.id);
+        // Recalculate achievements in background
+        recalculateAchievements(user.id);
+      }
+    }, [user?.id])
+  );
 
   // Calculate local stats from attendedEvents (handles both FK and text fields)
   const localStats = useMemo(() => {
@@ -172,6 +175,62 @@ export default function ProfileScreen() {
 
   // Total points = achievement points + activity points
   const totalPoints = achievementPoints + activityPoints;
+
+  // Calculate points earned per event (including discovery bonuses)
+  const pointsPerEvent = useMemo(() => {
+    const pointsMap: Record<string, number> = {};
+    const seenTeams = new Set<string>();
+    const seenSports = new Set<string>();
+    const seenVenues = new Set<string>();
+
+    // Sort by date to calculate discovery bonuses correctly
+    const sortedEvents = [...attendedEvents].sort((a, b) => {
+      const dateA = new Date(a.event?.event_date || a.created_at);
+      const dateB = new Date(b.event?.event_date || b.created_at);
+      return dateA.getTime() - dateB.getTime();
+    });
+
+    sortedEvents.forEach((attended) => {
+      const event = attended.event;
+      if (!event) return;
+
+      let eventPoints = POINTS.ATTEND_EVENT;
+
+      // Win bonus
+      const isWin = attended.result === 'win';
+      const hasSupport = attended.supported_team && attended.supported_team !== 'neutral';
+      if (isWin && hasSupport) {
+        eventPoints += POINTS.TEAM_WIN;
+      }
+
+      // Discovery bonuses
+      const homeTeam = (event.home_team?.name || event.home_team_name || '').toLowerCase();
+      const awayTeam = (event.away_team?.name || event.away_team_name || '').toLowerCase();
+      const sport = (event.sport?.name || event.sport_name || '').toLowerCase();
+      const venue = (event.venue?.name || event.venue_name || '').toLowerCase();
+
+      if (homeTeam && !seenTeams.has(homeTeam)) {
+        seenTeams.add(homeTeam);
+        eventPoints += POINTS.NEW_TEAM;
+      }
+      if (awayTeam && !seenTeams.has(awayTeam)) {
+        seenTeams.add(awayTeam);
+        eventPoints += POINTS.NEW_TEAM;
+      }
+      if (sport && !seenSports.has(sport)) {
+        seenSports.add(sport);
+        eventPoints += POINTS.NEW_SPORT;
+      }
+      if (venue && !seenVenues.has(venue)) {
+        seenVenues.add(venue);
+        eventPoints += POINTS.NEW_VENUE;
+      }
+
+      pointsMap[attended.id] = eventPoints;
+    });
+
+    return pointsMap;
+  }, [attendedEvents]);
 
   // Get best display name, avoiding generic app-related names
   const getDisplayName = () => {
@@ -353,58 +412,96 @@ export default function ProfileScreen() {
             </View>
             <View style={styles.activitySummaryDivider} />
             <View style={styles.activitySummaryItem}>
-              <Text style={[styles.activitySummaryValue, { color: colors.success }]}>+{activityPoints}</Text>
+              <Text style={[styles.activitySummaryValue, { color: colors.success }]}>+{totalPoints}</Text>
               <Text style={styles.activitySummaryLabel}>Points</Text>
             </View>
           </View>
 
-          {/* Recent Events */}
-          {attendedEvents.length > 0 ? (
+          {/* Recent Activity - Events and Achievements */}
+          {(attendedEvents.length > 0 || unlockedAchievements.length > 0) ? (
             <View style={styles.recentActivityList}>
-              <Text style={styles.recentActivityHeader}>Latest Events</Text>
-              {attendedEvents.slice(0, 3).map((attended, index) => {
-                const event = attended.event;
-                if (!event) return null;
-                const homeTeam = event.home_team?.name || event.home_team_name || 'Home';
-                const awayTeam = event.away_team?.name || event.away_team_name || 'Away';
-                // Try FK logo first, then lookup by team name
-                const homeTeamLogo = event.home_team?.logo_url || getTeamLogo(homeTeam);
-                const awayTeamLogo = event.away_team?.logo_url || getTeamLogo(awayTeam);
-                const eventDate = new Date(event.event_date || attended.created_at);
-                return (
-                  <TouchableOpacity
-                    key={attended.id}
-                    style={[styles.recentActivityItem, index === 2 && styles.recentActivityItemLast]}
-                    onPress={() => router.push(`/event/${attended.id}`)}
-                  >
-                    <View style={styles.recentActivityLogos}>
-                      {homeTeamLogo ? (
-                        <Image source={{ uri: homeTeamLogo }} style={styles.recentActivityLogo} />
-                      ) : (
-                        <View style={[styles.recentActivityLogoPlaceholder, { backgroundColor: `${colors.primary}20` }]}>
-                          <Text style={styles.recentActivityLogoText}>{homeTeam[0]}</Text>
+              {/* Latest Events */}
+              {attendedEvents.length > 0 && (
+                <>
+                  <Text style={styles.recentActivityHeader}>Latest Events</Text>
+                  {attendedEvents.slice(0, 3).map((attended, index, arr) => {
+                    const event = attended.event;
+                    if (!event) return null;
+                    const homeTeam = event.home_team?.name || event.home_team_name || 'Home';
+                    const awayTeam = event.away_team?.name || event.away_team_name || 'Away';
+                    // Try FK logo first, then lookup by team name
+                    const homeTeamLogo = event.home_team?.logo_url || getTeamLogo(homeTeam);
+                    const awayTeamLogo = event.away_team?.logo_url || getTeamLogo(awayTeam);
+                    const eventDate = new Date(event.event_date || attended.created_at);
+                    // Get base points from calculation, add achievements if this is the most recent event
+                    const basePoints = pointsPerEvent[attended.id] || POINTS.ATTEND_EVENT;
+                    const isFirstEvent = index === 0;
+                    const eventPoints = isFirstEvent ? basePoints + achievementPoints : basePoints;
+                    return (
+                      <TouchableOpacity
+                        key={attended.id}
+                        style={[styles.recentActivityItem, index === arr.length - 1 && styles.recentActivityItemLast]}
+                        onPress={() => router.push(`/event/${attended.id}`)}
+                      >
+                        <View style={styles.recentActivityLogos}>
+                          {homeTeamLogo ? (
+                            <Image source={{ uri: homeTeamLogo }} style={styles.recentActivityLogo} />
+                          ) : (
+                            <View style={[styles.recentActivityLogoPlaceholder, { backgroundColor: `${colors.primary}20` }]}>
+                              <Text style={styles.recentActivityLogoText}>{homeTeam[0]}</Text>
+                            </View>
+                          )}
+                          {awayTeamLogo ? (
+                            <Image source={{ uri: awayTeamLogo }} style={[styles.recentActivityLogo, styles.recentActivityLogoOverlap]} />
+                          ) : (
+                            <View style={[styles.recentActivityLogoPlaceholder, styles.recentActivityLogoOverlap, { backgroundColor: `${colors.warning}20` }]}>
+                              <Text style={styles.recentActivityLogoText}>{awayTeam[0]}</Text>
+                            </View>
+                          )}
                         </View>
-                      )}
-                      {awayTeamLogo ? (
-                        <Image source={{ uri: awayTeamLogo }} style={[styles.recentActivityLogo, styles.recentActivityLogoOverlap]} />
-                      ) : (
-                        <View style={[styles.recentActivityLogoPlaceholder, styles.recentActivityLogoOverlap, { backgroundColor: `${colors.warning}20` }]}>
-                          <Text style={styles.recentActivityLogoText}>{awayTeam[0]}</Text>
+                        <View style={styles.recentActivityContent}>
+                          <Text style={styles.recentActivityTitle} numberOfLines={1}>
+                            {homeTeam} vs {awayTeam}
+                          </Text>
+                          <Text style={styles.recentActivityMeta}>
+                            {eventDate.toLocaleDateString('en-AU', { day: 'numeric', month: 'short' })}
+                          </Text>
                         </View>
-                      )}
-                    </View>
-                    <View style={styles.recentActivityContent}>
-                      <Text style={styles.recentActivityTitle} numberOfLines={1}>
-                        {homeTeam} vs {awayTeam}
-                      </Text>
-                      <Text style={styles.recentActivityMeta}>
-                        {eventDate.toLocaleDateString('en-AU', { day: 'numeric', month: 'short' })}
-                      </Text>
-                    </View>
-                    <Text style={styles.recentActivityPoints}>+10</Text>
-                  </TouchableOpacity>
-                );
-              })}
+                        <Text style={styles.recentActivityPoints}>+{eventPoints}</Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </>
+              )}
+
+              {/* Unlocked Achievements */}
+              {unlockedAchievements.length > 0 && (
+                <>
+                  <Text style={[styles.recentActivityHeader, { marginTop: attendedEvents.length > 0 ? spacing.md : 0 }]}>
+                    Achievements Unlocked
+                  </Text>
+                  {unlockedAchievements.slice(0, 3).map((achievement, index, arr) => (
+                    <TouchableOpacity
+                      key={achievement.id}
+                      style={[styles.recentActivityItem, index === arr.length - 1 && styles.recentActivityItemLast]}
+                      onPress={() => router.push('/achievements')}
+                    >
+                      <View style={[styles.recentActivityIcon, { backgroundColor: `${colors.gold}20` }]}>
+                        <Ionicons name="trophy" size={16} color={colors.gold} />
+                      </View>
+                      <View style={styles.recentActivityContent}>
+                        <Text style={styles.recentActivityTitle} numberOfLines={1}>
+                          {achievement.name}
+                        </Text>
+                        <Text style={styles.recentActivityMeta}>
+                          {achievement.description}
+                        </Text>
+                      </View>
+                      <Text style={styles.recentActivityPoints}>+{achievement.points}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </>
+              )}
 
               {/* Show discovered teams */}
               {localStats.totalTeams > 0 && (
