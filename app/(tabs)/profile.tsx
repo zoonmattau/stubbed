@@ -22,6 +22,7 @@ import { useEventsStore } from '@/stores/eventsStore';
 import { useFavoritesStore } from '@/stores/favoritesStore';
 import { usePoints } from '@/hooks/usePoints';
 import { colors, spacing, fontSize, fontWeight, borderRadius } from '@/constants/theme';
+import { LEVELS, getCurrentLevel, getNextLevel, getLevelProgress } from '@/constants/levels';
 
 export default function ProfileScreen() {
   const { user, profile, signOut } = useAuthStore();
@@ -194,26 +195,11 @@ export default function ProfileScreen() {
     return 'User';
   };
 
-  // Level names based on points
-  const LEVEL_NAMES = [
-    'Rookie',      // Level 1: 0-99
-    'Fan',         // Level 2: 100-199
-    'Supporter',   // Level 3: 200-299
-    'Enthusiast',  // Level 4: 300-399
-    'Dedicated',   // Level 5: 400-499
-    'Veteran',     // Level 6: 500-599
-    'Expert',      // Level 7: 600-699
-    'Elite',       // Level 8: 700-799
-    'Champion',    // Level 9: 800-899
-    'Legend',      // Level 10+: 900+
-  ];
-
-  // Calculate level based on points
-  const level = Math.floor(totalPoints / 100) + 1;
-  const pointsToNextLevel = 100 - (totalPoints % 100);
-  const levelProgress = ((totalPoints % 100) / 100) * 100;
-  const currentLevelName = LEVEL_NAMES[Math.min(level - 1, LEVEL_NAMES.length - 1)];
-  const nextLevelName = LEVEL_NAMES[Math.min(level, LEVEL_NAMES.length - 1)];
+  // Calculate level based on points using shared levels
+  const currentLevel = getCurrentLevel(totalPoints);
+  const nextLevel = getNextLevel(currentLevel);
+  const levelProgress = getLevelProgress(totalPoints, currentLevel, nextLevel);
+  const pointsToNextLevel = nextLevel ? nextLevel.minPoints - totalPoints : 0;
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
@@ -235,21 +221,28 @@ export default function ProfileScreen() {
         </View>
 
         {/* Level Progress */}
-        <View style={styles.levelContainer}>
+        <View style={[styles.levelContainer, { backgroundColor: `${currentLevel.color}15` }]}>
           <View style={styles.levelHeader}>
             <View style={styles.levelBadgeContainer}>
-              <View style={styles.levelBadge}>
-                <Text style={styles.levelText}>{currentLevelName}</Text>
+              <Ionicons name={currentLevel.icon as any} size={20} color={currentLevel.color} />
+              <View style={[styles.levelBadge, { backgroundColor: currentLevel.color }]}>
+                <Text style={styles.levelText}>{currentLevel.name}</Text>
               </View>
-              <Text style={styles.levelProgressText}>{totalPoints % 100}/100</Text>
             </View>
-            <Text style={styles.pointsText}>{totalPoints} total points</Text>
+            <View style={styles.levelPointsContainer}>
+              <Text style={styles.levelPointsValue}>{totalPoints}</Text>
+              {nextLevel && (
+                <Text style={styles.levelPointsMax}>/{nextLevel.minPoints}</Text>
+              )}
+            </View>
           </View>
-          <ProgressBar
-            progress={levelProgress}
-            label={`${pointsToNextLevel} pts to ${nextLevelName}`}
-            color={colors.primary}
-          />
+          {nextLevel && (
+            <ProgressBar
+              progress={levelProgress}
+              label={`${pointsToNextLevel} pts to ${nextLevel.name}`}
+              color={currentLevel.color}
+            />
+          )}
         </View>
 
         <TouchableOpacity style={styles.editButton} onPress={() => router.push('/profile/edit')}>
@@ -331,64 +324,134 @@ export default function ProfileScreen() {
         </Card>
       </View>
 
-      {/* Points Summary */}
+      {/* Recent Activity */}
       <View style={styles.section}>
         <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Points Breakdown</Text>
-          <TouchableOpacity onPress={() => router.push('/achievements')}>
+          <Text style={styles.sectionTitle}>Recent Activity</Text>
+          <TouchableOpacity onPress={() => router.push('/events')}>
             <Text style={styles.seeAll}>See All</Text>
           </TouchableOpacity>
         </View>
         <Card>
-          <View style={styles.pointsBreakdownList}>
-            <View style={styles.pointsBreakdownItem}>
-              <View style={[styles.pointsBreakdownIcon, { backgroundColor: `${colors.primary}20` }]}>
-                <Ionicons name="ticket" size={18} color={colors.primary} />
-              </View>
-              <View style={styles.pointsBreakdownInfo}>
-                <Text style={styles.pointsBreakdownLabel}>{localStats.totalEvents} events attended</Text>
-                <Text style={styles.pointsBreakdownValue}>+{localStats.totalEvents * 10} pts</Text>
-              </View>
+          {/* Points Summary Header */}
+          <View style={styles.activitySummary}>
+            <View style={styles.activitySummaryItem}>
+              <Text style={styles.activitySummaryValue}>{localStats.totalEvents}</Text>
+              <Text style={styles.activitySummaryLabel}>Events</Text>
             </View>
-            <View style={styles.pointsBreakdownItem}>
-              <View style={[styles.pointsBreakdownIcon, { backgroundColor: `${colors.warning}20` }]}>
-                <Ionicons name="shield" size={18} color={colors.warning} />
-              </View>
-              <View style={styles.pointsBreakdownInfo}>
-                <Text style={styles.pointsBreakdownLabel}>{localStats.totalTeams} new teams discovered</Text>
-                <Text style={styles.pointsBreakdownValue}>+{localStats.totalTeams * 5} pts</Text>
-              </View>
+            <View style={styles.activitySummaryDivider} />
+            <View style={styles.activitySummaryItem}>
+              <Text style={styles.activitySummaryValue}>{localStats.totalTeams}</Text>
+              <Text style={styles.activitySummaryLabel}>Teams</Text>
             </View>
-            <View style={styles.pointsBreakdownItem}>
-              <View style={[styles.pointsBreakdownIcon, { backgroundColor: `${colors.success}20` }]}>
-                <Ionicons name="location" size={18} color={colors.success} />
-              </View>
-              <View style={styles.pointsBreakdownInfo}>
-                <Text style={styles.pointsBreakdownLabel}>{localStats.totalVenues} venues visited</Text>
-                <Text style={styles.pointsBreakdownValue}>+{localStats.totalVenues * 5} pts</Text>
-              </View>
+            <View style={styles.activitySummaryDivider} />
+            <View style={styles.activitySummaryItem}>
+              <Text style={styles.activitySummaryValue}>{localStats.totalVenues}</Text>
+              <Text style={styles.activitySummaryLabel}>Venues</Text>
             </View>
-            <View style={styles.pointsBreakdownItem}>
-              <View style={[styles.pointsBreakdownIcon, { backgroundColor: `${colors.info}20` }]}>
-                <Ionicons name="basketball" size={18} color={colors.info} />
-              </View>
-              <View style={styles.pointsBreakdownInfo}>
-                <Text style={styles.pointsBreakdownLabel}>{localStats.totalSports} sports explored</Text>
-                <Text style={styles.pointsBreakdownValue}>+{localStats.totalSports * 10} pts</Text>
-              </View>
+            <View style={styles.activitySummaryDivider} />
+            <View style={styles.activitySummaryItem}>
+              <Text style={[styles.activitySummaryValue, { color: colors.success }]}>+{activityPoints}</Text>
+              <Text style={styles.activitySummaryLabel}>Points</Text>
             </View>
-            {unlockedAchievements.length > 0 && (
-              <View style={styles.pointsBreakdownItem}>
-                <View style={[styles.pointsBreakdownIcon, { backgroundColor: `${colors.gold}20` }]}>
-                  <Ionicons name="trophy" size={18} color={colors.gold} />
-                </View>
-                <View style={styles.pointsBreakdownInfo}>
-                  <Text style={styles.pointsBreakdownLabel}>{unlockedAchievements.length} achievements</Text>
-                  <Text style={styles.pointsBreakdownValue}>+{achievementPoints} pts</Text>
-                </View>
-              </View>
-            )}
           </View>
+
+          {/* Recent Events */}
+          {attendedEvents.length > 0 ? (
+            <View style={styles.recentActivityList}>
+              <Text style={styles.recentActivityHeader}>Latest Events</Text>
+              {attendedEvents.slice(0, 3).map((attended, index) => {
+                const event = attended.event;
+                if (!event) return null;
+                const homeTeam = event.home_team?.name || event.home_team_name || 'Home';
+                const awayTeam = event.away_team?.name || event.away_team_name || 'Away';
+                const eventDate = new Date(event.event_date || attended.created_at);
+                return (
+                  <TouchableOpacity
+                    key={attended.id}
+                    style={[styles.recentActivityItem, index === 2 && styles.recentActivityItemLast]}
+                    onPress={() => router.push(`/event/${attended.id}`)}
+                  >
+                    <View style={[styles.recentActivityIcon, { backgroundColor: `${colors.primary}15` }]}>
+                      <Ionicons name="ticket" size={16} color={colors.primary} />
+                    </View>
+                    <View style={styles.recentActivityContent}>
+                      <Text style={styles.recentActivityTitle} numberOfLines={1}>
+                        {homeTeam} vs {awayTeam}
+                      </Text>
+                      <Text style={styles.recentActivityMeta}>
+                        {eventDate.toLocaleDateString('en-AU', { day: 'numeric', month: 'short' })}
+                      </Text>
+                    </View>
+                    <Text style={styles.recentActivityPoints}>+10</Text>
+                  </TouchableOpacity>
+                );
+              })}
+
+              {/* Show discovered teams */}
+              {localStats.totalTeams > 0 && (
+                <>
+                  <Text style={[styles.recentActivityHeader, { marginTop: spacing.md }]}>Teams Discovered</Text>
+                  {(() => {
+                    const seenTeams = new Set<string>();
+                    const discoveredTeams: { name: string; date: Date }[] = [];
+
+                    // Sort by date (oldest first) to track discovery order
+                    const sortedEvents = [...attendedEvents].sort((a, b) =>
+                      new Date(a.event?.event_date || a.created_at).getTime() -
+                      new Date(b.event?.event_date || b.created_at).getTime()
+                    );
+
+                    sortedEvents.forEach(attended => {
+                      const event = attended.event;
+                      if (!event) return;
+
+                      const homeTeam = event.home_team?.name || event.home_team_name;
+                      const awayTeam = event.away_team?.name || event.away_team_name;
+                      const eventDate = new Date(event.event_date || attended.created_at);
+
+                      if (homeTeam && !seenTeams.has(homeTeam.toLowerCase())) {
+                        seenTeams.add(homeTeam.toLowerCase());
+                        discoveredTeams.push({ name: homeTeam, date: eventDate });
+                      }
+                      if (awayTeam && !seenTeams.has(awayTeam.toLowerCase())) {
+                        seenTeams.add(awayTeam.toLowerCase());
+                        discoveredTeams.push({ name: awayTeam, date: eventDate });
+                      }
+                    });
+
+                    // Show most recently discovered teams (reverse to get newest first)
+                    return discoveredTeams.reverse().slice(0, 3).map((team, index) => (
+                      <View
+                        key={team.name}
+                        style={[styles.recentActivityItem, index === Math.min(discoveredTeams.length - 1, 2) && styles.recentActivityItemLast]}
+                      >
+                        <View style={[styles.recentActivityIcon, { backgroundColor: `${colors.warning}15` }]}>
+                          <Ionicons name="shield" size={16} color={colors.warning} />
+                        </View>
+                        <View style={styles.recentActivityContent}>
+                          <Text style={styles.recentActivityTitle} numberOfLines={1}>
+                            {team.name}
+                          </Text>
+                          <Text style={styles.recentActivityMeta}>
+                            First seen {team.date.toLocaleDateString('en-AU', { day: 'numeric', month: 'short' })}
+                          </Text>
+                        </View>
+                        <Text style={styles.recentActivityPoints}>+5</Text>
+                      </View>
+                    ));
+                  })()}
+                </>
+              )}
+            </View>
+          ) : (
+            <View style={styles.emptyActivity}>
+              <Ionicons name="calendar-outline" size={32} color={colors.textMuted} />
+              <Text style={styles.emptyText}>
+                No events yet. Start attending to earn points!
+              </Text>
+            </View>
+          )}
         </Card>
       </View>
 
@@ -587,6 +650,8 @@ const styles = StyleSheet.create({
   },
   levelContainer: {
     marginBottom: spacing.lg,
+    padding: spacing.md,
+    borderRadius: borderRadius.lg,
   },
   levelHeader: {
     flexDirection: 'row',
@@ -600,10 +665,22 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   levelBadge: {
-    backgroundColor: colors.primary,
     paddingVertical: spacing.xs,
     paddingHorizontal: spacing.md,
     borderRadius: borderRadius.full,
+  },
+  levelPointsContainer: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+  },
+  levelPointsValue: {
+    fontSize: fontSize.xl,
+    fontWeight: fontWeight.bold,
+    color: colors.text,
+  },
+  levelPointsMax: {
+    fontSize: fontSize.sm,
+    color: colors.textMuted,
   },
   levelText: {
     fontSize: fontSize.sm,
@@ -719,6 +796,83 @@ const styles = StyleSheet.create({
     color: colors.gold,
   },
   emptyAchievements: {
+    alignItems: 'center',
+    padding: spacing.xl,
+  },
+  // Activity Summary styles
+  activitySummary: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    paddingVertical: spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+    marginBottom: spacing.md,
+  },
+  activitySummaryItem: {
+    alignItems: 'center',
+  },
+  activitySummaryValue: {
+    fontSize: fontSize.xl,
+    fontWeight: fontWeight.bold,
+    color: colors.text,
+  },
+  activitySummaryLabel: {
+    fontSize: fontSize.xs,
+    color: colors.textMuted,
+    marginTop: 2,
+  },
+  activitySummaryDivider: {
+    width: 1,
+    backgroundColor: colors.border,
+  },
+  recentActivityList: {
+    paddingTop: spacing.xs,
+  },
+  recentActivityHeader: {
+    fontSize: fontSize.xs,
+    fontWeight: fontWeight.semibold,
+    color: colors.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: spacing.sm,
+  },
+  recentActivityItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    paddingVertical: spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  recentActivityItemLast: {
+    borderBottomWidth: 0,
+  },
+  recentActivityIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  recentActivityContent: {
+    flex: 1,
+  },
+  recentActivityTitle: {
+    fontSize: fontSize.sm,
+    fontWeight: fontWeight.medium,
+    color: colors.text,
+  },
+  recentActivityMeta: {
+    fontSize: fontSize.xs,
+    color: colors.textMuted,
+    marginTop: 1,
+  },
+  recentActivityPoints: {
+    fontSize: fontSize.sm,
+    fontWeight: fontWeight.semibold,
+    color: colors.success,
+  },
+  emptyActivity: {
     alignItems: 'center',
     padding: spacing.xl,
   },

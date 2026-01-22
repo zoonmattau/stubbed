@@ -15,20 +15,11 @@ import { Card } from '@/components/ui';
 import { useAuthStore } from '@/stores/authStore';
 import { useStatsStore } from '@/stores/statsStore';
 import { useEventsStore } from '@/stores/eventsStore';
+import { usePoints, POINTS } from '@/hooks/usePoints';
 import { colors, spacing, fontSize, fontWeight, borderRadius } from '@/constants/theme';
 import { CATEGORY_ICONS, RARITY_COLORS } from '@/constants/achievements';
+import { LEVELS, getCurrentLevel, getNextLevel, getLevelProgress } from '@/constants/levels';
 import type { AchievementWithStatus } from '@/types';
-
-// Level definitions
-const LEVELS = [
-  { level: 1, name: 'Rookie', minPoints: 0, icon: 'ticket-outline', color: '#6B7280' },
-  { level: 2, name: 'Fan', minPoints: 50, icon: 'star-outline', color: '#10B981' },
-  { level: 3, name: 'Supporter', minPoints: 150, icon: 'star-half', color: '#3B82F6' },
-  { level: 4, name: 'Superfan', minPoints: 300, icon: 'star', color: '#8B5CF6' },
-  { level: 5, name: 'Legend', minPoints: 500, icon: 'medal-outline', color: '#F59E0B' },
-  { level: 6, name: 'Hall of Famer', minPoints: 800, icon: 'trophy', color: '#EF4444' },
-  { level: 7, name: 'Icon', minPoints: 1200, icon: 'diamond', color: '#EC4899' },
-];
 
 type CategoryFilter = 'all' | 'attendance' | 'diversity' | 'loyalty' | 'special';
 
@@ -36,6 +27,9 @@ export default function AchievementsScreen() {
   const { user } = useAuthStore();
   const { achievements, fetchAchievements, stats } = useStatsStore();
   const { attendedEvents } = useEventsStore();
+
+  // Get detailed points breakdown
+  const pointsBreakdown = usePoints(attendedEvents);
 
   const [filter, setFilter] = useState<CategoryFilter>('all');
   const [showUnlocked, setShowUnlocked] = useState(false);
@@ -57,28 +51,13 @@ export default function AchievementsScreen() {
     .filter((a) => a.unlocked)
     .reduce((sum, a) => sum + a.points, 0);
 
-  // Calculate current level
-  const currentLevel = useMemo(() => {
-    let level = LEVELS[0];
-    for (const l of LEVELS) {
-      if (totalPoints >= l.minPoints) {
-        level = l;
-      }
-    }
-    return level;
-  }, [totalPoints]);
-
-  const nextLevel = useMemo(() => {
-    const idx = LEVELS.findIndex(l => l.level === currentLevel.level);
-    return idx < LEVELS.length - 1 ? LEVELS[idx + 1] : null;
-  }, [currentLevel]);
-
-  const progressToNextLevel = useMemo(() => {
-    if (!nextLevel) return 100;
-    const pointsInLevel = totalPoints - currentLevel.minPoints;
-    const pointsNeeded = nextLevel.minPoints - currentLevel.minPoints;
-    return (pointsInLevel / pointsNeeded) * 100;
-  }, [totalPoints, currentLevel, nextLevel]);
+  // Calculate current level using shared functions
+  const currentLevel = useMemo(() => getCurrentLevel(totalPoints), [totalPoints]);
+  const nextLevel = useMemo(() => getNextLevel(currentLevel), [currentLevel]);
+  const progressToNextLevel = useMemo(
+    () => getLevelProgress(totalPoints, currentLevel, nextLevel),
+    [totalPoints, currentLevel, nextLevel]
+  );
 
   const categories: { key: CategoryFilter; label: string }[] = [
     { key: 'all', label: 'All' },
@@ -183,6 +162,70 @@ export default function AchievementsScreen() {
           )}
         </LinearGradient>
       </Card>
+
+      {/* Points Breakdown */}
+      <View style={styles.breakdownSection}>
+        <Text style={styles.sectionTitle}>Points Breakdown</Text>
+        <Card padding="none">
+          <View style={styles.breakdownItem}>
+            <View style={[styles.breakdownIcon, { backgroundColor: `${colors.primary}15` }]}>
+              <Ionicons name="ticket" size={20} color={colors.primary} />
+            </View>
+            <View style={styles.breakdownInfo}>
+              <Text style={styles.breakdownLabel}>Events Attended</Text>
+              <Text style={styles.breakdownDescription}>
+                {pointsBreakdown.details.eventsAttended} events × {POINTS.ATTEND_EVENT} pts
+              </Text>
+            </View>
+            <Text style={styles.breakdownValue}>+{pointsBreakdown.attendancePoints}</Text>
+          </View>
+          <View style={styles.breakdownItem}>
+            <View style={[styles.breakdownIcon, { backgroundColor: `${colors.success}15` }]}>
+              <Ionicons name="trophy" size={20} color={colors.success} />
+            </View>
+            <View style={styles.breakdownInfo}>
+              <Text style={styles.breakdownLabel}>Team Wins</Text>
+              <Text style={styles.breakdownDescription}>
+                {pointsBreakdown.details.teamWins} wins × {POINTS.TEAM_WIN} pts
+              </Text>
+            </View>
+            <Text style={styles.breakdownValue}>+{pointsBreakdown.winPoints}</Text>
+          </View>
+          <View style={styles.breakdownItem}>
+            <View style={[styles.breakdownIcon, { backgroundColor: `${colors.warning}15` }]}>
+              <Ionicons name="flame" size={20} color={colors.warning} />
+            </View>
+            <View style={styles.breakdownInfo}>
+              <Text style={styles.breakdownLabel}>Win Streaks</Text>
+              <Text style={styles.breakdownDescription}>
+                {pointsBreakdown.details.streaks.length} streak bonuses earned
+              </Text>
+            </View>
+            <Text style={styles.breakdownValue}>+{pointsBreakdown.streakBonuses}</Text>
+          </View>
+          <View style={styles.breakdownItem}>
+            <View style={[styles.breakdownIcon, { backgroundColor: `${colors.info}15` }]}>
+              <Ionicons name="compass" size={20} color={colors.info} />
+            </View>
+            <View style={styles.breakdownInfo}>
+              <Text style={styles.breakdownLabel}>Discovery Bonuses</Text>
+              <Text style={styles.breakdownDescription}>
+                {pointsBreakdown.details.newTeams} teams, {pointsBreakdown.details.newVenues} venues, {pointsBreakdown.details.newSports} sports
+              </Text>
+            </View>
+            <Text style={styles.breakdownValue}>+{pointsBreakdown.discoveryBonuses}</Text>
+          </View>
+          <View style={[styles.breakdownItem, styles.breakdownTotal]}>
+            <View style={[styles.breakdownIcon, { backgroundColor: `${colors.gold}15` }]}>
+              <Ionicons name="star" size={20} color={colors.gold} />
+            </View>
+            <View style={styles.breakdownInfo}>
+              <Text style={[styles.breakdownLabel, styles.breakdownTotalLabel]}>Total Activity Points</Text>
+            </View>
+            <Text style={[styles.breakdownValue, styles.breakdownTotalValue]}>{pointsBreakdown.totalPoints}</Text>
+          </View>
+        </Card>
+      </View>
 
       {/* All Levels */}
       <View style={styles.allLevelsSection}>
@@ -420,6 +463,53 @@ const styles = StyleSheet.create({
     color: 'rgba(255,255,255,0.9)',
     marginTop: spacing.sm,
     textAlign: 'center',
+  },
+  breakdownSection: {
+    marginBottom: spacing.xl,
+  },
+  breakdownItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+    gap: spacing.md,
+  },
+  breakdownIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  breakdownInfo: {
+    flex: 1,
+  },
+  breakdownLabel: {
+    fontSize: fontSize.md,
+    fontWeight: fontWeight.medium,
+    color: colors.text,
+  },
+  breakdownDescription: {
+    fontSize: fontSize.xs,
+    color: colors.textMuted,
+    marginTop: 2,
+  },
+  breakdownValue: {
+    fontSize: fontSize.md,
+    fontWeight: fontWeight.semibold,
+    color: colors.success,
+  },
+  breakdownTotal: {
+    backgroundColor: `${colors.gold}08`,
+    borderBottomWidth: 0,
+  },
+  breakdownTotalLabel: {
+    fontWeight: fontWeight.bold,
+  },
+  breakdownTotalValue: {
+    fontSize: fontSize.lg,
+    color: colors.gold,
   },
   allLevelsSection: {
     marginBottom: spacing.xl,

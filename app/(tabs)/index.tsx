@@ -18,17 +18,7 @@ import { useEventsStore } from '@/stores/eventsStore';
 import { useStatsStore } from '@/stores/statsStore';
 import { usePoints } from '@/hooks/usePoints';
 import { colors, spacing, fontSize, fontWeight, borderRadius } from '@/constants/theme';
-
-// Level definitions
-const LEVELS = [
-  { level: 1, name: 'Rookie', minPoints: 0, icon: 'ticket-outline', color: '#6B7280' },
-  { level: 2, name: 'Fan', minPoints: 50, icon: 'star-outline', color: '#10B981' },
-  { level: 3, name: 'Supporter', minPoints: 150, icon: 'star-half', color: '#3B82F6' },
-  { level: 4, name: 'Superfan', minPoints: 300, icon: 'star', color: '#8B5CF6' },
-  { level: 5, name: 'Legend', minPoints: 500, icon: 'medal-outline', color: '#F59E0B' },
-  { level: 6, name: 'Hall of Famer', minPoints: 800, icon: 'trophy', color: '#EF4444' },
-  { level: 7, name: 'Icon', minPoints: 1200, icon: 'diamond', color: '#EC4899' },
-];
+import { LEVELS, getCurrentLevel, getNextLevel, getLevelProgress } from '@/constants/levels';
 
 export default function HomeScreen() {
   const { user, profile } = useAuthStore();
@@ -96,20 +86,9 @@ export default function HomeScreen() {
     };
   }, [attendedEvents]);
 
-  const currentLevel = useMemo(() => {
-    let level = LEVELS[0];
-    for (const l of LEVELS) {
-      if (userPoints >= l.minPoints) {
-        level = l;
-      }
-    }
-    return level;
-  }, [userPoints]);
-
-  const nextLevel = LEVELS.find(l => l.level === currentLevel.level + 1);
-  const progressToNext = nextLevel
-    ? ((userPoints - currentLevel.minPoints) / (nextLevel.minPoints - currentLevel.minPoints)) * 100
-    : 100;
+  const currentLevel = useMemo(() => getCurrentLevel(userPoints), [userPoints]);
+  const nextLevel = getNextLevel(currentLevel);
+  const progressToNext = getLevelProgress(userPoints, currentLevel, nextLevel);
 
   return (
     <ScrollView
@@ -216,17 +195,15 @@ export default function HomeScreen() {
             </View>
             <View style={styles.levelInfo}>
               <Text style={styles.levelLabel}>Level {currentLevel.level}</Text>
-              <View style={styles.levelNameRow}>
-                <Text style={styles.levelName}>{currentLevel.name}</Text>
-                {nextLevel && (
-                  <Text style={styles.levelProgressIndicator}>
-                    {userPoints - currentLevel.minPoints}/{nextLevel.minPoints - currentLevel.minPoints}
-                  </Text>
-                )}
-              </View>
+              <Text style={styles.levelName}>{currentLevel.name}</Text>
             </View>
             <View style={styles.levelPoints}>
-              <Text style={styles.levelPointsValue}>{userPoints}</Text>
+              <View style={styles.levelPointsRow}>
+                <Text style={styles.levelPointsValue}>{userPoints}</Text>
+                {nextLevel && (
+                  <Text style={styles.levelPointsMax}>/{nextLevel.minPoints}</Text>
+                )}
+              </View>
               <Text style={styles.levelPointsLabel}>points</Text>
             </View>
           </View>
@@ -242,26 +219,62 @@ export default function HomeScreen() {
             </View>
           )}
 
+          {/* Recent Points Activity */}
           <View style={styles.levelTips}>
-            <Text style={styles.levelTipsTitle}>Ways to earn points:</Text>
-            <View style={styles.levelTipsGrid}>
-              <View style={styles.levelTipItem}>
-                <Ionicons name="ticket" size={14} color="rgba(255,255,255,0.9)" />
-                <Text style={styles.levelTipText}>Attend event (+10)</Text>
-              </View>
-              <View style={styles.levelTipItem}>
-                <Ionicons name="trophy" size={14} color="rgba(255,255,255,0.9)" />
-                <Text style={styles.levelTipText}>Team wins (+15)</Text>
-              </View>
-              <View style={styles.levelTipItem}>
-                <Ionicons name="flame" size={14} color="rgba(255,255,255,0.9)" />
-                <Text style={styles.levelTipText}>3-win streak (+25)</Text>
-              </View>
-              <View style={styles.levelTipItem}>
-                <Ionicons name="star" size={14} color="rgba(255,255,255,0.9)" />
-                <Text style={styles.levelTipText}>New team (+5)</Text>
-              </View>
-            </View>
+            {recentEvents.length > 0 ? (
+              <>
+                <Text style={styles.levelTipsTitle}>Recent points earned:</Text>
+                <View style={styles.recentPointsList}>
+                  {recentEvents.slice(0, 3).map((attended) => {
+                    const event = attended.event;
+                    if (!event) return null;
+                    const homeTeam = event.home_team?.name || event.home_team_name || 'Home';
+                    const awayTeam = event.away_team?.name || event.away_team_name || 'Away';
+                    const isWin = attended.result === 'win';
+                    const hasSupport = attended.supported_team && attended.supported_team !== 'neutral';
+                    // Calculate points: base attendance (10) + team win bonus (15 if supported team won)
+                    const eventPoints = 10 + (isWin && hasSupport ? 15 : 0);
+                    return (
+                      <View key={attended.id} style={styles.recentPointItem}>
+                        <View style={styles.recentPointIcon}>
+                          <Ionicons
+                            name={isWin && hasSupport ? 'trophy' : 'ticket'}
+                            size={12}
+                            color="rgba(255,255,255,0.9)"
+                          />
+                        </View>
+                        <Text style={styles.recentPointText} numberOfLines={1}>
+                          {homeTeam} vs {awayTeam}
+                        </Text>
+                        <Text style={styles.recentPointValue}>+{eventPoints}</Text>
+                      </View>
+                    );
+                  })}
+                </View>
+              </>
+            ) : (
+              <>
+                <Text style={styles.levelTipsTitle}>Ways to earn points:</Text>
+                <View style={styles.levelTipsGrid}>
+                  <View style={styles.levelTipItem}>
+                    <Ionicons name="ticket" size={14} color="rgba(255,255,255,0.9)" />
+                    <Text style={styles.levelTipText}>Attend event (+10)</Text>
+                  </View>
+                  <View style={styles.levelTipItem}>
+                    <Ionicons name="trophy" size={14} color="rgba(255,255,255,0.9)" />
+                    <Text style={styles.levelTipText}>Team wins (+15)</Text>
+                  </View>
+                  <View style={styles.levelTipItem}>
+                    <Ionicons name="flame" size={14} color="rgba(255,255,255,0.9)" />
+                    <Text style={styles.levelTipText}>3-win streak (+25)</Text>
+                  </View>
+                  <View style={styles.levelTipItem}>
+                    <Ionicons name="star" size={14} color="rgba(255,255,255,0.9)" />
+                    <Text style={styles.levelTipText}>New team (+5)</Text>
+                  </View>
+                </View>
+              </>
+            )}
           </View>
         </LinearGradient>
       </TouchableOpacity>
@@ -626,22 +639,21 @@ const styles = StyleSheet.create({
     fontWeight: fontWeight.bold,
     color: colors.white,
   },
-  levelNameRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-  },
-  levelProgressIndicator: {
-    fontSize: fontSize.xs,
-    color: 'rgba(255,255,255,0.7)',
-  },
   levelPoints: {
     alignItems: 'flex-end',
+  },
+  levelPointsRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
   },
   levelPointsValue: {
     fontSize: fontSize.xl,
     fontWeight: fontWeight.bold,
     color: colors.white,
+  },
+  levelPointsMax: {
+    fontSize: fontSize.sm,
+    color: 'rgba(255,255,255,0.6)',
   },
   levelPointsLabel: {
     fontSize: fontSize.xs,
@@ -694,5 +706,32 @@ const styles = StyleSheet.create({
   levelTipText: {
     fontSize: fontSize.xs,
     color: 'rgba(255,255,255,0.85)',
+  },
+  recentPointsList: {
+    gap: spacing.xs,
+  },
+  recentPointItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingVertical: 3,
+  },
+  recentPointIcon: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  recentPointText: {
+    flex: 1,
+    fontSize: fontSize.xs,
+    color: 'rgba(255,255,255,0.9)',
+  },
+  recentPointValue: {
+    fontSize: fontSize.xs,
+    fontWeight: fontWeight.semibold,
+    color: colors.success,
   },
 });
