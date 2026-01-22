@@ -121,18 +121,26 @@ export const useEventsStore = create<EventsState>((set, get) => ({
       // First, create or find the event
       let eventId: string;
 
-      // Extract team/venue names that need special handling
-      const { home_team_name, away_team_name, venue_name, ...restEventData } = eventData;
+      // Extract team/venue/sport names that need special handling
+      const { home_team_name, away_team_name, venue_name, sport_id, ...restEventData } = eventData;
 
       // Check if this event already exists
       if (eventData.id) {
         eventId = eventData.id;
       } else {
-        // Build the event insert data
+        // Build the event insert data - explicitly exclude sport_id as it's a text code, not a UUID
         const insertData: Record<string, unknown> = {
           ...restEventData,
           created_by: userId,
         };
+
+        // Remove sport_id if it somehow got included (it's a text code, not a UUID)
+        delete insertData.sport_id;
+
+        // Store sport as text name (sport_id from form is actually the sport code like 'afl', 'tennis')
+        if (sport_id) {
+          insertData.sport_name = sport_id;
+        }
 
         // Add team and venue names as text fields if they exist
         // These are stored as text since we don't have foreign key relationships for manually entered teams

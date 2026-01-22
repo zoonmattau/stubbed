@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   View,
   Text,
@@ -7,6 +7,7 @@ import {
   Platform,
   ScrollView,
   TouchableOpacity,
+  TextInput,
 } from 'react-native';
 import { Link, router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -28,6 +29,7 @@ export default function LoginScreen() {
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const passwordInputRef = useRef<TextInput>(null);
 
   const {
     control,
@@ -96,6 +98,9 @@ export default function LoginScreen() {
                 error={errors.emailOrUsername?.message}
                 autoCapitalize="none"
                 autoComplete="email"
+                returnKeyType="next"
+                onSubmitEditing={() => passwordInputRef.current?.focus()}
+                blurOnSubmit={false}
                 leftIcon={
                   <Ionicons name="person-outline" size={20} color={colors.textMuted} />
                 }
@@ -108,6 +113,7 @@ export default function LoginScreen() {
             name="password"
             render={({ field: { onChange, onBlur, value } }) => (
               <Input
+                ref={passwordInputRef}
                 label="Password"
                 placeholder="Enter your password"
                 value={value}
@@ -116,6 +122,8 @@ export default function LoginScreen() {
                 error={errors.password?.message}
                 secureTextEntry={!showPassword}
                 autoComplete="password"
+                returnKeyType="go"
+                onSubmitEditing={handleSubmit(onSubmit)}
                 leftIcon={
                   <Ionicons
                     name="lock-closed-outline"

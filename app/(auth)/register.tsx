@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   View,
   Text,
@@ -7,6 +7,7 @@ import {
   Platform,
   ScrollView,
   TouchableOpacity,
+  TextInput,
 } from 'react-native';
 import { Link, router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -48,6 +49,13 @@ export default function RegisterScreen() {
   const [error, setError] = useState<string | null>(null);
   const [emailSent, setEmailSent] = useState(false);
   const [registeredEmail, setRegisteredEmail] = useState('');
+
+  const lastNameRef = useRef<TextInput>(null);
+  const usernameRef = useRef<TextInput>(null);
+  const emailRef = useRef<TextInput>(null);
+  const dobRef = useRef<TextInput>(null);
+  const passwordRef = useRef<TextInput>(null);
+  const confirmPasswordRef = useRef<TextInput>(null);
 
   const handleBack = () => {
     if (router.canGoBack()) {
@@ -163,6 +171,9 @@ export default function RegisterScreen() {
                 onBlur={onBlur}
                 error={errors.firstName?.message}
                 autoComplete="given-name"
+                returnKeyType="next"
+                onSubmitEditing={() => lastNameRef.current?.focus()}
+                blurOnSubmit={false}
                 leftIcon={
                   <Ionicons name="person-outline" size={20} color={colors.textMuted} />
                 }
@@ -175,6 +186,7 @@ export default function RegisterScreen() {
             name="lastName"
             render={({ field: { onChange, onBlur, value } }) => (
               <Input
+                ref={lastNameRef}
                 label="Last Name"
                 placeholder="Enter your last name"
                 value={value}
@@ -182,6 +194,9 @@ export default function RegisterScreen() {
                 onBlur={onBlur}
                 error={errors.lastName?.message}
                 autoComplete="family-name"
+                returnKeyType="next"
+                onSubmitEditing={() => usernameRef.current?.focus()}
+                blurOnSubmit={false}
                 leftIcon={
                   <Ionicons name="person-outline" size={20} color={colors.textMuted} />
                 }
@@ -194,6 +209,7 @@ export default function RegisterScreen() {
             name="username"
             render={({ field: { onChange, onBlur, value } }) => (
               <Input
+                ref={usernameRef}
                 label="Username"
                 placeholder="Choose a username"
                 value={value}
@@ -202,6 +218,9 @@ export default function RegisterScreen() {
                 error={errors.username?.message}
                 autoCapitalize="none"
                 autoComplete="username"
+                returnKeyType="next"
+                onSubmitEditing={() => emailRef.current?.focus()}
+                blurOnSubmit={false}
                 leftIcon={
                   <Ionicons name="at" size={20} color={colors.textMuted} />
                 }
@@ -214,6 +233,7 @@ export default function RegisterScreen() {
             name="email"
             render={({ field: { onChange, onBlur, value } }) => (
               <Input
+                ref={emailRef}
                 label="Email"
                 placeholder="you@example.com"
                 value={value}
@@ -223,6 +243,9 @@ export default function RegisterScreen() {
                 autoCapitalize="none"
                 keyboardType="email-address"
                 autoComplete="email"
+                returnKeyType="next"
+                onSubmitEditing={() => dobRef.current?.focus()}
+                blurOnSubmit={false}
                 leftIcon={
                   <Ionicons name="mail-outline" size={20} color={colors.textMuted} />
                 }
@@ -250,6 +273,7 @@ export default function RegisterScreen() {
 
               return (
                 <Input
+                  ref={dobRef}
                   label="Date of Birth"
                   placeholder="DD-MM-YYYY"
                   value={value}
@@ -258,6 +282,9 @@ export default function RegisterScreen() {
                   error={errors.dateOfBirth?.message}
                   keyboardType="number-pad"
                   maxLength={10}
+                  returnKeyType="next"
+                  onSubmitEditing={() => passwordRef.current?.focus()}
+                  blurOnSubmit={false}
                   leftIcon={
                     <Ionicons name="calendar-outline" size={20} color={colors.textMuted} />
                   }
@@ -271,6 +298,7 @@ export default function RegisterScreen() {
             name="password"
             render={({ field: { onChange, onBlur, value } }) => (
               <Input
+                ref={passwordRef}
                 label="Password"
                 placeholder="Create a strong password"
                 value={value}
@@ -279,6 +307,9 @@ export default function RegisterScreen() {
                 error={errors.password?.message}
                 secureTextEntry={!showPassword}
                 autoComplete="new-password"
+                returnKeyType="next"
+                onSubmitEditing={() => confirmPasswordRef.current?.focus()}
+                blurOnSubmit={false}
                 leftIcon={
                   <Ionicons
                     name="lock-closed-outline"
@@ -304,6 +335,7 @@ export default function RegisterScreen() {
             name="confirmPassword"
             render={({ field: { onChange, onBlur, value } }) => (
               <Input
+                ref={confirmPasswordRef}
                 label="Confirm Password"
                 placeholder="Confirm your password"
                 value={value}
@@ -312,6 +344,8 @@ export default function RegisterScreen() {
                 error={errors.confirmPassword?.message}
                 secureTextEntry={!showPassword}
                 autoComplete="new-password"
+                returnKeyType="go"
+                onSubmitEditing={handleSubmit(onSubmit)}
                 leftIcon={
                   <Ionicons
                     name="lock-closed-outline"

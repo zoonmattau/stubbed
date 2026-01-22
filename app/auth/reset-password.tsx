@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import {
   View,
   Text,
@@ -8,6 +8,7 @@ import {
   ScrollView,
   TouchableOpacity,
   ActivityIndicator,
+  TextInput,
 } from 'react-native';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -39,6 +40,7 @@ export default function ResetPasswordScreen() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const confirmPasswordRef = useRef<TextInput>(null);
 
   const {
     control,
@@ -208,6 +210,9 @@ export default function ResetPasswordScreen() {
                 error={errors.password?.message}
                 secureTextEntry={!showPassword}
                 autoComplete="new-password"
+                returnKeyType="next"
+                onSubmitEditing={() => confirmPasswordRef.current?.focus()}
+                blurOnSubmit={false}
                 leftIcon={
                   <Ionicons
                     name="lock-closed-outline"
@@ -233,6 +238,7 @@ export default function ResetPasswordScreen() {
             name="confirmPassword"
             render={({ field: { onChange, onBlur, value } }) => (
               <Input
+                ref={confirmPasswordRef}
                 label="Confirm Password"
                 placeholder="Confirm your new password"
                 value={value}
@@ -241,6 +247,8 @@ export default function ResetPasswordScreen() {
                 error={errors.confirmPassword?.message}
                 secureTextEntry={!showPassword}
                 autoComplete="new-password"
+                returnKeyType="go"
+                onSubmitEditing={handleSubmit(onSubmit)}
                 leftIcon={
                   <Ionicons
                     name="lock-closed-outline"

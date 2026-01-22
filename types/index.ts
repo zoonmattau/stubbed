@@ -84,6 +84,7 @@ export interface Event {
   home_team_name?: string | null;
   away_team_name?: string | null;
   venue_name?: string | null;
+  sport_name?: string | null;
 }
 
 export interface AttendedEvent {

@@ -158,12 +158,68 @@ export default function ManualEventScreen() {
   const [timeAmPm, setTimeAmPm] = useState<'AM' | 'PM'>('PM');
   const [isAbandoned, setIsAbandoned] = useState(false);
 
+  // Date dropdown state
+  const currentDate = new Date();
+  const [selectedDay, setSelectedDay] = useState(currentDate.getDate().toString());
+  const [selectedMonth, setSelectedMonth] = useState((currentDate.getMonth() + 1).toString());
+  const [selectedYear, setSelectedYear] = useState(currentDate.getFullYear().toString());
+  const [showDayPicker, setShowDayPicker] = useState(false);
+  const [showMonthPicker, setShowMonthPicker] = useState(false);
+  const [showYearPicker, setShowYearPicker] = useState(false);
+
   const handleBack = () => {
     if (router.canGoBack()) {
       router.back();
     } else {
       router.replace('/(tabs)/add');
     }
+  };
+
+  // Date dropdown options
+  const days = Array.from({ length: 31 }, (_, i) => (i + 1).toString());
+  const months = [
+    { value: '1', label: 'January' },
+    { value: '2', label: 'February' },
+    { value: '3', label: 'March' },
+    { value: '4', label: 'April' },
+    { value: '5', label: 'May' },
+    { value: '6', label: 'June' },
+    { value: '7', label: 'July' },
+    { value: '8', label: 'August' },
+    { value: '9', label: 'September' },
+    { value: '10', label: 'October' },
+    { value: '11', label: 'November' },
+    { value: '12', label: 'December' },
+  ];
+  const years = Array.from({ length: 50 }, (_, i) => (currentDate.getFullYear() - i).toString());
+
+  // Update form date when dropdowns change
+  const updateFormDate = (day: string, month: string, year: string) => {
+    const formattedDate = `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+    setValue('event_date', formattedDate);
+  };
+
+  const handleDayChange = (day: string) => {
+    setSelectedDay(day);
+    setShowDayPicker(false);
+    updateFormDate(day, selectedMonth, selectedYear);
+  };
+
+  const handleMonthChange = (month: string) => {
+    setSelectedMonth(month);
+    setShowMonthPicker(false);
+    updateFormDate(selectedDay, month, selectedYear);
+  };
+
+  const handleYearChange = (year: string) => {
+    setSelectedYear(year);
+    setShowYearPicker(false);
+    updateFormDate(selectedDay, selectedMonth, year);
+  };
+
+  const getMonthLabel = (value: string) => {
+    const month = months.find(m => m.value === value);
+    return month?.label || value;
   };
 
   // Calculate default values based on ESPN data
@@ -232,6 +288,13 @@ export default function ManualEventScreen() {
     fetchSports();
   }, []);
 
+  // Initialize form date from dropdown values on mount
+  useEffect(() => {
+    if (!espnData) {
+      updateFormDate(selectedDay, selectedMonth, selectedYear);
+    }
+  }, []);
+
   // Pre-fill form and select sport when ESPN data is available
   useEffect(() => {
     if (espnData) {
@@ -241,6 +304,11 @@ export default function ManualEventScreen() {
         setSelectedSport(sportId);
         setValue('sport_id', sportId);
       }
+      // Set date dropdowns from ESPN data
+      const eventDate = new Date(espnData.date);
+      setSelectedDay(eventDate.getDate().toString());
+      setSelectedMonth((eventDate.getMonth() + 1).toString());
+      setSelectedYear(eventDate.getFullYear().toString());
     }
   }, [espnData, defaultValues, reset, setValue]);
 
@@ -418,15 +486,37 @@ export default function ManualEventScreen() {
     color: string
   ) => (
     <View style={styles.stars}>
-      {[1, 2, 3, 4, 5].map((star) => (
-        <TouchableOpacity key={star} onPress={() => onSelect(star)}>
-          <Ionicons
-            name={star <= value ? 'star' : 'star-outline'}
-            size={32}
-            color={star <= value ? color : colors.textMuted}
-          />
-        </TouchableOpacity>
-      ))}
+      {[1, 2, 3, 4, 5].map((star) => {
+        const isFullStar = star <= value;
+        const isHalfStar = !isFullStar && star - 0.5 <= value && star - 0.5 > value - 1;
+
+        return (
+          <View key={star} style={styles.starContainer}>
+            {/* Left half - tap for half star */}
+            <TouchableOpacity
+              style={styles.starHalf}
+              onPress={() => onSelect(star - 0.5)}
+            >
+              <View style={styles.starHalfInner} />
+            </TouchableOpacity>
+            {/* Right half - tap for full star */}
+            <TouchableOpacity
+              style={styles.starHalf}
+              onPress={() => onSelect(star)}
+            >
+              <View style={styles.starHalfInner} />
+            </TouchableOpacity>
+            {/* Star icon overlay */}
+            <View style={styles.starIconOverlay} pointerEvents="none">
+              <Ionicons
+                name={isFullStar ? 'star' : isHalfStar ? 'star-half' : 'star-outline'}
+                size={32}
+                color={isFullStar || isHalfStar ? color : colors.textMuted}
+              />
+            </View>
+          </View>
+        );
+      })}
     </View>
   );
 
@@ -602,66 +692,144 @@ export default function ManualEventScreen() {
 
         {/* Date & Time */}
         <View style={styles.section}>
-          <View style={styles.row}>
-            <View style={styles.halfWidth}>
+          <Text style={styles.dateLabel}>Date *</Text>
+          <View style={styles.dateDropdownsRow}>
+            {/* Day Dropdown */}
+            <View style={styles.dateDropdownContainer}>
+              <TouchableOpacity
+                style={styles.dateDropdown}
+                onPress={() => {
+                  setShowDayPicker(!showDayPicker);
+                  setShowMonthPicker(false);
+                  setShowYearPicker(false);
+                }}
+              >
+                <Text style={styles.dateDropdownText}>{selectedDay.padStart(2, '0')}</Text>
+                <Ionicons name="chevron-down" size={16} color={colors.textMuted} />
+              </TouchableOpacity>
+              {showDayPicker && (
+                <ScrollView style={styles.dropdownList} nestedScrollEnabled>
+                  {days.map((day) => (
+                    <TouchableOpacity
+                      key={day}
+                      style={[styles.dropdownItem, day === selectedDay && styles.dropdownItemActive]}
+                      onPress={() => handleDayChange(day)}
+                    >
+                      <Text style={[styles.dropdownItemText, day === selectedDay && styles.dropdownItemTextActive]}>
+                        {day.padStart(2, '0')}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              )}
+            </View>
+
+            {/* Month Dropdown */}
+            <View style={[styles.dateDropdownContainer, styles.monthDropdownContainer]}>
+              <TouchableOpacity
+                style={styles.dateDropdown}
+                onPress={() => {
+                  setShowMonthPicker(!showMonthPicker);
+                  setShowDayPicker(false);
+                  setShowYearPicker(false);
+                }}
+              >
+                <Text style={styles.dateDropdownText}>{getMonthLabel(selectedMonth)}</Text>
+                <Ionicons name="chevron-down" size={16} color={colors.textMuted} />
+              </TouchableOpacity>
+              {showMonthPicker && (
+                <ScrollView style={styles.dropdownList} nestedScrollEnabled>
+                  {months.map((month) => (
+                    <TouchableOpacity
+                      key={month.value}
+                      style={[styles.dropdownItem, month.value === selectedMonth && styles.dropdownItemActive]}
+                      onPress={() => handleMonthChange(month.value)}
+                    >
+                      <Text style={[styles.dropdownItemText, month.value === selectedMonth && styles.dropdownItemTextActive]}>
+                        {month.label}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              )}
+            </View>
+
+            {/* Year Dropdown */}
+            <View style={styles.dateDropdownContainer}>
+              <TouchableOpacity
+                style={styles.dateDropdown}
+                onPress={() => {
+                  setShowYearPicker(!showYearPicker);
+                  setShowDayPicker(false);
+                  setShowMonthPicker(false);
+                }}
+              >
+                <Text style={styles.dateDropdownText}>{selectedYear}</Text>
+                <Ionicons name="chevron-down" size={16} color={colors.textMuted} />
+              </TouchableOpacity>
+              {showYearPicker && (
+                <ScrollView style={styles.dropdownList} nestedScrollEnabled>
+                  {years.map((year) => (
+                    <TouchableOpacity
+                      key={year}
+                      style={[styles.dropdownItem, year === selectedYear && styles.dropdownItemActive]}
+                      onPress={() => handleYearChange(year)}
+                    >
+                      <Text style={[styles.dropdownItemText, year === selectedYear && styles.dropdownItemTextActive]}>
+                        {year}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              )}
+            </View>
+          </View>
+          {errors.event_date && (
+            <Text style={styles.error}>{errors.event_date.message}</Text>
+          )}
+
+          <View style={styles.timeSection}>
+            <Text style={styles.timeLabel}>Time</Text>
+            <View style={styles.timeInputRow}>
               <Controller
                 control={control}
-                name="event_date"
+                name="event_time"
                 render={({ field: { onChange, onBlur, value } }) => (
-                  <Input
-                    label="Date *"
-                    placeholder="YYYY-MM-DD"
-                    value={value}
-                    onChangeText={onChange}
-                    onBlur={onBlur}
-                    error={errors.event_date?.message}
-                  />
+                  <View style={styles.timeInputWrapper}>
+                    <Input
+                      placeholder="HH:MM"
+                      value={value}
+                      onChangeText={onChange}
+                      onBlur={onBlur}
+                    />
+                  </View>
                 )}
               />
-            </View>
-            <View style={styles.halfWidth}>
-              <Text style={styles.timeLabel}>Time</Text>
-              <View style={styles.timeInputRow}>
-                <Controller
-                  control={control}
-                  name="event_time"
-                  render={({ field: { onChange, onBlur, value } }) => (
-                    <View style={styles.timeInputWrapper}>
-                      <Input
-                        placeholder="HH:MM"
-                        value={value}
-                        onChangeText={onChange}
-                        onBlur={onBlur}
-                      />
-                    </View>
-                  )}
-                />
-                <View style={styles.amPmInlineContainer}>
-                  <TouchableOpacity
-                    style={[
-                      styles.amPmInlineButton,
-                      timeAmPm === 'AM' && styles.amPmButtonActive,
-                    ]}
-                    onPress={() => setTimeAmPm('AM')}
-                  >
-                    <Text style={[
-                      styles.amPmText,
-                      timeAmPm === 'AM' && styles.amPmTextActive,
-                    ]}>AM</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[
-                      styles.amPmInlineButton,
-                      timeAmPm === 'PM' && styles.amPmButtonActive,
-                    ]}
-                    onPress={() => setTimeAmPm('PM')}
-                  >
-                    <Text style={[
-                      styles.amPmText,
-                      timeAmPm === 'PM' && styles.amPmTextActive,
-                    ]}>PM</Text>
-                  </TouchableOpacity>
-                </View>
+              <View style={styles.amPmInlineContainer}>
+                <TouchableOpacity
+                  style={[
+                    styles.amPmInlineButton,
+                    timeAmPm === 'AM' && styles.amPmButtonActive,
+                  ]}
+                  onPress={() => setTimeAmPm('AM')}
+                >
+                  <Text style={[
+                    styles.amPmText,
+                    timeAmPm === 'AM' && styles.amPmTextActive,
+                  ]}>AM</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[
+                    styles.amPmInlineButton,
+                    timeAmPm === 'PM' && styles.amPmButtonActive,
+                  ]}
+                  onPress={() => setTimeAmPm('PM')}
+                >
+                  <Text style={[
+                    styles.amPmText,
+                    timeAmPm === 'PM' && styles.amPmTextActive,
+                  ]}>PM</Text>
+                </TouchableOpacity>
               </View>
             </View>
           </View>
@@ -1063,6 +1231,30 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: spacing.sm,
   },
+  starContainer: {
+    width: 32,
+    height: 32,
+    position: 'relative',
+    flexDirection: 'row',
+  },
+  starHalf: {
+    width: 16,
+    height: 32,
+    zIndex: 1,
+  },
+  starHalfInner: {
+    width: '100%',
+    height: '100%',
+  },
+  starIconOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   photosRow: {
     flexDirection: 'row',
     gap: spacing.md,
@@ -1291,5 +1483,69 @@ const styles = StyleSheet.create({
     fontSize: fontSize.xs,
     color: colors.textSecondary,
     marginTop: 2,
+  },
+  dateLabel: {
+    fontSize: fontSize.sm,
+    fontWeight: fontWeight.medium,
+    color: colors.textSecondary,
+    marginBottom: spacing.xs,
+  },
+  dateDropdownsRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    marginBottom: spacing.md,
+  },
+  dateDropdownContainer: {
+    flex: 1,
+    position: 'relative',
+    zIndex: 10,
+  },
+  monthDropdownContainer: {
+    flex: 2,
+  },
+  dateDropdown: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.md,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: borderRadius.lg,
+  },
+  dateDropdownText: {
+    fontSize: fontSize.md,
+    color: colors.text,
+  },
+  dropdownList: {
+    position: 'absolute',
+    top: '100%',
+    left: 0,
+    right: 0,
+    maxHeight: 200,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: borderRadius.lg,
+    marginTop: spacing.xs,
+    zIndex: 100,
+  },
+  dropdownItem: {
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+  },
+  dropdownItemActive: {
+    backgroundColor: colors.primary,
+  },
+  dropdownItemText: {
+    fontSize: fontSize.md,
+    color: colors.text,
+  },
+  dropdownItemTextActive: {
+    color: colors.white,
+  },
+  timeSection: {
+    marginTop: spacing.sm,
   },
 });
