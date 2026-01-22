@@ -12,7 +12,7 @@ export default function EventLayout() {
       <Stack.Screen name="[id]" />
       <Stack.Screen name="manual" />
       <Stack.Screen name="search" />
-      <Stack.Screen name="edit" />
+      <Stack.Screen name="edit/[id]" />
     </Stack>
   );
 }

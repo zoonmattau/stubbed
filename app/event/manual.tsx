@@ -10,6 +10,7 @@ import {
   Platform,
   Image,
   Switch,
+  Pressable,
 } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -159,6 +160,13 @@ export default function ManualEventScreen() {
   const [timeAmPm, setTimeAmPm] = useState<'AM' | 'PM'>('PM');
   const [isAbandoned, setIsAbandoned] = useState(false);
 
+  // Cricket format state
+  type CricketFormat = 'T10' | 'T20' | 'ODI' | 'TEST';
+  const [cricketFormat, setCricketFormat] = useState<CricketFormat>('T20');
+  const [homeInnings2, setHomeInnings2] = useState('');
+  const [awayInnings2, setAwayInnings2] = useState('');
+  const isTestMatch = selectedSport === 'cricket' && (cricketFormat === 'TEST');
+
   // Date dropdown state
   const currentDate = new Date();
   const [selectedDay, setSelectedDay] = useState(currentDate.getDate().toString());
@@ -173,6 +181,14 @@ export default function ManualEventScreen() {
   const [showVenueSuggestions, setShowVenueSuggestions] = useState(false);
   const { attendedEvents, venues, fetchVenues } = useEventsStore();
   const { recalculateAchievements } = useStatsStore();
+
+  // Close all dropdowns
+  const closeAllDropdowns = () => {
+    setShowDayPicker(false);
+    setShowMonthPicker(false);
+    setShowYearPicker(false);
+    setShowVenueSuggestions(false);
+  };
 
   const handleBack = () => {
     if (router.canGoBack()) {
@@ -570,10 +586,28 @@ export default function ManualEventScreen() {
       style={styles.container}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
+      {/* Header with Back Button */}
+      <View style={styles.header}>
+        <TouchableOpacity onPress={handleBack} style={styles.backButton}>
+          <Ionicons name="arrow-back" size={24} color={colors.text} />
+        </TouchableOpacity>
+        <Text style={styles.headerTitle}>Add Event</Text>
+        <View style={styles.headerSpacer} />
+      </View>
+
+      {/* Dropdown backdrop overlay - closes dropdowns when tapping outside */}
+      {(showDayPicker || showMonthPicker || showYearPicker || showVenueSuggestions) && (
+        <Pressable
+          style={styles.dropdownBackdrop}
+          onPress={closeAllDropdowns}
+        />
+      )}
+
       <ScrollView
         style={styles.scrollView}
         contentContainerStyle={styles.content}
         keyboardShouldPersistTaps="handled"
+        onScrollBeginDrag={closeAllDropdowns}
       >
         {/* ESPN Event Preview */}
         {espnData && (
@@ -651,7 +685,7 @@ export default function ManualEventScreen() {
         </View>
 
         {/* Teams/Players/Race */}
-        <View style={styles.section}>
+        <View style={[styles.section, { zIndex: 50 }]}>
           <Text style={styles.sectionTitle}>
             {isRacing ? 'Race Details' : isIndividual ? 'Match Details' : 'Match Details'}
           </Text>
@@ -767,7 +801,7 @@ export default function ManualEventScreen() {
         </View>
 
         {/* Date & Time */}
-        <View style={styles.section}>
+        <View style={[styles.section, { zIndex: 40 }]}>
           <Text style={styles.dateLabel}>Date *</Text>
           <View style={styles.dateDropdownsRow}>
             {/* Day Dropdown */}
@@ -950,6 +984,33 @@ export default function ManualEventScreen() {
         {/* Score / Result */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>{isRacing ? 'Result (Optional)' : 'Final Score'}</Text>
+
+          {/* Cricket Format Selector */}
+          {selectedSport === 'cricket' && (
+            <View style={styles.cricketFormatSection}>
+              <Text style={styles.formatLabel}>Match Format</Text>
+              <View style={styles.formatOptions}>
+                {(['T10', 'T20', 'ODI', 'TEST'] as CricketFormat[]).map((format) => (
+                  <TouchableOpacity
+                    key={format}
+                    style={[
+                      styles.formatOption,
+                      cricketFormat === format && styles.formatOptionActive,
+                    ]}
+                    onPress={() => setCricketFormat(format)}
+                  >
+                    <Text style={[
+                      styles.formatOptionText,
+                      cricketFormat === format && styles.formatOptionTextActive,
+                    ]}>
+                      {format === 'TEST' ? 'Test/FC' : format}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+          )}
+
           {isRacing ? (
             <>
               <Controller
@@ -985,6 +1046,71 @@ export default function ManualEventScreen() {
                 )}
               />
               <Text style={styles.helperText}>Enter the set scores (e.g. 6-4, 6-3 for a 2-set match)</Text>
+            </>
+          ) : isTestMatch ? (
+            <>
+              {/* Test Match - 2 innings per team */}
+              <View style={styles.inningsContainer}>
+                <Text style={styles.inningsTeamLabel}>{homeTeamName || 'Home Team'}</Text>
+                <View style={styles.inningsRow}>
+                  <View style={styles.inningsInput}>
+                    <Controller
+                      control={control}
+                      name="home_score"
+                      render={({ field: { onChange, onBlur, value } }) => (
+                        <Input
+                          label="1st Innings"
+                          placeholder="e.g. 287"
+                          value={value}
+                          onChangeText={onChange}
+                          onBlur={onBlur}
+                          keyboardType="default"
+                        />
+                      )}
+                    />
+                  </View>
+                  <View style={styles.inningsInput}>
+                    <Input
+                      label="2nd Innings"
+                      placeholder="e.g. 312"
+                      value={homeInnings2}
+                      onChangeText={setHomeInnings2}
+                      keyboardType="default"
+                    />
+                  </View>
+                </View>
+              </View>
+              <View style={styles.inningsContainer}>
+                <Text style={styles.inningsTeamLabel}>{awayTeamName || 'Away Team'}</Text>
+                <View style={styles.inningsRow}>
+                  <View style={styles.inningsInput}>
+                    <Controller
+                      control={control}
+                      name="away_score"
+                      render={({ field: { onChange, onBlur, value } }) => (
+                        <Input
+                          label="1st Innings"
+                          placeholder="e.g. 245"
+                          value={value}
+                          onChangeText={onChange}
+                          onBlur={onBlur}
+                          keyboardType="default"
+                        />
+                      )}
+                    />
+                  </View>
+                  <View style={styles.inningsInput}>
+                    <Input
+                      label="2nd Innings"
+                      placeholder="e.g. 198"
+                      value={awayInnings2}
+                      onChangeText={setAwayInnings2}
+                      keyboardType="default"
+                    />
+                  </View>
+                </View>
+              </View>
+              <Text style={styles.helperText}>Enter scores for each innings (leave blank for innings not played)</Text>
             </>
           ) : (
             <View style={styles.row}>
@@ -1242,14 +1368,43 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background,
   },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: spacing.lg,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  backButton: {
+    marginRight: spacing.md,
+  },
+  headerTitle: {
+    flex: 1,
+    fontSize: fontSize.xl,
+    fontWeight: fontWeight.bold,
+    color: colors.text,
+  },
+  headerSpacer: {
+    width: 24,
+  },
   scrollView: {
     flex: 1,
+  },
+  dropdownBackdrop: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 50,
+    backgroundColor: 'transparent',
   },
   content: {
     padding: spacing.lg,
   },
   section: {
     marginBottom: spacing.xl,
+    position: 'relative',
   },
   sectionTitle: {
     fontSize: fontSize.lg,
@@ -1570,11 +1725,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: spacing.sm,
     marginBottom: spacing.md,
+    zIndex: 100,
   },
   dateDropdownContainer: {
     flex: 1,
     position: 'relative',
-    zIndex: 10,
+    zIndex: 100,
   },
   monthDropdownContainer: {
     flex: 2,
@@ -1605,7 +1761,12 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     borderRadius: borderRadius.lg,
     marginTop: spacing.xs,
-    zIndex: 100,
+    zIndex: 1000,
+    ...Platform.select({
+      web: {
+        boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+      },
+    }),
   },
   dropdownItem: {
     paddingVertical: spacing.sm,
@@ -1627,7 +1788,7 @@ const styles = StyleSheet.create({
   // Venue autocomplete styles
   venueAutocompleteContainer: {
     position: 'relative',
-    zIndex: 20,
+    zIndex: 200,
   },
   venueSuggestionsDropdown: {
     position: 'absolute',
@@ -1639,7 +1800,7 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     borderRadius: borderRadius.lg,
     marginTop: spacing.xs,
-    zIndex: 100,
+    zIndex: 1000,
     maxHeight: 200,
     ...Platform.select({
       ios: {
@@ -1652,7 +1813,7 @@ const styles = StyleSheet.create({
         elevation: 4,
       },
       web: {
-        boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
+        boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
       },
     }),
   },
@@ -1671,6 +1832,62 @@ const styles = StyleSheet.create({
   venueSuggestionText: {
     fontSize: fontSize.md,
     color: colors.text,
+    flex: 1,
+  },
+  // Cricket format styles
+  cricketFormatSection: {
+    marginBottom: spacing.lg,
+  },
+  formatLabel: {
+    fontSize: fontSize.sm,
+    fontWeight: fontWeight.medium,
+    color: colors.textSecondary,
+    marginBottom: spacing.sm,
+  },
+  formatOptions: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+  },
+  formatOption: {
+    flex: 1,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    borderRadius: borderRadius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    alignItems: 'center',
+  },
+  formatOptionActive: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  formatOptionText: {
+    fontSize: fontSize.sm,
+    fontWeight: fontWeight.medium,
+    color: colors.text,
+  },
+  formatOptionTextActive: {
+    color: colors.white,
+  },
+  // Test match innings styles
+  inningsContainer: {
+    marginBottom: spacing.md,
+    padding: spacing.md,
+    backgroundColor: colors.surfaceLight,
+    borderRadius: borderRadius.lg,
+  },
+  inningsTeamLabel: {
+    fontSize: fontSize.md,
+    fontWeight: fontWeight.semibold,
+    color: colors.text,
+    marginBottom: spacing.sm,
+  },
+  inningsRow: {
+    flexDirection: 'row',
+    gap: spacing.md,
+  },
+  inningsInput: {
     flex: 1,
   },
 });

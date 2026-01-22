@@ -31,6 +31,110 @@ export default function AchievementsScreen() {
   // Get detailed points breakdown
   const pointsBreakdown = usePoints(attendedEvents);
 
+  // Calculate user stats for achievement progress
+  const userStats = useMemo(() => {
+    const teamCounts: Record<string, number> = {};
+    const venueCounts: Record<string, number> = {};
+    const uniqueSports = new Set<string>();
+    const uniqueTeams = new Set<string>();
+    const uniqueVenues = new Set<string>();
+
+    attendedEvents.forEach((attended) => {
+      const event = attended.event;
+      if (!event) return;
+
+      // Track unique sports
+      const sportKey = event.sport_id || event.sport?.name || event.sport_name;
+      if (sportKey) uniqueSports.add(sportKey.toLowerCase());
+
+      // Track unique teams and counts
+      const homeTeamKey = (event.home_team_id || event.home_team?.name || event.home_team_name || '').toLowerCase();
+      const awayTeamKey = (event.away_team_id || event.away_team?.name || event.away_team_name || '').toLowerCase();
+
+      if (homeTeamKey) {
+        uniqueTeams.add(homeTeamKey);
+        teamCounts[homeTeamKey] = (teamCounts[homeTeamKey] || 0) + 1;
+      }
+      if (awayTeamKey) {
+        uniqueTeams.add(awayTeamKey);
+        teamCounts[awayTeamKey] = (teamCounts[awayTeamKey] || 0) + 1;
+      }
+
+      // Track unique venues and counts
+      const venueKey = (event.venue_id || event.venue?.name || event.venue_name || '').toLowerCase();
+      if (venueKey) {
+        uniqueVenues.add(venueKey);
+        venueCounts[venueKey] = (venueCounts[venueKey] || 0) + 1;
+      }
+    });
+
+    // Find max counts for loyalty achievements
+    const maxSameTeam = Math.max(0, ...Object.values(teamCounts));
+    const maxSameVenue = Math.max(0, ...Object.values(venueCounts));
+
+    return {
+      totalEvents: attendedEvents.length,
+      uniqueSports: uniqueSports.size,
+      uniqueTeams: uniqueTeams.size,
+      uniqueVenues: uniqueVenues.size,
+      maxSameTeam,
+      maxSameVenue,
+    };
+  }, [attendedEvents]);
+
+  // Calculate progress for an achievement
+  const getAchievementProgress = (achievement: AchievementWithStatus): number => {
+    if (achievement.unlocked) return 100;
+
+    const req = achievement.requirementValue || {};
+
+    // Count-based achievements
+    if (achievement.requirementType === 'count') {
+      // Total events
+      if ('count' in req) {
+        const target = req.count as number;
+        return Math.min(100, (userStats.totalEvents / target) * 100);
+      }
+      // Sports diversity
+      if ('sports' in req) {
+        const target = req.sports as number;
+        return Math.min(100, (userStats.uniqueSports / target) * 100);
+      }
+      // Venues diversity
+      if ('venues' in req) {
+        const target = req.venues as number;
+        return Math.min(100, (userStats.uniqueVenues / target) * 100);
+      }
+      // Teams diversity
+      if ('teams' in req) {
+        const target = req.teams as number;
+        return Math.min(100, (userStats.uniqueTeams / target) * 100);
+      }
+      // Same team loyalty
+      if ('sameTeam' in req) {
+        const target = req.sameTeam as number;
+        return Math.min(100, (userStats.maxSameTeam / target) * 100);
+      }
+      // Same venue loyalty
+      if ('sameVenue' in req) {
+        const target = req.sameVenue as number;
+        return Math.min(100, (userStats.maxSameVenue / target) * 100);
+      }
+    }
+
+    // Streak achievements - show 0 for now (complex to calculate)
+    if (achievement.requirementType === 'streak') {
+      return 0;
+    }
+
+    // Specific achievements - show 0 (require specific conditions)
+    if (achievement.requirementType === 'specific') {
+      return 0;
+    }
+
+    return 0;
+  };
+
   const [filter, setFilter] = useState<CategoryFilter>('all');
   const [showUnlocked, setShowUnlocked] = useState(false);
 
@@ -379,7 +483,7 @@ export default function AchievementsScreen() {
                   <AchievementCard
                     key={achievement.id}
                     achievement={achievement}
-                    progress={achievement.unlocked ? 100 : Math.random() * 80}
+                    progress={getAchievementProgress(achievement)}
                   />
                 ))}
               </View>

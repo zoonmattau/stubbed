@@ -271,6 +271,11 @@ export function getSportColor(sportId: string): string {
   return sport?.color || colors.sportDefault;
 }
 
+export function getSportIcon(sportId: string): string {
+  const sport = getSportById(sportId);
+  return sport?.icon || 'trophy';
+}
+
 export function isIndividualSport(sportId: string): boolean {
   const sport = getSportById(sportId);
   return sport?.isIndividualSport ?? false;

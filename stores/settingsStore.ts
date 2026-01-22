@@ -18,6 +18,10 @@ export interface UserSettings {
   show_events: boolean;
   allow_tagging: boolean;
   show_on_leaderboards: boolean;
+  // Reviews & Explore
+  reviews_public: boolean;
+  allow_comments: boolean;
+  show_watched_reviews: boolean;
 }
 
 const DEFAULT_SETTINGS: Omit<UserSettings, 'user_id'> = {
@@ -32,6 +36,9 @@ const DEFAULT_SETTINGS: Omit<UserSettings, 'user_id'> = {
   show_events: true,
   allow_tagging: true,
   show_on_leaderboards: true,
+  reviews_public: true,
+  allow_comments: true,
+  show_watched_reviews: true,
 };
 
 interface SettingsStore {

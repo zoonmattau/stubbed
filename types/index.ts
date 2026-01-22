@@ -275,3 +275,141 @@ export interface TaggedUser {
   display_name: string | null;
   avatar_url: string | null;
 }
+
+// ============================================
+// Social & Explore Feature Types
+// ============================================
+
+// Follow relationship (one-way)
+export interface Follow {
+  id: string;
+  follower_id: string;
+  following_id: string;
+  created_at: string;
+}
+
+export interface FollowWithProfile extends Follow {
+  profile?: Profile;
+}
+
+// Event Review (public review linked to attended_event)
+export interface EventReview {
+  id: string;
+  attended_event_id: string;
+  user_id: string;
+  review_text: string | null;
+  rating: number | null;
+  atmosphere_rating: number | null;
+  photo_urls: string[] | null;
+  is_watched: boolean;
+  is_public: boolean;
+  likes_count: number;
+  comments_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+// Review with all related data (from trending/feed functions)
+export interface ReviewWithDetails {
+  review_id: string;
+  attended_event_id: string;
+  user_id: string;
+  review_text: string | null;
+  rating: number | null;
+  atmosphere_rating: number | null;
+  photo_urls: string[] | null;
+  is_watched: boolean;
+  likes_count: number;
+  comments_count: number;
+  created_at: string;
+  trending_score?: number;
+  // User info
+  username: string;
+  display_name: string | null;
+  avatar_url: string | null;
+  // Event info
+  event_id: string;
+  event_date: string;
+  event_time: string | null;
+  sport_id: string | null;
+  sport_name: string | null;
+  sport_icon: string | null;
+  sport_color: string | null;
+  home_team_id: string | null;
+  home_team_name: string | null;
+  home_team_logo: string | null;
+  away_team_id: string | null;
+  away_team_name: string | null;
+  away_team_logo: string | null;
+  venue_name: string | null;
+  home_score: string | null;
+  away_score: string | null;
+  competition: string | null;
+}
+
+// Review Like
+export interface ReviewLike {
+  id: string;
+  review_id: string;
+  user_id: string;
+  created_at: string;
+}
+
+// Review Comment (with nested replies support)
+export interface ReviewComment {
+  id: string;
+  review_id: string;
+  user_id: string;
+  parent_id: string | null;
+  content: string;
+  is_edited: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ReviewCommentWithProfile extends ReviewComment {
+  profile?: Profile;
+  replies?: ReviewCommentWithProfile[];
+}
+
+// Report for moderation
+export interface Report {
+  id: string;
+  reporter_id: string;
+  content_type: 'review' | 'comment';
+  content_id: string;
+  reason: 'spam' | 'harassment' | 'inappropriate' | 'misinformation' | 'other';
+  description: string | null;
+  status: 'pending' | 'reviewed' | 'actioned' | 'dismissed';
+  reviewed_by: string | null;
+  reviewed_at: string | null;
+  created_at: string;
+}
+
+// Follow counts
+export interface FollowCounts {
+  followers_count: number;
+  following_count: number;
+}
+
+// User suggestion for discover
+export interface UserSuggestion {
+  user_id: string;
+  username: string;
+  display_name: string | null;
+  avatar_url: string | null;
+  bio: string | null;
+  followers_count: number;
+  reviews_count: number;
+}
+
+// Review form data
+export interface ReviewFormData {
+  attended_event_id: string;
+  review_text?: string;
+  rating?: number;
+  atmosphere_rating?: number;
+  photo_urls?: string[];
+  is_watched?: boolean;
+  is_public?: boolean;
+}

@@ -140,6 +140,49 @@ export default function PrivacyScreen() {
         </Card>
       </View>
 
+      {/* Reviews & Explore */}
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Reviews & Explore</Text>
+        <Card padding="none">
+          <View style={styles.settingItem}>
+            <View style={styles.settingInfo}>
+              <Text style={styles.settingLabel}>Public Reviews</Text>
+              <Text style={styles.settingDescription}>Show your reviews in the Explore feed</Text>
+            </View>
+            <Switch
+              value={settings?.reviews_public ?? true}
+              onValueChange={(value) => updateSettings({ reviews_public: value })}
+              trackColor={{ false: colors.border, true: colors.primary }}
+              thumbColor={colors.white}
+            />
+          </View>
+          <View style={[styles.settingItem, styles.settingItemBorder]}>
+            <View style={styles.settingInfo}>
+              <Text style={styles.settingLabel}>Allow Comments</Text>
+              <Text style={styles.settingDescription}>Let others comment on your reviews</Text>
+            </View>
+            <Switch
+              value={settings?.allow_comments ?? true}
+              onValueChange={(value) => updateSettings({ allow_comments: value })}
+              trackColor={{ false: colors.border, true: colors.primary }}
+              thumbColor={colors.white}
+            />
+          </View>
+          <View style={[styles.settingItem, styles.settingItemBorder]}>
+            <View style={styles.settingInfo}>
+              <Text style={styles.settingLabel}>Show Watched Reviews</Text>
+              <Text style={styles.settingDescription}>Include reviews for events you watched (didn't attend)</Text>
+            </View>
+            <Switch
+              value={settings?.show_watched_reviews ?? true}
+              onValueChange={(value) => updateSettings({ show_watched_reviews: value })}
+              trackColor={{ false: colors.border, true: colors.primary }}
+              thumbColor={colors.white}
+            />
+          </View>
+        </Card>
+      </View>
+
       {/* Data Management */}
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Data Management</Text>

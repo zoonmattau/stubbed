@@ -34,23 +34,49 @@ interface LocationStats {
 // Map venue cities to country/state codes
 // This is a simplified mapping - in production you'd use geocoding
 const CITY_TO_LOCATION: Record<string, { country: string; region?: string }> = {
-  // Australia
+  // Australia - Victoria
   'melbourne': { country: 'AU', region: 'VIC' },
-  'sydney': { country: 'AU', region: 'NSW' },
-  'brisbane': { country: 'AU', region: 'QLD' },
-  'adelaide': { country: 'AU', region: 'SA' },
-  'perth': { country: 'AU', region: 'WA' },
-  'hobart': { country: 'AU', region: 'TAS' },
-  'darwin': { country: 'AU', region: 'NT' },
-  'canberra': { country: 'AU', region: 'ACT' },
   'geelong': { country: 'AU', region: 'VIC' },
-  'gold coast': { country: 'AU', region: 'QLD' },
-  'newcastle': { country: 'AU', region: 'NSW' },
-  'wollongong': { country: 'AU', region: 'NSW' },
-  'townsville': { country: 'AU', region: 'QLD' },
-  'cairns': { country: 'AU', region: 'QLD' },
   'ballarat': { country: 'AU', region: 'VIC' },
   'bendigo': { country: 'AU', region: 'VIC' },
+  // Australia - New South Wales
+  'sydney': { country: 'AU', region: 'NSW' },
+  'newcastle': { country: 'AU', region: 'NSW' },
+  'wollongong': { country: 'AU', region: 'NSW' },
+  'gosford': { country: 'AU', region: 'NSW' },
+  'parramatta': { country: 'AU', region: 'NSW' },
+  // Australia - Queensland
+  'brisbane': { country: 'AU', region: 'QLD' },
+  'gold coast': { country: 'AU', region: 'QLD' },
+  'townsville': { country: 'AU', region: 'QLD' },
+  'cairns': { country: 'AU', region: 'QLD' },
+  'sunshine coast': { country: 'AU', region: 'QLD' },
+  'robina': { country: 'AU', region: 'QLD' },
+  // Australia - South Australia
+  'adelaide': { country: 'AU', region: 'SA' },
+  // Australia - Western Australia
+  'perth': { country: 'AU', region: 'WA' },
+  'fremantle': { country: 'AU', region: 'WA' },
+  // Australia - Tasmania
+  'hobart': { country: 'AU', region: 'TAS' },
+  'launceston': { country: 'AU', region: 'TAS' },
+  // Australia - ACT
+  'canberra': { country: 'AU', region: 'ACT' },
+  // Australia - Northern Territory
+  'darwin': { country: 'AU', region: 'NT' },
+  'alice springs': { country: 'AU', region: 'NT' },
+  // Stadium name keywords (for when city isn't in name)
+  'optus': { country: 'AU', region: 'WA' },
+  'mcg': { country: 'AU', region: 'VIC' },
+  'scg': { country: 'AU', region: 'NSW' },
+  'gabba': { country: 'AU', region: 'QLD' },
+  'marvel': { country: 'AU', region: 'VIC' },
+  'aami': { country: 'AU', region: 'VIC' },
+  'accor': { country: 'AU', region: 'NSW' },
+  'suncorp': { country: 'AU', region: 'QLD' },
+  'rod laver': { country: 'AU', region: 'VIC' },
+  'blundstone': { country: 'AU', region: 'TAS' },
+  'gmhba': { country: 'AU', region: 'VIC' },
   // UK
   'london': { country: 'GB', region: 'ENG' },
   'manchester': { country: 'GB', region: 'ENG' },
@@ -145,12 +171,23 @@ export default function MapStatsScreen() {
       const event = attended.event;
       if (!event) return;
 
-      // Try to determine location from venue city (FK or text field)
+      // Try to determine location from venue data
       const venueCity = (event.venue?.city || '').toLowerCase();
+      const venueState = event.venue?.state || '';
+      const venueCountry = event.venue?.country || 'AU';
       const venueName = (event.venue?.name || event.venue_name || '').toLowerCase();
 
-      // Try to match city
-      let location = CITY_TO_LOCATION[venueCity];
+      let location: { country: string; region?: string } | undefined;
+
+      // First, use venue's state directly if available from database
+      if (venueState && venueCountry) {
+        location = { country: venueCountry, region: venueState };
+      }
+
+      // Fall back to city-to-location mapping
+      if (!location) {
+        location = CITY_TO_LOCATION[venueCity];
+      }
 
       // If no direct match, try to find city in venue name
       if (!location) {
@@ -162,9 +199,9 @@ export default function MapStatsScreen() {
         }
       }
 
-      // Default to Australia if no match (since this is primarily an AU app)
+      // Default to Australia with unknown region if no match
       if (!location) {
-        location = { country: 'AU', region: 'VIC' };
+        location = { country: 'AU' };
       }
 
       const { country, region } = location;

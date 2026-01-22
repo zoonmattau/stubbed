@@ -44,13 +44,44 @@ export function useTeamLogos() {
     loadTeams();
   }, []);
 
-  // Lookup function that checks both exact and normalized names
+  // Lookup function that checks exact, normalized, and partial matches
   const getTeamLogo = useCallback(
     (teamName: string | null | undefined): string | null => {
       if (!teamName) return null;
 
       const normalized = teamName.toLowerCase().trim();
-      return teamLogos[normalized] || null;
+
+      // Try exact match first
+      if (teamLogos[normalized]) {
+        return teamLogos[normalized];
+      }
+
+      // Try removing common suffixes
+      const withoutSuffixes = normalized
+        .replace(/\s*(fc|football club|rugby|cricket|basketball|united|city)$/i, '')
+        .trim();
+      if (withoutSuffixes !== normalized && teamLogos[withoutSuffixes]) {
+        return teamLogos[withoutSuffixes];
+      }
+
+      // Try partial match (team name contains or is contained by database name)
+      for (const [dbName, logo] of Object.entries(teamLogos)) {
+        if (!logo) continue;
+
+        // Check if the search term contains the db name or vice versa
+        if (normalized.includes(dbName) || dbName.includes(normalized)) {
+          return logo;
+        }
+
+        // Check if first word matches (e.g., "Brisbane" matches "Brisbane Lions")
+        const normalizedFirst = normalized.split(' ')[0];
+        const dbFirst = dbName.split(' ')[0];
+        if (normalizedFirst === dbFirst && normalizedFirst.length > 3) {
+          return logo;
+        }
+      }
+
+      return null;
     },
     [teamLogos]
   );

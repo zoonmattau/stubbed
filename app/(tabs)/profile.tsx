@@ -22,6 +22,7 @@ import { useEventsStore } from '@/stores/eventsStore';
 import { useFavoritesStore } from '@/stores/favoritesStore';
 import { usePoints, POINTS } from '@/hooks/usePoints';
 import { useTeamLogos } from '@/hooks/useTeamLogos';
+import { useFollows } from '@/hooks/useFollows';
 import { colors, spacing, fontSize, fontWeight, borderRadius } from '@/constants/theme';
 import { LEVELS, getCurrentLevel, getNextLevel, getLevelProgress } from '@/constants/levels';
 
@@ -31,11 +32,13 @@ export default function ProfileScreen() {
   const { teams: allTeams, fetchTeams, attendedEvents, fetchAttendedEvents, isLoading: eventsLoading } = useEventsStore();
   const { teams: favoriteTeams, addTeamManual, removeTeam } = useFavoritesStore();
   const { getTeamLogo } = useTeamLogos();
+  const { getFollowCounts } = useFollows();
 
   const [showAddTeamModal, setShowAddTeamModal] = useState(false);
   const [newTeamName, setNewTeamName] = useState('');
   const [filteredTeams, setFilteredTeams] = useState<typeof allTeams>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
+  const [followCounts, setFollowCounts] = useState({ followers_count: 0, following_count: 0 });
 
   // Refetch data when screen comes into focus (handles navigation back)
   useFocusEffect(
@@ -47,6 +50,8 @@ export default function ProfileScreen() {
         fetchAchievements(user.id);
         // Recalculate achievements in background
         recalculateAchievements(user.id);
+        // Fetch follow counts
+        getFollowCounts(user.id).then(setFollowCounts);
       }
     }, [user?.id])
   );
@@ -337,10 +342,10 @@ export default function ProfileScreen() {
               <Text style={styles.quickStatValue}>{localStats.totalTeams}</Text>
               <Text style={styles.quickStatLabel}>Teams</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.quickStatItem} onPress={() => router.push('/friends')}>
+            <TouchableOpacity style={styles.quickStatItem} onPress={() => router.push(`/followers/${user?.id}?tab=followers`)}>
               <Ionicons name="people" size={24} color={colors.info} />
-              <Text style={styles.quickStatValue}>0</Text>
-              <Text style={styles.quickStatLabel}>Friends</Text>
+              <Text style={styles.quickStatValue}>{followCounts.followers_count}</Text>
+              <Text style={styles.quickStatLabel}>Followers</Text>
             </TouchableOpacity>
           </View>
         )}
