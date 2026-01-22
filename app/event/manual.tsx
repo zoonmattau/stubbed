@@ -24,6 +24,7 @@ import { useEventsStore } from '@/stores/eventsStore';
 import { useFavoritesStore } from '@/stores/favoritesStore';
 import { useStatsStore } from '@/stores/statsStore';
 import { useEventInvitations } from '@/hooks/useEventInvitations';
+import { useReviews } from '@/hooks/useReviews';
 import { colors, spacing, fontSize, fontWeight, borderRadius } from '@/constants/theme';
 import { SPORTS, isIndividualSport, isRacingSport } from '@/constants/sports';
 import { pickImage, uploadEventPhoto } from '@/lib/storage';
@@ -146,6 +147,7 @@ export default function ManualEventScreen() {
   }, [espnEvent]);
 
   const { createInvitations } = useEventInvitations();
+  const { createReview } = useReviews();
   const { isTeamNameFavorite } = useFavoritesStore();
 
   const [isLoading, setIsLoading] = useState(false);
@@ -511,6 +513,25 @@ export default function ManualEventScreen() {
       }
 
       if (result.success) {
+        // Auto-publish review when ratings are set
+        if (result.attendedEventId && rating > 0) {
+          try {
+            await createReview({
+              attended_event_id: result.attendedEventId,
+              event_id: result.eventId,
+              rating: rating,
+              atmosphere_rating: atmosphereRating || null,
+              review_text: data.notes || null,
+              photo_urls: photoUrls.length > 0 ? photoUrls : null,
+              is_watched: false,
+              is_public: true,
+            });
+          } catch (reviewError) {
+            console.warn('[ManualEvent] Failed to auto-publish review:', reviewError);
+            // Don't fail the whole operation if review fails
+          }
+        }
+
         // Recalculate stats and achievements
         try {
           await recalculateAchievements(user.id);

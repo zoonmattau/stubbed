@@ -14,6 +14,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Card, Button, StarRating } from '@/components/ui';
 import { useAuthStore } from '@/stores/authStore';
 import { useEventsStore } from '@/stores/eventsStore';
+import { useReviews } from '@/hooks/useReviews';
 import { colors, spacing, fontSize, fontWeight, borderRadius } from '@/constants/theme';
 import type { AttendedEventWithDetails } from '@/types';
 
@@ -23,6 +24,7 @@ export default function EditEventScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { user } = useAuthStore();
   const { attendedEvents, updateAttendedEvent, updateEvent, venues, fetchVenues } = useEventsStore();
+  const { createReview, updateReview, getReviewForAttendedEvent } = useReviews();
 
   const [attendance, setAttendance] = useState<AttendedEventWithDetails | null>(null);
   const [rating, setRating] = useState<number>(0);
@@ -259,6 +261,32 @@ export default function EditEventScreen() {
 
       const result = await updateAttendedEvent(attendance.id, updates);
       if (result.success) {
+        // Auto-publish review when ratings are set
+        if (rating > 0) {
+          try {
+            const existingReview = await getReviewForAttendedEvent(attendance.id);
+            const reviewData = {
+              attended_event_id: attendance.id,
+              event_id: attendance.event_id,
+              rating: rating,
+              atmosphere_rating: atmosphereRating || null,
+              review_text: notes || null,
+              is_watched: false,
+              is_public: true,
+            };
+
+            if (existingReview) {
+              // Update existing review
+              await updateReview(existingReview.id, reviewData);
+            } else {
+              // Create new review
+              await createReview(reviewData);
+            }
+          } catch (reviewError) {
+            console.log('[EditEvent] Review auto-publish error:', reviewError);
+            // Don't block the save if review fails
+          }
+        }
         handleBack();
       } else {
         console.error('Update failed:', result.error);

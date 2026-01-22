@@ -29,7 +29,7 @@ interface EventsState {
     userId: string,
     eventData: Partial<Event>,
     attendanceData: Partial<AttendedEvent>
-  ) => Promise<{ success: boolean; error?: string; attendedEventId?: string }>;
+  ) => Promise<{ success: boolean; error?: string; attendedEventId?: string; eventId?: string }>;
   updateAttendedEvent: (
     attendanceId: string,
     updates: Partial<AttendedEvent>
@@ -342,7 +342,7 @@ export const useEventsStore = create<EventsState>((set, get) => ({
       // Refresh events
       await get().fetchAttendedEvents(userId);
 
-      return { success: true, attendedEventId: newAttendance.id };
+      return { success: true, attendedEventId: newAttendance.id, eventId };
     } catch (error) {
       console.error('Error in addAttendedEvent:', error);
       return { success: false, error: (error as Error).message };
