@@ -216,7 +216,14 @@ export default function HomeScreen() {
             </View>
             <View style={styles.levelInfo}>
               <Text style={styles.levelLabel}>Level {currentLevel.level}</Text>
-              <Text style={styles.levelName}>{currentLevel.name}</Text>
+              <View style={styles.levelNameRow}>
+                <Text style={styles.levelName}>{currentLevel.name}</Text>
+                {nextLevel && (
+                  <Text style={styles.levelProgressIndicator}>
+                    {userPoints - currentLevel.minPoints}/{nextLevel.minPoints - currentLevel.minPoints}
+                  </Text>
+                )}
+              </View>
             </View>
             <View style={styles.levelPoints}>
               <Text style={styles.levelPointsValue}>{userPoints}</Text>
@@ -618,6 +625,15 @@ const styles = StyleSheet.create({
     fontSize: fontSize.xl,
     fontWeight: fontWeight.bold,
     color: colors.white,
+  },
+  levelNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  levelProgressIndicator: {
+    fontSize: fontSize.xs,
+    color: 'rgba(255,255,255,0.7)',
   },
   levelPoints: {
     alignItems: 'flex-end',

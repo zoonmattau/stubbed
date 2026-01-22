@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import {
   View,
   Text,
@@ -20,12 +20,13 @@ import { useAuthStore } from '@/stores/authStore';
 import { useStatsStore } from '@/stores/statsStore';
 import { useEventsStore } from '@/stores/eventsStore';
 import { useFavoritesStore } from '@/stores/favoritesStore';
+import { usePoints } from '@/hooks/usePoints';
 import { colors, spacing, fontSize, fontWeight, borderRadius } from '@/constants/theme';
 
 export default function ProfileScreen() {
   const { user, profile, signOut } = useAuthStore();
-  const { stats, achievements, isLoading: statsLoading, fetchStats, fetchAchievements, recalculateAchievements } = useStatsStore();
-  const { teams: allTeams, fetchTeams } = useEventsStore();
+  const { achievements, fetchAchievements, recalculateAchievements } = useStatsStore();
+  const { teams: allTeams, fetchTeams, attendedEvents, fetchAttendedEvents, isLoading: eventsLoading } = useEventsStore();
   const { teams: favoriteTeams, addTeamManual, removeTeam } = useFavoritesStore();
 
   const [showAddTeamModal, setShowAddTeamModal] = useState(false);
@@ -35,12 +36,44 @@ export default function ProfileScreen() {
 
   useEffect(() => {
     if (user?.id) {
-      // Recalculate achievements first to ensure data is accurate
-      recalculateAchievements(user.id);
-      fetchStats(user.id);
+      // Fetch attended events first (fast, local calculation depends on this)
+      fetchAttendedEvents(user.id);
+      // Then fetch achievements
       fetchAchievements(user.id);
+      // Recalculate achievements in background
+      recalculateAchievements(user.id);
     }
   }, [user?.id]);
+
+  // Calculate local stats from attendedEvents (handles both FK and text fields)
+  const localStats = useMemo(() => {
+    const uniqueSports = new Set<string>();
+    const uniqueTeams = new Set<string>();
+    const uniqueVenues = new Set<string>();
+
+    attendedEvents.forEach((attended) => {
+      const event = attended.event;
+      if (!event) return;
+
+      const sportName = event.sport?.name || event.sport_name;
+      if (sportName) uniqueSports.add(sportName.toLowerCase());
+
+      const homeTeam = event.home_team?.name || event.home_team_name;
+      const awayTeam = event.away_team?.name || event.away_team_name;
+      if (homeTeam) uniqueTeams.add(homeTeam.toLowerCase());
+      if (awayTeam) uniqueTeams.add(awayTeam.toLowerCase());
+
+      const venue = event.venue?.name || event.venue_name;
+      if (venue) uniqueVenues.add(venue.toLowerCase());
+    });
+
+    return {
+      totalEvents: attendedEvents.length,
+      totalSports: uniqueSports.size,
+      totalTeams: uniqueTeams.size,
+      totalVenues: uniqueVenues.size,
+    };
+  }, [attendedEvents]);
 
   const handleAddFavoriteTeam = (teamName?: string, sport?: string, badge?: string) => {
     const name = teamName || newTeamName.trim();
@@ -129,7 +162,13 @@ export default function ProfileScreen() {
   };
 
   const unlockedAchievements = achievements.filter((a) => a.unlocked);
-  const totalPoints = unlockedAchievements.reduce((sum, a) => sum + a.points, 0);
+  const achievementPoints = unlockedAchievements.reduce((sum, a) => sum + a.points, 0);
+
+  // Use points hook for activity-based points (attendance, wins, streaks, discovery)
+  const { totalPoints: activityPoints } = usePoints(attendedEvents);
+
+  // Total points = achievement points + activity points
+  const totalPoints = achievementPoints + activityPoints;
 
   // Get best display name, avoiding generic app-related names
   const getDisplayName = () => {
@@ -198,8 +237,11 @@ export default function ProfileScreen() {
         {/* Level Progress */}
         <View style={styles.levelContainer}>
           <View style={styles.levelHeader}>
-            <View style={styles.levelBadge}>
-              <Text style={styles.levelText}>{currentLevelName}</Text>
+            <View style={styles.levelBadgeContainer}>
+              <View style={styles.levelBadge}>
+                <Text style={styles.levelText}>{currentLevelName}</Text>
+              </View>
+              <Text style={styles.levelProgressText}>{totalPoints % 100}/100</Text>
             </View>
             <Text style={styles.pointsText}>{totalPoints} total points</Text>
           </View>
@@ -219,7 +261,7 @@ export default function ProfileScreen() {
       {/* Quick Stats */}
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Stats Summary</Text>
-        {statsLoading ? (
+        {eventsLoading && attendedEvents.length === 0 ? (
           <View style={styles.statsLoadingContainer}>
             <ActivityIndicator size="small" color={colors.primary} />
             <Text style={styles.statsLoadingText}>Loading stats...</Text>
@@ -228,7 +270,7 @@ export default function ProfileScreen() {
           <View style={styles.quickStats}>
             <TouchableOpacity style={styles.quickStatItem} onPress={() => router.push('/events')}>
               <Ionicons name="ticket" size={24} color={colors.primary} />
-              <Text style={styles.quickStatValue}>{stats?.total_events || 0}</Text>
+              <Text style={styles.quickStatValue}>{localStats.totalEvents}</Text>
               <Text style={styles.quickStatLabel}>Events</Text>
             </TouchableOpacity>
             <TouchableOpacity style={styles.quickStatItem} onPress={() => router.push('/achievements')}>
@@ -238,7 +280,7 @@ export default function ProfileScreen() {
             </TouchableOpacity>
             <TouchableOpacity style={styles.quickStatItem} onPress={() => router.push('/stats')}>
               <Ionicons name="shield" size={24} color={colors.warning} />
-              <Text style={styles.quickStatValue}>{stats?.total_teams || 0}</Text>
+              <Text style={styles.quickStatValue}>{localStats.totalTeams}</Text>
               <Text style={styles.quickStatLabel}>Teams</Text>
             </TouchableOpacity>
             <TouchableOpacity style={styles.quickStatItem} onPress={() => router.push('/friends')}>
@@ -289,43 +331,64 @@ export default function ProfileScreen() {
         </Card>
       </View>
 
-      {/* Achievements Preview */}
+      {/* Points Summary */}
       <View style={styles.section}>
         <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Recent Achievements</Text>
+          <Text style={styles.sectionTitle}>Points Breakdown</Text>
           <TouchableOpacity onPress={() => router.push('/achievements')}>
             <Text style={styles.seeAll}>See All</Text>
           </TouchableOpacity>
         </View>
         <Card>
-          {unlockedAchievements.length > 0 ? (
-            <View style={styles.achievementsList}>
-              {unlockedAchievements.slice(0, 3).map((achievement) => (
-                <View key={achievement.id} style={styles.achievementItem}>
-                  <View style={styles.achievementIcon}>
-                    <Ionicons
-                      name={(achievement.icon as keyof typeof Ionicons.glyphMap) || 'trophy'}
-                      size={20}
-                      color={colors.gold}
-                    />
-                  </View>
-                  <View style={styles.achievementInfo}>
-                    <Text style={styles.achievementName}>{achievement.name}</Text>
-                    <Text style={styles.achievementPoints}>
-                      +{achievement.points} pts
-                    </Text>
-                  </View>
+          <View style={styles.pointsBreakdownList}>
+            <View style={styles.pointsBreakdownItem}>
+              <View style={[styles.pointsBreakdownIcon, { backgroundColor: `${colors.primary}20` }]}>
+                <Ionicons name="ticket" size={18} color={colors.primary} />
+              </View>
+              <View style={styles.pointsBreakdownInfo}>
+                <Text style={styles.pointsBreakdownLabel}>{localStats.totalEvents} events attended</Text>
+                <Text style={styles.pointsBreakdownValue}>+{localStats.totalEvents * 10} pts</Text>
+              </View>
+            </View>
+            <View style={styles.pointsBreakdownItem}>
+              <View style={[styles.pointsBreakdownIcon, { backgroundColor: `${colors.warning}20` }]}>
+                <Ionicons name="shield" size={18} color={colors.warning} />
+              </View>
+              <View style={styles.pointsBreakdownInfo}>
+                <Text style={styles.pointsBreakdownLabel}>{localStats.totalTeams} new teams discovered</Text>
+                <Text style={styles.pointsBreakdownValue}>+{localStats.totalTeams * 5} pts</Text>
+              </View>
+            </View>
+            <View style={styles.pointsBreakdownItem}>
+              <View style={[styles.pointsBreakdownIcon, { backgroundColor: `${colors.success}20` }]}>
+                <Ionicons name="location" size={18} color={colors.success} />
+              </View>
+              <View style={styles.pointsBreakdownInfo}>
+                <Text style={styles.pointsBreakdownLabel}>{localStats.totalVenues} venues visited</Text>
+                <Text style={styles.pointsBreakdownValue}>+{localStats.totalVenues * 5} pts</Text>
+              </View>
+            </View>
+            <View style={styles.pointsBreakdownItem}>
+              <View style={[styles.pointsBreakdownIcon, { backgroundColor: `${colors.info}20` }]}>
+                <Ionicons name="basketball" size={18} color={colors.info} />
+              </View>
+              <View style={styles.pointsBreakdownInfo}>
+                <Text style={styles.pointsBreakdownLabel}>{localStats.totalSports} sports explored</Text>
+                <Text style={styles.pointsBreakdownValue}>+{localStats.totalSports * 10} pts</Text>
+              </View>
+            </View>
+            {unlockedAchievements.length > 0 && (
+              <View style={styles.pointsBreakdownItem}>
+                <View style={[styles.pointsBreakdownIcon, { backgroundColor: `${colors.gold}20` }]}>
+                  <Ionicons name="trophy" size={18} color={colors.gold} />
                 </View>
-              ))}
-            </View>
-          ) : (
-            <View style={styles.emptyAchievements}>
-              <Ionicons name="trophy-outline" size={32} color={colors.textMuted} />
-              <Text style={styles.emptyText}>
-                No achievements unlocked yet. Keep attending events!
-              </Text>
-            </View>
-          )}
+                <View style={styles.pointsBreakdownInfo}>
+                  <Text style={styles.pointsBreakdownLabel}>{unlockedAchievements.length} achievements</Text>
+                  <Text style={styles.pointsBreakdownValue}>+{achievementPoints} pts</Text>
+                </View>
+              </View>
+            )}
+          </View>
         </Card>
       </View>
 
@@ -531,6 +594,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: spacing.sm,
   },
+  levelBadgeContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
   levelBadge: {
     backgroundColor: colors.primary,
     paddingVertical: spacing.xs,
@@ -541,6 +609,10 @@ const styles = StyleSheet.create({
     fontSize: fontSize.sm,
     fontWeight: fontWeight.semibold,
     color: colors.white,
+  },
+  levelProgressText: {
+    fontSize: fontSize.xs,
+    color: colors.textMuted,
   },
   pointsText: {
     fontSize: fontSize.sm,
@@ -649,6 +721,39 @@ const styles = StyleSheet.create({
   emptyAchievements: {
     alignItems: 'center',
     padding: spacing.xl,
+  },
+  pointsBreakdownList: {
+    gap: spacing.xs,
+  },
+  pointsBreakdownItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    paddingVertical: spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  pointsBreakdownIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  pointsBreakdownInfo: {
+    flex: 1,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  pointsBreakdownLabel: {
+    fontSize: fontSize.sm,
+    color: colors.text,
+  },
+  pointsBreakdownValue: {
+    fontSize: fontSize.sm,
+    fontWeight: fontWeight.semibold,
+    color: colors.success,
   },
   emptyText: {
     fontSize: fontSize.sm,

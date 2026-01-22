@@ -272,6 +272,9 @@ export const useStatsStore = create<StatsState>((set, get) => ({
       const currentUnlocked = unlockedData || [];
       const achievementsToRevoke: string[] = [];
 
+      // Define supported requirement keys
+      const supportedRequirements = ['count', 'sports', 'venues', 'teams', 'sameTeam', 'sameVenue'];
+
       // Check each unlocked achievement to see if user still qualifies
       for (const ua of currentUnlocked) {
         const achievement = ua.achievement;
@@ -284,25 +287,32 @@ export const useStatsStore = create<StatsState>((set, get) => ({
 
         if (achievementDef.requirementType === 'count') {
           const req = achievementDef.requirementValue;
+          const reqKeys = Object.keys(req);
 
-          // Check count-based requirements
-          if (req.count !== undefined && totalEvents < (req.count as number)) {
+          // Revoke achievements with unsupported requirements (they were granted incorrectly)
+          const hasUnsupportedReq = reqKeys.some(key => !supportedRequirements.includes(key));
+          if (hasUnsupportedReq) {
             stillQualifies = false;
-          }
-          if (req.sports !== undefined && uniqueSports.size < (req.sports as number)) {
-            stillQualifies = false;
-          }
-          if (req.venues !== undefined && uniqueVenues.size < (req.venues as number)) {
-            stillQualifies = false;
-          }
-          if (req.teams !== undefined && uniqueTeams.size < (req.teams as number)) {
-            stillQualifies = false;
-          }
-          if (req.sameTeam !== undefined && maxSameTeam < (req.sameTeam as number)) {
-            stillQualifies = false;
-          }
-          if (req.sameVenue !== undefined && maxSameVenue < (req.sameVenue as number)) {
-            stillQualifies = false;
+          } else {
+            // Check count-based requirements
+            if (req.count !== undefined && totalEvents < (req.count as number)) {
+              stillQualifies = false;
+            }
+            if (req.sports !== undefined && uniqueSports.size < (req.sports as number)) {
+              stillQualifies = false;
+            }
+            if (req.venues !== undefined && uniqueVenues.size < (req.venues as number)) {
+              stillQualifies = false;
+            }
+            if (req.teams !== undefined && uniqueTeams.size < (req.teams as number)) {
+              stillQualifies = false;
+            }
+            if (req.sameTeam !== undefined && maxSameTeam < (req.sameTeam as number)) {
+              stillQualifies = false;
+            }
+            if (req.sameVenue !== undefined && maxSameVenue < (req.sameVenue as number)) {
+              stillQualifies = false;
+            }
           }
         }
 
@@ -322,6 +332,109 @@ export const useStatsStore = create<StatsState>((set, get) => ({
 
         if (deleteError) {
           console.error('[Stats] Error revoking achievements:', deleteError);
+        }
+      }
+
+      // Grant new achievements the user now qualifies for
+      const unlockedCodes = new Set(currentUnlocked.map(ua => ua.achievement?.code).filter(Boolean));
+      const achievementsToGrant: string[] = [];
+
+      for (const achievement of ACHIEVEMENTS) {
+        // Skip if already unlocked
+        if (unlockedCodes.has(achievement.code)) continue;
+
+        // Only check count-based achievements with supported requirements
+        if (achievement.requirementType === 'count') {
+          const req = achievement.requirementValue;
+          const reqKeys = Object.keys(req);
+
+          // Skip achievements with unsupported requirements (e.g., finalsGames, grandFinals)
+          const hasUnsupportedReq = reqKeys.some(key => !supportedRequirements.includes(key));
+          if (hasUnsupportedReq) continue;
+
+          let qualifies = true;
+
+          // Check count-based requirements
+          if (req.count !== undefined && totalEvents < (req.count as number)) {
+            qualifies = false;
+          }
+          if (req.sports !== undefined && uniqueSports.size < (req.sports as number)) {
+            qualifies = false;
+          }
+          if (req.venues !== undefined && uniqueVenues.size < (req.venues as number)) {
+            qualifies = false;
+          }
+          if (req.teams !== undefined && uniqueTeams.size < (req.teams as number)) {
+            qualifies = false;
+          }
+          if (req.sameTeam !== undefined && maxSameTeam < (req.sameTeam as number)) {
+            qualifies = false;
+          }
+          if (req.sameVenue !== undefined && maxSameVenue < (req.sameVenue as number)) {
+            qualifies = false;
+          }
+
+          if (qualifies) {
+            achievementsToGrant.push(achievement.code);
+          }
+        }
+        // Note: 'specific' and 'streak' types require more complex checking - skip for now
+      }
+
+      // Grant new achievements
+      if (achievementsToGrant.length > 0) {
+        console.log('[Stats] Granting new achievements:', achievementsToGrant);
+
+        // First, ensure all achievements exist in the database (upsert from constants)
+        const achievementDefs = achievementsToGrant.map(code => {
+          const def = ACHIEVEMENTS.find(a => a.code === code)!;
+          return {
+            code: def.code,
+            name: def.name,
+            description: def.description,
+            icon: def.icon,
+            category: def.category,
+            requirement_type: def.requirementType,
+            requirement_value: def.requirementValue,
+            points: def.points,
+            rarity: def.rarity,
+          };
+        });
+
+        // Upsert achievements to ensure they exist
+        const { error: upsertError } = await supabase
+          .from('achievements')
+          .upsert(achievementDefs, { onConflict: 'code' });
+
+        if (upsertError) {
+          console.error('[Stats] Error upserting achievements:', upsertError);
+        }
+
+        // Now get achievement IDs from the database
+        const { data: achievementRecords, error: fetchError } = await supabase
+          .from('achievements')
+          .select('id, code')
+          .in('code', achievementsToGrant);
+
+        if (fetchError) {
+          console.error('[Stats] Error fetching achievement records:', fetchError);
+        } else if (achievementRecords && achievementRecords.length > 0) {
+          // Insert user_achievements records
+          const userAchievements = achievementRecords.map(a => ({
+            user_id: userId,
+            achievement_id: a.id,
+            unlocked_at: new Date().toISOString(),
+          }));
+
+          const { error: insertError } = await supabase
+            .from('user_achievements')
+            .insert(userAchievements);
+
+          if (insertError) {
+            console.error('[Stats] Error granting achievements:', insertError);
+          } else {
+            console.log('[Stats] Successfully granted', achievementRecords.length, 'achievements');
+          }
         }
       }
 
