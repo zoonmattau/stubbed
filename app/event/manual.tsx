@@ -21,6 +21,7 @@ import { UserTagPicker } from '@/components/social/UserTagPicker';
 import { useAuthStore } from '@/stores/authStore';
 import { useEventsStore } from '@/stores/eventsStore';
 import { useFavoritesStore } from '@/stores/favoritesStore';
+import { useStatsStore } from '@/stores/statsStore';
 import { useEventInvitations } from '@/hooks/useEventInvitations';
 import { colors, spacing, fontSize, fontWeight, borderRadius } from '@/constants/theme';
 import { SPORTS, isIndividualSport, isRacingSport } from '@/constants/sports';
@@ -167,6 +168,12 @@ export default function ManualEventScreen() {
   const [showMonthPicker, setShowMonthPicker] = useState(false);
   const [showYearPicker, setShowYearPicker] = useState(false);
 
+  // Venue autocomplete state
+  const [venueQuery, setVenueQuery] = useState('');
+  const [showVenueSuggestions, setShowVenueSuggestions] = useState(false);
+  const { attendedEvents, venues, fetchVenues } = useEventsStore();
+  const { recalculateAchievements } = useStatsStore();
+
   const handleBack = () => {
     if (router.canGoBack()) {
       router.back();
@@ -286,7 +293,38 @@ export default function ManualEventScreen() {
 
   useEffect(() => {
     fetchSports();
+    fetchVenues();
   }, []);
+
+  // Compute unique venue suggestions from user history and master list
+  const venueSuggestions = useMemo(() => {
+    const uniqueVenues = new Set<string>();
+
+    // Add venues from user's history
+    attendedEvents.forEach((attended) => {
+      const eventVenue = attended.event?.venue?.name || attended.event?.venue_name;
+      if (eventVenue) {
+        uniqueVenues.add(eventVenue);
+      }
+    });
+
+    // Add venues from master list
+    venues.forEach((v) => {
+      if (v.name) {
+        uniqueVenues.add(v.name);
+      }
+    });
+
+    // Convert to array and filter by query
+    const allVenues = Array.from(uniqueVenues).sort();
+    if (!venueQuery.trim()) {
+      return allVenues.slice(0, 10); // Show top 10 when no query
+    }
+    const query = venueQuery.toLowerCase();
+    return allVenues
+      .filter((v) => v.toLowerCase().includes(query))
+      .slice(0, 10);
+  }, [attendedEvents, venues, venueQuery]);
 
   // Initialize form date from dropdown values on mount
   useEffect(() => {
@@ -457,6 +495,13 @@ export default function ManualEventScreen() {
       }
 
       if (result.success) {
+        // Recalculate stats and achievements
+        try {
+          await recalculateAchievements(user.id);
+        } catch (statsError) {
+          console.warn('Failed to recalculate stats:', statsError);
+        }
+
         if (Platform.OS === 'web') {
           window.alert('Event added to your history!');
           handleBack();
@@ -674,20 +719,51 @@ export default function ManualEventScreen() {
               />
             </>
           )}
-          <Controller
-            control={control}
-            name="venue"
-            render={({ field: { onChange, onBlur, value } }) => (
-              <Input
-                label={isRacing ? 'Track/Venue *' : 'Venue *'}
-                placeholder={isRacing ? 'e.g. Flemington, Randwick' : 'Enter venue name'}
-                value={value}
-                onChangeText={onChange}
-                onBlur={onBlur}
-                error={errors.venue?.message}
-              />
+          <View style={styles.venueAutocompleteContainer}>
+            <Controller
+              control={control}
+              name="venue"
+              render={({ field: { onChange, onBlur, value } }) => (
+                <Input
+                  label={isRacing ? 'Track/Venue *' : 'Venue *'}
+                  placeholder={isRacing ? 'e.g. Flemington, Randwick' : 'Enter venue name'}
+                  value={value}
+                  onChangeText={(text) => {
+                    onChange(text);
+                    setVenueQuery(text);
+                    setShowVenueSuggestions(true);
+                  }}
+                  onFocus={() => setShowVenueSuggestions(true)}
+                  onBlur={() => {
+                    // Delay hiding to allow tap on suggestion
+                    setTimeout(() => setShowVenueSuggestions(false), 200);
+                    onBlur();
+                  }}
+                  error={errors.venue?.message}
+                />
+              )}
+            />
+            {showVenueSuggestions && venueSuggestions.length > 0 && (
+              <View style={styles.venueSuggestionsDropdown}>
+                <ScrollView style={styles.venueSuggestionsList} nestedScrollEnabled keyboardShouldPersistTaps="handled">
+                  {venueSuggestions.map((venue, index) => (
+                    <TouchableOpacity
+                      key={`${venue}-${index}`}
+                      style={styles.venueSuggestionItem}
+                      onPress={() => {
+                        setValue('venue', venue);
+                        setVenueQuery(venue);
+                        setShowVenueSuggestions(false);
+                      }}
+                    >
+                      <Ionicons name="location" size={16} color={colors.textSecondary} />
+                      <Text style={styles.venueSuggestionText}>{venue}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              </View>
             )}
-          />
+          </View>
         </View>
 
         {/* Date & Time */}
@@ -1547,5 +1623,54 @@ const styles = StyleSheet.create({
   },
   timeSection: {
     marginTop: spacing.sm,
+  },
+  // Venue autocomplete styles
+  venueAutocompleteContainer: {
+    position: 'relative',
+    zIndex: 20,
+  },
+  venueSuggestionsDropdown: {
+    position: 'absolute',
+    top: '100%',
+    left: 0,
+    right: 0,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: borderRadius.lg,
+    marginTop: spacing.xs,
+    zIndex: 100,
+    maxHeight: 200,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 4,
+      },
+      android: {
+        elevation: 4,
+      },
+      web: {
+        boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
+      },
+    }),
+  },
+  venueSuggestionsList: {
+    maxHeight: 200,
+  },
+  venueSuggestionItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  venueSuggestionText: {
+    fontSize: fontSize.md,
+    color: colors.text,
+    flex: 1,
   },
 });

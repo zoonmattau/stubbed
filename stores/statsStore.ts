@@ -222,18 +222,32 @@ export const useStatsStore = create<StatsState>((set, get) => ({
         const event = ae.event;
         if (!event) return;
 
-        if (event.sport_id) uniqueSports.add(event.sport_id);
-        if (event.venue_id) uniqueVenues.add(event.venue_id);
-        if (event.home_team_id) {
-          uniqueTeams.add(event.home_team_id);
-          teamCounts[event.home_team_id] = (teamCounts[event.home_team_id] || 0) + 1;
+        // Count sports - use sport_id or sport_name
+        if (event.sport_id) {
+          uniqueSports.add(event.sport_id);
+        } else if (event.sport_name) {
+          uniqueSports.add(`name:${event.sport_name.toLowerCase()}`);
         }
-        if (event.away_team_id) {
-          uniqueTeams.add(event.away_team_id);
-          teamCounts[event.away_team_id] = (teamCounts[event.away_team_id] || 0) + 1;
+
+        // Count venues - use venue_id or venue_name
+        const venueKey = event.venue_id || (event.venue_name ? `name:${event.venue_name.toLowerCase()}` : null);
+        if (venueKey) {
+          uniqueVenues.add(venueKey);
+          venueCounts[venueKey] = (venueCounts[venueKey] || 0) + 1;
         }
-        if (event.venue_id) {
-          venueCounts[event.venue_id] = (venueCounts[event.venue_id] || 0) + 1;
+
+        // Count home team - use home_team_id or home_team_name
+        const homeTeamKey = event.home_team_id || (event.home_team_name ? `name:${event.home_team_name.toLowerCase()}` : null);
+        if (homeTeamKey) {
+          uniqueTeams.add(homeTeamKey);
+          teamCounts[homeTeamKey] = (teamCounts[homeTeamKey] || 0) + 1;
+        }
+
+        // Count away team - use away_team_id or away_team_name
+        const awayTeamKey = event.away_team_id || (event.away_team_name ? `name:${event.away_team_name.toLowerCase()}` : null);
+        if (awayTeamKey) {
+          uniqueTeams.add(awayTeamKey);
+          teamCounts[awayTeamKey] = (teamCounts[awayTeamKey] || 0) + 1;
         }
       });
 

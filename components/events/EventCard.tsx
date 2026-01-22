@@ -5,6 +5,7 @@ import { Card, Badge } from '@/components/ui';
 import { colors, spacing, fontSize, fontWeight, borderRadius } from '@/constants/theme';
 import { formatDate, formatTime } from '@/utils/dates';
 import { getSportColor, SPORTS } from '@/constants/sports';
+import { parseTennisScore } from '@/utils/scores';
 import type { EventWithDetails, AttendedEventWithDetails } from '@/types';
 
 // Helper to get display name from sport code
@@ -38,6 +39,10 @@ export function EventCard({ event, attendance, onPress, compact = false, mini = 
   // Mini version - fun card style with team logos and gradient
   if (mini) {
     const isCricket = sportName.toLowerCase() === 'cricket';
+    const isTennis = sportName.toLowerCase() === 'tennis';
+
+    // For tennis, parse the score string to determine winner
+    const tennisResult = isTennis ? parseTennisScore(event.home_score) : null;
 
     // For cricket, extract runs from "450/10" format
     // Also supports combined innings like "450+280" or "450/10+280/10"
@@ -66,12 +71,29 @@ export function EventCard({ event, attendance, onPress, compact = false, mini = 
     const homeScoreNum = parseScore(event.home_score);
     const awayScoreNum = parseScore(event.away_score);
 
-    const hasScore = event.home_score !== null && event.away_score !== null;
-    const homeWon = hasScore && homeScoreNum > awayScoreNum;
-    const awayWon = hasScore && awayScoreNum > homeScoreNum;
-    const isDraw = hasScore && homeScoreNum === awayScoreNum;
-    const margin = Math.abs(homeScoreNum - awayScoreNum);
-    const winnerName = homeWon ? homeTeamShort : awayTeamShort;
+    // Determine winner - tennis uses parsed result, others use score comparison
+    let hasScore = false;
+    let homeWon = false;
+    let awayWon = false;
+    let isDraw = false;
+    let margin = 0;
+    let winnerName = '';
+
+    if (isTennis && tennisResult) {
+      hasScore = tennisResult.sets.length > 0;
+      homeWon = tennisResult.winner === 'home';
+      awayWon = tennisResult.winner === 'away';
+      isDraw = tennisResult.winner === 'draw';
+      margin = Math.abs(tennisResult.player1Sets - tennisResult.player2Sets);
+      winnerName = homeWon ? homeTeamShort : awayTeamShort;
+    } else {
+      hasScore = event.home_score !== null && event.away_score !== null;
+      homeWon = hasScore && homeScoreNum > awayScoreNum;
+      awayWon = hasScore && awayScoreNum > homeScoreNum;
+      isDraw = hasScore && homeScoreNum === awayScoreNum;
+      margin = Math.abs(homeScoreNum - awayScoreNum);
+      winnerName = homeWon ? homeTeamShort : awayTeamShort;
+    }
 
     // Format cricket scores to show innings nicely
     const formatCricketScore = (score: string | number | null | undefined): { total: number; innings: string[] } => {
@@ -128,8 +150,19 @@ export function EventCard({ event, attendance, onPress, compact = false, mini = 
             <View style={styles.miniScoreContainer}>
               {hasScore ? (
                 <>
-                  {/* Test cricket with multiple innings - stacked layout */}
-                  {isCricket && homeScoreData && awayScoreData && homeScoreData.innings.length > 1 ? (
+                  {/* Tennis - show set scores */}
+                  {isTennis && tennisResult ? (
+                    <View style={styles.miniScoreBox}>
+                      <Text style={[styles.miniScoreText, homeWon && styles.miniScoreWinner]}>
+                        {tennisResult.player1Sets}
+                      </Text>
+                      <Text style={styles.miniScoreDivider}>-</Text>
+                      <Text style={[styles.miniScoreText, awayWon && styles.miniScoreWinner]}>
+                        {tennisResult.player2Sets}
+                      </Text>
+                    </View>
+                  ) : isCricket && homeScoreData && awayScoreData && homeScoreData.innings.length > 1 ? (
+                    /* Test cricket with multiple innings - stacked layout */
                     <View style={styles.miniCricketScores}>
                       <View style={styles.miniCricketScoreColumn}>
                         {homeScoreData.innings.map((inn, i) => (
@@ -164,7 +197,7 @@ export function EventCard({ event, attendance, onPress, compact = false, mini = 
                   ) : (
                     <View style={styles.miniMarginContainer}>
                       <Text style={styles.miniMarginText}>
-                        {winnerName} won by {margin}{isCricket ? ' runs' : ''}
+                        {winnerName} won{isTennis ? ` ${margin} set${margin !== 1 ? 's' : ''} to ${(tennisResult?.winner === 'home' ? tennisResult?.player2Sets : tennisResult?.player1Sets) || 0}` : ` by ${margin}${isCricket ? ' runs' : ''}`}
                       </Text>
                     </View>
                   )}
@@ -228,6 +261,9 @@ export function EventCard({ event, attendance, onPress, compact = false, mini = 
 
   // Regular card - calculate winner info
   const isCricketRegular = sportName.toLowerCase() === 'cricket';
+  const isTennisRegular = sportName.toLowerCase() === 'tennis';
+  const tennisResultRegular = isTennisRegular ? parseTennisScore(event.home_score) : null;
+
   const parseScoreRegular = (score: string | number | null | undefined): number => {
     if (score === null || score === undefined) return 0;
     const scoreStr = String(score);
@@ -247,12 +283,30 @@ export function EventCard({ event, attendance, onPress, compact = false, mini = 
 
   const homeScoreNumRegular = parseScoreRegular(event.home_score);
   const awayScoreNumRegular = parseScoreRegular(event.away_score);
-  const hasScoreRegular = event.home_score !== null && event.away_score !== null;
-  const homeWonRegular = hasScoreRegular && homeScoreNumRegular > awayScoreNumRegular;
-  const awayWonRegular = hasScoreRegular && awayScoreNumRegular > homeScoreNumRegular;
-  const isDrawRegular = hasScoreRegular && homeScoreNumRegular === awayScoreNumRegular;
-  const marginRegular = Math.abs(homeScoreNumRegular - awayScoreNumRegular);
-  const winnerNameRegular = homeWonRegular ? homeTeamShort : awayTeamShort;
+
+  // Determine winner - tennis uses parsed result, others use score comparison
+  let hasScoreRegular = false;
+  let homeWonRegular = false;
+  let awayWonRegular = false;
+  let isDrawRegular = false;
+  let marginRegular = 0;
+  let winnerNameRegular = '';
+
+  if (isTennisRegular && tennisResultRegular) {
+    hasScoreRegular = tennisResultRegular.sets.length > 0;
+    homeWonRegular = tennisResultRegular.winner === 'home';
+    awayWonRegular = tennisResultRegular.winner === 'away';
+    isDrawRegular = tennisResultRegular.winner === 'draw';
+    marginRegular = Math.abs(tennisResultRegular.player1Sets - tennisResultRegular.player2Sets);
+    winnerNameRegular = homeWonRegular ? homeTeamShort : awayTeamShort;
+  } else {
+    hasScoreRegular = event.home_score !== null && event.away_score !== null;
+    homeWonRegular = hasScoreRegular && homeScoreNumRegular > awayScoreNumRegular;
+    awayWonRegular = hasScoreRegular && awayScoreNumRegular > homeScoreNumRegular;
+    isDrawRegular = hasScoreRegular && homeScoreNumRegular === awayScoreNumRegular;
+    marginRegular = Math.abs(homeScoreNumRegular - awayScoreNumRegular);
+    winnerNameRegular = homeWonRegular ? homeTeamShort : awayTeamShort;
+  }
 
   return (
     <Card onPress={onPress} style={styles.container}>
@@ -294,13 +348,27 @@ export function EventCard({ event, attendance, onPress, compact = false, mini = 
           <View style={styles.scoreContainer}>
             {hasScoreRegular ? (
               <>
-                <Text style={[styles.score, homeWonRegular && styles.scoreWinner, awayWonRegular && styles.scoreLoser]}>
-                  {event.home_score}
-                </Text>
-                <Text style={styles.scoreDivider}>-</Text>
-                <Text style={[styles.score, awayWonRegular && styles.scoreWinner, homeWonRegular && styles.scoreLoser]}>
-                  {event.away_score}
-                </Text>
+                {isTennisRegular && tennisResultRegular ? (
+                  <>
+                    <Text style={[styles.score, homeWonRegular && styles.scoreWinner, awayWonRegular && styles.scoreLoser]}>
+                      {tennisResultRegular.player1Sets}
+                    </Text>
+                    <Text style={styles.scoreDivider}>-</Text>
+                    <Text style={[styles.score, awayWonRegular && styles.scoreWinner, homeWonRegular && styles.scoreLoser]}>
+                      {tennisResultRegular.player2Sets}
+                    </Text>
+                  </>
+                ) : (
+                  <>
+                    <Text style={[styles.score, homeWonRegular && styles.scoreWinner, awayWonRegular && styles.scoreLoser]}>
+                      {event.home_score}
+                    </Text>
+                    <Text style={styles.scoreDivider}>-</Text>
+                    <Text style={[styles.score, awayWonRegular && styles.scoreWinner, homeWonRegular && styles.scoreLoser]}>
+                      {event.away_score}
+                    </Text>
+                  </>
+                )}
               </>
             ) : (
               <Text style={styles.vs}>vs</Text>
@@ -330,7 +398,9 @@ export function EventCard({ event, attendance, onPress, compact = false, mini = 
         {hasScoreRegular && (
           <View style={styles.resultContainer}>
             <Text style={styles.resultText}>
-              {isDrawRegular ? 'Draw' : `${winnerNameRegular} won by ${marginRegular}${isCricketRegular ? ' runs' : ''}`}
+              {isDrawRegular ? 'Draw' : isTennisRegular && tennisResultRegular
+                ? `${winnerNameRegular} won ${tennisResultRegular.winner === 'home' ? tennisResultRegular.player1Sets : tennisResultRegular.player2Sets}-${tennisResultRegular.winner === 'home' ? tennisResultRegular.player2Sets : tennisResultRegular.player1Sets}`
+                : `${winnerNameRegular} won by ${marginRegular}${isCricketRegular ? ' runs' : ''}`}
             </Text>
           </View>
         )}

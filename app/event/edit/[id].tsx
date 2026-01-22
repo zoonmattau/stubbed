@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import {
   View,
   Text,
@@ -21,7 +21,7 @@ type SupportedTeam = 'home' | 'away' | 'neutral' | null;
 export default function EditEventScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { user } = useAuthStore();
-  const { attendedEvents, updateAttendedEvent, updateEvent } = useEventsStore();
+  const { attendedEvents, updateAttendedEvent, updateEvent, venues, fetchVenues } = useEventsStore();
 
   const [attendance, setAttendance] = useState<AttendedEventWithDetails | null>(null);
   const [rating, setRating] = useState<number>(0);
@@ -36,6 +36,9 @@ export default function EditEventScreen() {
   // Event details
   const [homeScore, setHomeScore] = useState('');
   const [awayScore, setAwayScore] = useState('');
+  // Venue editing
+  const [venueName, setVenueName] = useState('');
+  const [showVenueSuggestions, setShowVenueSuggestions] = useState(false);
 
   const handleBack = () => {
     if (router.canGoBack()) {
@@ -44,6 +47,10 @@ export default function EditEventScreen() {
       router.replace('/(tabs)/events');
     }
   };
+
+  useEffect(() => {
+    fetchVenues();
+  }, []);
 
   useEffect(() => {
     const found = attendedEvents.find((e) => e.id === id);
@@ -59,8 +66,36 @@ export default function EditEventScreen() {
       // Event details
       setHomeScore(found.event?.home_score || '');
       setAwayScore(found.event?.away_score || '');
+      setVenueName(found.event?.venue?.name || found.event?.venue_name || '');
     }
   }, [id, attendedEvents]);
+
+  // Compute venue suggestions
+  const venueSuggestions = useMemo(() => {
+    const uniqueVenues = new Set<string>();
+
+    // Add venues from user's history
+    attendedEvents.forEach((attended) => {
+      const eventVenue = attended.event?.venue?.name || attended.event?.venue_name;
+      if (eventVenue) {
+        uniqueVenues.add(eventVenue);
+      }
+    });
+
+    // Add venues from master list
+    venues.forEach((v) => {
+      if (v.name) {
+        uniqueVenues.add(v.name);
+      }
+    });
+
+    const allVenues = Array.from(uniqueVenues).sort();
+    if (!venueName.trim()) {
+      return allVenues.slice(0, 10);
+    }
+    const query = venueName.toLowerCase();
+    return allVenues.filter((v) => v.toLowerCase().includes(query)).slice(0, 10);
+  }, [attendedEvents, venues, venueName]);
 
   const addPerson = () => {
     if (newPerson.trim() && !wentWith.includes(newPerson.trim())) {
@@ -78,13 +113,17 @@ export default function EditEventScreen() {
 
     setIsSaving(true);
     try {
-      // Update event scores if changed
+      // Update event details if changed
       const eventUpdates: Record<string, any> = {};
       if (homeScore !== (attendance.event.home_score || '')) {
         eventUpdates.home_score = homeScore || null;
       }
       if (awayScore !== (attendance.event.away_score || '')) {
         eventUpdates.away_score = awayScore || null;
+      }
+      const currentVenue = attendance.event.venue?.name || attendance.event.venue_name || '';
+      if (venueName !== currentVenue) {
+        eventUpdates.venue_name = venueName || null;
       }
 
       // If scores changed, update the event
@@ -210,6 +249,44 @@ export default function EditEventScreen() {
               For Test cricket, use format: 365/10+241/10
             </Text>
           )}
+        </Card>
+
+        {/* Venue */}
+        <Card style={styles.venueCard}>
+          <Text style={styles.sectionTitle}>Venue</Text>
+          <View style={styles.venueAutocompleteContainer}>
+            <TextInput
+              style={styles.input}
+              value={venueName}
+              onChangeText={(text) => {
+                setVenueName(text);
+                setShowVenueSuggestions(true);
+              }}
+              onFocus={() => setShowVenueSuggestions(true)}
+              onBlur={() => setTimeout(() => setShowVenueSuggestions(false), 200)}
+              placeholder="Enter venue name"
+              placeholderTextColor={colors.textMuted}
+            />
+            {showVenueSuggestions && venueSuggestions.length > 0 && (
+              <View style={styles.venueSuggestionsDropdown}>
+                <ScrollView style={styles.venueSuggestionsList} nestedScrollEnabled keyboardShouldPersistTaps="handled">
+                  {venueSuggestions.map((venue, index) => (
+                    <TouchableOpacity
+                      key={`${venue}-${index}`}
+                      style={styles.venueSuggestionItem}
+                      onPress={() => {
+                        setVenueName(venue);
+                        setShowVenueSuggestions(false);
+                      }}
+                    >
+                      <Ionicons name="location" size={16} color={colors.textSecondary} />
+                      <Text style={styles.venueSuggestionText}>{venue}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              </View>
+            )}
+          </View>
         </Card>
 
         {/* Supported Team */}
@@ -561,5 +638,57 @@ const styles = StyleSheet.create({
   },
   saveButton: {
     marginTop: spacing.md,
+  },
+  // Venue styles
+  venueCard: {
+    marginBottom: spacing.lg,
+  },
+  venueAutocompleteContainer: {
+    position: 'relative',
+    zIndex: 20,
+  },
+  venueSuggestionsDropdown: {
+    position: 'absolute',
+    top: '100%',
+    left: 0,
+    right: 0,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: borderRadius.lg,
+    marginTop: spacing.xs,
+    zIndex: 100,
+    maxHeight: 200,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 4,
+      },
+      android: {
+        elevation: 4,
+      },
+      web: {
+        boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
+      },
+    }),
+  },
+  venueSuggestionsList: {
+    maxHeight: 200,
+  },
+  venueSuggestionItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  venueSuggestionText: {
+    fontSize: fontSize.md,
+    color: colors.text,
+    flex: 1,
   },
 });

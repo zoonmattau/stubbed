@@ -33,7 +33,7 @@ const LEVELS = [
 export default function HomeScreen() {
   const { user, profile } = useAuthStore();
   const { attendedEvents, fetchAttendedEvents } = useEventsStore();
-  const { stats, fetchStats, fetchAchievements } = useStatsStore();
+  const { fetchStats, fetchAchievements } = useStatsStore();
 
   const [refreshing, setRefreshing] = React.useState(false);
 
@@ -62,6 +62,39 @@ export default function HomeScreen() {
 
   // Calculate user points from attendance history
   const { totalPoints: userPoints } = usePoints(attendedEvents);
+
+  // Calculate local stats from attendedEvents (handles both FK and text fields)
+  const localStats = useMemo(() => {
+    const uniqueSports = new Set<string>();
+    const uniqueTeams = new Set<string>();
+    const uniqueVenues = new Set<string>();
+
+    attendedEvents.forEach((attended) => {
+      const event = attended.event;
+      if (!event) return;
+
+      // Sport - use FK or text field
+      const sportName = event.sport?.name || event.sport_name;
+      if (sportName) uniqueSports.add(sportName.toLowerCase());
+
+      // Teams - use FK or text field
+      const homeTeam = event.home_team?.name || event.home_team_name;
+      const awayTeam = event.away_team?.name || event.away_team_name;
+      if (homeTeam) uniqueTeams.add(homeTeam.toLowerCase());
+      if (awayTeam) uniqueTeams.add(awayTeam.toLowerCase());
+
+      // Venue - use FK or text field
+      const venue = event.venue?.name || event.venue_name;
+      if (venue) uniqueVenues.add(venue.toLowerCase());
+    });
+
+    return {
+      totalEvents: attendedEvents.length,
+      totalSports: uniqueSports.size,
+      totalTeams: uniqueTeams.size,
+      totalVenues: uniqueVenues.size,
+    };
+  }, [attendedEvents]);
 
   const currentLevel = useMemo(() => {
     let level = LEVELS[0];
@@ -125,7 +158,7 @@ export default function HomeScreen() {
           >
             {/* Main stat - Events */}
             <View style={styles.heroMain}>
-              <Text style={styles.heroNumber}>{stats?.total_events || 0}</Text>
+              <Text style={styles.heroNumber}>{localStats.totalEvents}</Text>
               <Text style={styles.heroLabel}>Events Attended</Text>
             </View>
 
@@ -139,7 +172,7 @@ export default function HomeScreen() {
                 <View style={styles.heroStatIcon}>
                   <Ionicons name="basketball" size={16} color={colors.info} />
                 </View>
-                <Text style={styles.heroStatValue}>{stats?.total_sports || 0}</Text>
+                <Text style={styles.heroStatValue}>{localStats.totalSports}</Text>
                 <Text style={styles.heroStatLabel}>sports</Text>
               </View>
 
@@ -148,7 +181,7 @@ export default function HomeScreen() {
                 <View style={styles.heroStatIcon}>
                   <Ionicons name="shield" size={16} color={colors.warning} />
                 </View>
-                <Text style={styles.heroStatValue}>{stats?.total_teams || 0}</Text>
+                <Text style={styles.heroStatValue}>{localStats.totalTeams}</Text>
                 <Text style={styles.heroStatLabel}>teams</Text>
               </View>
 
@@ -157,7 +190,7 @@ export default function HomeScreen() {
                 <View style={styles.heroStatIcon}>
                   <Ionicons name="location" size={16} color={colors.success} />
                 </View>
-                <Text style={styles.heroStatValue}>{stats?.total_venues || 0}</Text>
+                <Text style={styles.heroStatValue}>{localStats.totalVenues}</Text>
                 <Text style={styles.heroStatLabel}>venues</Text>
               </View>
             </View>

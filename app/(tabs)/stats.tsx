@@ -29,14 +29,10 @@ type FilterType = 'wins' | 'draws' | 'losses' | 'month' | 'sport' | 'team' | 've
 export default function StatsScreen() {
   const { user } = useAuthStore();
   const {
-    stats,
-    sportBreakdown,
-    teamBreakdown,
-    venueBreakdown,
     fetchStats,
     isLoading,
   } = useStatsStore();
-  const { attendedEvents } = useEventsStore();
+  const { attendedEvents, fetchAttendedEvents } = useEventsStore();
 
   const [refreshing, setRefreshing] = useState(false);
   const [filterType, setFilterType] = useState<FilterType>(null);
@@ -46,6 +42,10 @@ export default function StatsScreen() {
   useEffect(() => {
     if (user?.id) {
       fetchStats(user.id);
+      // Also fetch attended events if not already loaded
+      if (attendedEvents.length === 0) {
+        fetchAttendedEvents(user.id);
+      }
     }
   }, [user?.id]);
 
@@ -77,6 +77,132 @@ export default function StatsScreen() {
     return { wins, losses, draws, total };
   }, [attendedEvents]);
 
+  // Calculate local stats from attendedEvents (handles both FK and text fields)
+  const localStats = useMemo(() => {
+    const uniqueSports = new Set<string>();
+    const uniqueTeams = new Set<string>();
+    const uniqueVenues = new Set<string>();
+
+    attendedEvents.forEach((attended) => {
+      const event = attended.event;
+      if (!event) return;
+
+      // Sport - use FK or text field
+      const sportName = event.sport?.name || event.sport_name;
+      if (sportName) uniqueSports.add(sportName.toLowerCase());
+
+      // Teams - use FK or text field
+      const homeTeam = event.home_team?.name || event.home_team_name;
+      const awayTeam = event.away_team?.name || event.away_team_name;
+      if (homeTeam) uniqueTeams.add(homeTeam.toLowerCase());
+      if (awayTeam) uniqueTeams.add(awayTeam.toLowerCase());
+
+      // Venue - use FK or text field
+      const venue = event.venue?.name || event.venue_name;
+      if (venue) uniqueVenues.add(venue.toLowerCase());
+    });
+
+    return {
+      totalEvents: attendedEvents.length,
+      totalSports: uniqueSports.size,
+      totalTeams: uniqueTeams.size,
+      totalVenues: uniqueVenues.size,
+    };
+  }, [attendedEvents]);
+
+  // Calculate sport breakdown from attendedEvents
+  const localSportBreakdown = useMemo(() => {
+    const sportCounts: Record<string, { name: string; count: number }> = {};
+
+    attendedEvents.forEach((attended) => {
+      const event = attended.event;
+      if (!event) return;
+
+      const sportName = event.sport?.name || event.sport_name;
+      if (sportName) {
+        const key = sportName.toLowerCase();
+        if (!sportCounts[key]) {
+          sportCounts[key] = { name: sportName, count: 0 };
+        }
+        sportCounts[key].count++;
+      }
+    });
+
+    return Object.entries(sportCounts)
+      .map(([key, data]) => ({
+        sportId: key,
+        sportName: data.name.charAt(0).toUpperCase() + data.name.slice(1),
+        count: data.count,
+        color: getSportColor(key),
+      }))
+      .sort((a, b) => b.count - a.count);
+  }, [attendedEvents]);
+
+  // Calculate team breakdown from attendedEvents
+  const localTeamBreakdown = useMemo(() => {
+    const teamCounts: Record<string, { name: string; count: number }> = {};
+
+    attendedEvents.forEach((attended) => {
+      const event = attended.event;
+      if (!event) return;
+
+      const homeTeam = event.home_team?.name || event.home_team_name;
+      const awayTeam = event.away_team?.name || event.away_team_name;
+
+      if (homeTeam) {
+        const key = homeTeam.toLowerCase();
+        if (!teamCounts[key]) {
+          teamCounts[key] = { name: homeTeam, count: 0 };
+        }
+        teamCounts[key].count++;
+      }
+
+      if (awayTeam) {
+        const key = awayTeam.toLowerCase();
+        if (!teamCounts[key]) {
+          teamCounts[key] = { name: awayTeam, count: 0 };
+        }
+        teamCounts[key].count++;
+      }
+    });
+
+    return Object.entries(teamCounts)
+      .map(([key, data]) => ({
+        teamId: key,
+        teamName: data.name,
+        count: data.count,
+      }))
+      .sort((a, b) => b.count - a.count);
+  }, [attendedEvents]);
+
+  // Calculate venue breakdown from attendedEvents
+  const localVenueBreakdown = useMemo(() => {
+    const venueCounts: Record<string, { name: string; count: number }> = {};
+
+    attendedEvents.forEach((attended) => {
+      const event = attended.event;
+      if (!event) return;
+
+      const venue = event.venue?.name || event.venue_name;
+
+      if (venue) {
+        const key = venue.toLowerCase();
+        if (!venueCounts[key]) {
+          venueCounts[key] = { name: venue, count: 0 };
+        }
+        venueCounts[key].count++;
+      }
+    });
+
+    return Object.entries(venueCounts)
+      .map(([key, data]) => ({
+        venueId: key,
+        venueName: data.name,
+        count: data.count,
+      }))
+      .sort((a, b) => b.count - a.count);
+  }, [attendedEvents]);
+
   // Get events filtered by result type using the result field
   const getEventsByResult = (type: 'wins' | 'draws' | 'losses'): AttendedEventWithDetails[] => {
     return attendedEvents.filter((attended) => {
@@ -94,9 +220,9 @@ export default function StatsScreen() {
     if (!event) return null;
 
     if (attended.supported_team === 'home') {
-      return event.home_team?.short_name || event.home_team?.name || 'Home';
+      return event.home_team?.short_name || event.home_team?.name || event.home_team_name || 'Home';
     } else {
-      return event.away_team?.short_name || event.away_team?.name || 'Away';
+      return event.away_team?.short_name || event.away_team?.name || event.away_team_name || 'Away';
     }
   };
 
@@ -112,28 +238,34 @@ export default function StatsScreen() {
   };
 
   // Get filtered events based on current filter
-  // Get events filtered by sport
+  // Get events filtered by sport (checks both FK and text field)
   const getEventsBySport = (sportName: string): AttendedEventWithDetails[] => {
     return attendedEvents.filter((attended) => {
-      return attended.event?.sport?.name?.toLowerCase() === sportName.toLowerCase();
+      const event = attended.event;
+      if (!event) return false;
+      const eventSport = event.sport?.name || event.sport_name || '';
+      return eventSport.toLowerCase() === sportName.toLowerCase();
     });
   };
 
-  // Get events filtered by team
+  // Get events filtered by team (checks both FK and text field)
   const getEventsByTeam = (teamName: string): AttendedEventWithDetails[] => {
     return attendedEvents.filter((attended) => {
       const event = attended.event;
       if (!event) return false;
-      const homeTeam = event.home_team?.name?.toLowerCase() || '';
-      const awayTeam = event.away_team?.name?.toLowerCase() || '';
+      const homeTeam = (event.home_team?.name || event.home_team_name || '').toLowerCase();
+      const awayTeam = (event.away_team?.name || event.away_team_name || '').toLowerCase();
       return homeTeam === teamName.toLowerCase() || awayTeam === teamName.toLowerCase();
     });
   };
 
-  // Get events filtered by venue
+  // Get events filtered by venue (checks both FK and text field)
   const getEventsByVenue = (venueName: string): AttendedEventWithDetails[] => {
     return attendedEvents.filter((attended) => {
-      return attended.event?.venue?.name?.toLowerCase() === venueName.toLowerCase();
+      const event = attended.event;
+      if (!event) return false;
+      const eventVenue = event.venue?.name || event.venue_name || '';
+      return eventVenue.toLowerCase() === venueName.toLowerCase();
     });
   };
 
@@ -182,26 +314,26 @@ export default function StatsScreen() {
     setFilterValue(null);
   };
 
-  // Transform breakdowns into chart data
+  // Transform breakdowns into chart data (using local breakdowns)
   const sportChartData: BarChartItem[] = useMemo(() => {
-    return sportBreakdown.map((sport) => ({
+    return localSportBreakdown.map((sport) => ({
       id: sport.sportId || sport.sportName,
       label: sport.sportName,
       value: sport.count,
       color: sport.color || colors.primary,
       icon: 'basketball' as const,
     }));
-  }, [sportBreakdown]);
+  }, [localSportBreakdown]);
 
   // Donut chart data for sports
   const sportDonutData: DonutSegment[] = useMemo(() => {
-    return sportBreakdown.map((sport) => ({
+    return localSportBreakdown.map((sport) => ({
       id: sport.sportId || sport.sportName,
       label: sport.sportName,
       value: sport.count,
       color: sport.color || colors.primary,
     }));
-  }, [sportBreakdown]);
+  }, [localSportBreakdown]);
 
   // Win/Loss chart data
   const winLossChartData: DonutSegment[] = useMemo(() => {
@@ -219,7 +351,7 @@ export default function StatsScreen() {
   }, [winLossStats]);
 
   const teamChartData: BarChartItem[] = useMemo(() => {
-    return teamBreakdown.map((team) => ({
+    return localTeamBreakdown.map((team) => ({
       id: team.teamId || team.teamName,
       label: team.teamName,
       value: team.count,
@@ -227,10 +359,10 @@ export default function StatsScreen() {
       icon: 'shield' as const,
       subLabel: `${team.count} games`,
     }));
-  }, [teamBreakdown]);
+  }, [localTeamBreakdown]);
 
   const venueChartData: BarChartItem[] = useMemo(() => {
-    return venueBreakdown.map((venue) => ({
+    return localVenueBreakdown.map((venue) => ({
       id: venue.venueId || venue.venueName,
       label: venue.venueName,
       value: venue.count,
@@ -238,7 +370,7 @@ export default function StatsScreen() {
       icon: 'location' as const,
       subLabel: `${venue.count} visits`,
     }));
-  }, [venueBreakdown]);
+  }, [localVenueBreakdown]);
 
   // Monthly events breakdown
   const monthlyChartData: BarChartItem[] = useMemo(() => {
@@ -304,7 +436,7 @@ export default function StatsScreen() {
         style={styles.heroCard}
       >
         <View style={styles.heroMain}>
-          <Text style={styles.heroNumber}>{stats?.total_events || attendedEvents.length}</Text>
+          <Text style={styles.heroNumber}>{localStats.totalEvents}</Text>
           <Text style={styles.heroLabel}>Events Attended</Text>
         </View>
 
@@ -315,7 +447,7 @@ export default function StatsScreen() {
             <View style={styles.heroStatIcon}>
               <Ionicons name="basketball" size={16} color={colors.sportBasketball} />
             </View>
-            <Text style={styles.heroStatValue}>{stats?.total_sports || 0}</Text>
+            <Text style={styles.heroStatValue}>{localStats.totalSports}</Text>
             <Text style={styles.heroStatLabel}>sports</Text>
           </View>
 
@@ -323,7 +455,7 @@ export default function StatsScreen() {
             <View style={styles.heroStatIcon}>
               <Ionicons name="people" size={16} color={colors.info} />
             </View>
-            <Text style={styles.heroStatValue}>{stats?.total_teams || 0}</Text>
+            <Text style={styles.heroStatValue}>{localStats.totalTeams}</Text>
             <Text style={styles.heroStatLabel}>teams</Text>
           </View>
 
@@ -331,7 +463,7 @@ export default function StatsScreen() {
             <View style={styles.heroStatIcon}>
               <Ionicons name="location" size={16} color={colors.success} />
             </View>
-            <Text style={styles.heroStatValue}>{stats?.total_venues || 0}</Text>
+            <Text style={styles.heroStatValue}>{localStats.totalVenues}</Text>
             <Text style={styles.heroStatLabel}>venues</Text>
           </View>
         </View>
@@ -415,7 +547,7 @@ export default function StatsScreen() {
           {sportDonutData.length > 0 ? (
             <DonutChart
               data={sportDonutData}
-              centerValue={stats?.total_events || attendedEvents.length}
+              centerValue={localStats.totalEvents}
               centerLabel="total events"
               onSegmentPress={(segment) => openFilter('sport', segment.label)}
             />
@@ -446,7 +578,7 @@ export default function StatsScreen() {
               maxItems={5}
               onItemPress={(item) => openFilter('team', item.label)}
               onSeeAllPress={() => router.push('/stats/teams')}
-              showSeeAll={teamBreakdown.length > 5}
+              showSeeAll={localTeamBreakdown.length > 5}
             />
           ) : (
             <View style={styles.emptyBreakdown}>
@@ -475,7 +607,7 @@ export default function StatsScreen() {
               maxItems={5}
               onItemPress={(item) => openFilter('venue', item.label)}
               onSeeAllPress={() => router.push('/stats/venues')}
-              showSeeAll={venueBreakdown.length > 5}
+              showSeeAll={localVenueBreakdown.length > 5}
             />
           ) : (
             <View style={styles.emptyBreakdown}>
@@ -558,7 +690,11 @@ export default function StatsScreen() {
             renderItem={({ item }) => {
               const event = item.event;
               if (!event) return null;
-              const sportColor = getSportColor(event.sport?.name?.toLowerCase() || '');
+              const sportName = event.sport?.name || event.sport_name || 'Sport';
+              const sportColor = getSportColor(sportName.toLowerCase());
+              const homeTeamName = event.home_team?.short_name || event.home_team?.name || event.home_team_name || 'Home';
+              const awayTeamName = event.away_team?.short_name || event.away_team?.name || event.away_team_name || 'Away';
+              const venueName = event.venue?.name || event.venue_name;
               return (
                 <TouchableOpacity
                   style={styles.modalEventCard}
@@ -570,7 +706,7 @@ export default function StatsScreen() {
                   <View style={[styles.modalEventIndicator, { backgroundColor: sportColor }]} />
                   <View style={styles.modalEventContent}>
                     <View style={styles.modalEventTop}>
-                      <Badge label={event.sport?.name || 'Sport'} size="sm" color={sportColor} />
+                      <Badge label={sportName} size="sm" color={sportColor} />
                       {event.competition && (
                         <Text style={styles.modalEventLeague} numberOfLines={1}>{event.competition}</Text>
                       )}
@@ -580,7 +716,7 @@ export default function StatsScreen() {
                         styles.modalEventTeam,
                         item.supported_team === 'home' && styles.modalEventTeamSupported
                       ]} numberOfLines={1}>
-                        {event.home_team?.short_name || event.home_team?.name || 'Home'}
+                        {homeTeamName}
                         {item.supported_team === 'home' && ' ★'}
                       </Text>
                       <Text style={styles.modalVsText}> vs </Text>
@@ -588,7 +724,7 @@ export default function StatsScreen() {
                         styles.modalEventTeam,
                         item.supported_team === 'away' && styles.modalEventTeamSupported
                       ]} numberOfLines={1}>
-                        {event.away_team?.short_name || event.away_team?.name || 'Away'}
+                        {awayTeamName}
                         {item.supported_team === 'away' && ' ★'}
                       </Text>
                     </View>
@@ -596,6 +732,12 @@ export default function StatsScreen() {
                       <Text style={styles.supportedTeamLabel}>
                         Supporting: {getSupportedTeamName(item)}
                       </Text>
+                    )}
+                    {venueName && (
+                      <View style={styles.modalVenueRow}>
+                        <Ionicons name="location-outline" size={12} color={colors.textMuted} />
+                        <Text style={styles.modalVenueText} numberOfLines={1}>{venueName}</Text>
+                      </View>
                     )}
                     <View style={styles.modalEventBottom}>
                       {(event.home_score !== null && event.away_score !== null) && (
@@ -865,6 +1007,17 @@ const styles = StyleSheet.create({
     fontSize: fontSize.xs,
     color: colors.primary,
     marginBottom: spacing.xs,
+  },
+  modalVenueRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    marginBottom: spacing.xs,
+  },
+  modalVenueText: {
+    fontSize: fontSize.xs,
+    color: colors.textMuted,
+    flex: 1,
   },
   modalEventBottom: {
     flexDirection: 'row',

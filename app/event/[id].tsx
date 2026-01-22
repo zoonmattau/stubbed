@@ -20,6 +20,7 @@ import { useEventsStore } from '@/stores/eventsStore';
 import { colors, spacing, fontSize, fontWeight, borderRadius } from '@/constants/theme';
 import { formatDate, formatTime } from '@/utils/dates';
 import { getSportColor, getSportById, SPORTS } from '@/constants/sports';
+import { parseTennisScore } from '@/utils/scores';
 import type { AttendedEventWithDetails } from '@/types';
 
 // Helper to get display name from sport code
@@ -35,9 +36,10 @@ function getSportDisplayName(sportCode: string | null | undefined): string {
 export default function EventDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { user } = useAuthStore();
-  const { attendedEvents, updateAttendedEvent, deleteAttendedEvent } = useEventsStore();
+  const { attendedEvents, updateAttendedEvent, deleteAttendedEvent, fetchAttendedEvents, isLoading } = useEventsStore();
 
   const [attendance, setAttendance] = useState<AttendedEventWithDetails | null>(null);
+  const [hasFetched, setHasFetched] = useState(false);
 
   const handleBack = () => {
     if (router.canGoBack()) {
@@ -47,10 +49,29 @@ export default function EventDetailScreen() {
     }
   };
 
+  // Fetch events on mount if not loaded (e.g., page refresh)
+  useEffect(() => {
+    if (user?.id && attendedEvents.length === 0 && !hasFetched && !isLoading) {
+      setHasFetched(true);
+      fetchAttendedEvents(user.id);
+    }
+  }, [user?.id, attendedEvents.length, hasFetched, isLoading, fetchAttendedEvents]);
+
   useEffect(() => {
     const found = attendedEvents.find((e) => e.event_id === id);
     setAttendance(found || null);
   }, [id, attendedEvents]);
+
+  // Show loading while fetching
+  if (isLoading || (!attendance && !hasFetched && attendedEvents.length === 0)) {
+    return (
+      <View style={styles.container}>
+        <View style={styles.notFound}>
+          <Text style={styles.notFoundText}>Loading...</Text>
+        </View>
+      </View>
+    );
+  }
 
   if (!attendance || !attendance.event) {
     return (
@@ -78,6 +99,11 @@ export default function EventDetailScreen() {
 
   // Calculate winner info
   const isCricket = sportName.toLowerCase() === 'cricket';
+  const isTennis = sportName.toLowerCase() === 'tennis';
+
+  // Tennis: parse from home_score field which contains "6-4, 6-3" format
+  const tennisResult = isTennis ? parseTennisScore(event.home_score) : null;
+
   const parseScore = (score: string | number | null | undefined): number => {
     if (score === null || score === undefined) return 0;
     const scoreStr = String(score);
@@ -97,11 +123,23 @@ export default function EventDetailScreen() {
 
   const homeScoreNum = parseScore(event.home_score);
   const awayScoreNum = parseScore(event.away_score);
-  const hasScore = event.home_score !== null && event.away_score !== null;
-  const homeWon = hasScore && homeScoreNum > awayScoreNum;
-  const awayWon = hasScore && awayScoreNum > homeScoreNum;
-  const isDraw = hasScore && homeScoreNum === awayScoreNum;
-  const margin = Math.abs(homeScoreNum - awayScoreNum);
+
+  // Tennis uses different logic: winner by sets won
+  const hasScore = isTennis
+    ? tennisResult !== null && tennisResult.sets.length > 0
+    : event.home_score !== null && event.away_score !== null;
+  const homeWon = isTennis
+    ? tennisResult?.winner === 'home'
+    : hasScore && homeScoreNum > awayScoreNum;
+  const awayWon = isTennis
+    ? tennisResult?.winner === 'away'
+    : hasScore && awayScoreNum > homeScoreNum;
+  const isDraw = isTennis
+    ? tennisResult?.winner === 'draw'
+    : hasScore && homeScoreNum === awayScoreNum;
+  const margin = isTennis
+    ? Math.abs((tennisResult?.player1Sets || 0) - (tennisResult?.player2Sets || 0))
+    : Math.abs(homeScoreNum - awayScoreNum);
   const winnerName = homeWon ? homeTeamShort : awayTeamShort;
 
   // Format cricket scores to show innings nicely
@@ -229,7 +267,11 @@ export default function EventDetailScreen() {
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       {/* Header with sport color */}
       <View style={[styles.header, { backgroundColor: sportColor }]}>
+        <TouchableOpacity style={styles.backButton} onPress={handleBack}>
+          <Ionicons name="arrow-back" size={24} color={colors.white} />
+        </TouchableOpacity>
         <View style={styles.headerContent}>
+          <View style={styles.headerSpacer} />
           <Badge label={sportName} size="md" color={`${sportColor}dd`} />
         </View>
       </View>
@@ -249,7 +291,10 @@ export default function EventDetailScreen() {
         )}
 
         <View style={styles.teamsContainer}>
-          <View style={styles.teamColumn}>
+          <TouchableOpacity
+            style={styles.teamColumn}
+            onPress={() => router.push(`/team/${encodeURIComponent(homeTeamName)}`)}
+          >
             <View style={styles.teamLogoContainer}>
               {event.home_team?.logo_url ? (
                 <Image
@@ -264,13 +309,26 @@ export default function EventDetailScreen() {
                 </View>
               )}
             </View>
-            <Text style={styles.teamName}>{homeTeamName}</Text>
-          </View>
+            <Text style={[styles.teamName, styles.teamNameClickable]}>{homeTeamName}</Text>
+          </TouchableOpacity>
 
           <View style={styles.scoreColumn}>
             {hasScore ? (
               <>
-                {isTestMatch && homeScoreData && awayScoreData ? (
+                {isTennis && tennisResult ? (
+                  /* Tennis score display - show sets */
+                  <View style={styles.tennisScoreContainer}>
+                    {tennisResult.sets.map((set, i) => (
+                      <Text key={i} style={[
+                        styles.tennisSet,
+                        set.winner === 'home' && styles.tennisSetHomeWon,
+                        set.winner === 'away' && styles.tennisSetAwayWon,
+                      ]}>
+                        {set.player1}-{set.player2}
+                      </Text>
+                    ))}
+                  </View>
+                ) : isTestMatch && homeScoreData && awayScoreData ? (
                   /* Test cricket with multiple innings */
                   <View style={styles.cricketScoresContainer}>
                     <View style={styles.cricketScoreColumn}>
@@ -305,7 +363,9 @@ export default function EventDetailScreen() {
                   <Text style={styles.resultText}>Draw</Text>
                 ) : (
                   <Text style={styles.resultText}>
-                    {winnerName} won by {margin}{isCricket ? ' runs' : ''}
+                    {winnerName} won{isTennis
+                      ? ` ${tennisResult?.player1Sets}-${tennisResult?.player2Sets}`
+                      : ` by ${margin}${isCricket ? ' runs' : ''}`}
                   </Text>
                 )}
               </>
@@ -314,7 +374,10 @@ export default function EventDetailScreen() {
             )}
           </View>
 
-          <View style={styles.teamColumn}>
+          <TouchableOpacity
+            style={styles.teamColumn}
+            onPress={() => router.push(`/team/${encodeURIComponent(awayTeamName)}`)}
+          >
             <View style={styles.teamLogoContainer}>
               {event.away_team?.logo_url ? (
                 <Image
@@ -329,8 +392,8 @@ export default function EventDetailScreen() {
                 </View>
               )}
             </View>
-            <Text style={styles.teamName}>{awayTeamName}</Text>
-          </View>
+            <Text style={[styles.teamName, styles.teamNameClickable]}>{awayTeamName}</Text>
+          </TouchableOpacity>
         </View>
 
         {/* Quick user data summary */}
@@ -376,11 +439,11 @@ export default function EventDetailScreen() {
             </View>
           )}
 
-          {/* Section/Seating */}
-          {attendance.section && (
+          {/* Venue/Stadium */}
+          {venueName && (
             <View style={styles.matchFooterItem}>
               <Ionicons name="location" size={16} color={colors.textSecondary} />
-              <Text style={styles.matchFooterText}>{attendance.section}</Text>
+              <Text style={styles.matchFooterText}>{venueName}</Text>
             </View>
           )}
         </View>
@@ -603,9 +666,27 @@ const styles = StyleSheet.create({
     paddingTop: spacing['2xl'],
     paddingBottom: spacing.xl,
     paddingHorizontal: spacing.lg,
+    position: 'relative',
+  },
+  backButton: {
+    position: 'absolute',
+    top: spacing.lg,
+    left: spacing.md,
+    padding: spacing.sm,
+    zIndex: 10,
+    width: 40,
+    height: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   headerContent: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
     alignItems: 'center',
+    paddingHorizontal: spacing.md,
+  },
+  headerSpacer: {
+    width: 40,
   },
   matchCard: {
     marginHorizontal: spacing.lg,
@@ -683,6 +764,10 @@ const styles = StyleSheet.create({
     color: colors.text,
     textAlign: 'center',
   },
+  teamNameClickable: {
+    textDecorationLine: 'underline',
+    color: colors.primary,
+  },
   scoreColumn: {
     alignItems: 'center',
     paddingHorizontal: spacing.md,
@@ -750,6 +835,25 @@ const styles = StyleSheet.create({
     fontSize: fontSize.md,
     color: colors.textMuted,
     marginTop: spacing.sm,
+  },
+  // Tennis-specific styles
+  tennisScoreContainer: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+  },
+  tennisSet: {
+    fontSize: fontSize.xl,
+    fontWeight: fontWeight.bold,
+    color: colors.textSecondary,
+    paddingHorizontal: spacing.xs,
+  },
+  tennisSetHomeWon: {
+    color: colors.primary,
+  },
+  tennisSetAwayWon: {
+    color: colors.error,
   },
   infoCard: {
     margin: spacing.lg,

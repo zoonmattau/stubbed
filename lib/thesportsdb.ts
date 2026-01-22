@@ -97,29 +97,30 @@ export interface SportsDBTeamResult {
 export interface SportsDBEvent {
   idEvent: string;
   strEvent: string;
-  strEventAlternate: string;
+  strEventAlternate: string | null;
   strFilename: string;
   strSport: string;
   idLeague: string;
   strLeague: string;
   strSeason: string;
-  strHomeTeam: string;
-  strAwayTeam: string;
+  strHomeTeam: string | null;
+  strAwayTeam: string | null;
   intHomeScore: string | null;
   intAwayScore: string | null;
   intRound: string | null;
   dateEvent: string;
-  strTime: string;
-  strTimestamp: string;
+  strTime: string | null;
+  strTimestamp: string | null;
   strVenue: string | null;
   strCity: string | null;
   strCountry: string | null;
   strStatus: string | null;
-  strPostponed: string;
-  idHomeTeam: string;
-  idAwayTeam: string;
+  strPostponed: string | null;
+  idHomeTeam: string | null;
+  idAwayTeam: string | null;
   strHomeTeamBadge: string | null;
   strAwayTeamBadge: string | null;
+  strThumb: string | null;
 }
 
 export interface SportsDBSearchResult {
@@ -636,21 +637,31 @@ function parseEvent(event: SportsDBEvent, sport: string, league: string): Sports
     dateTime = `${event.dateEvent}T${time}`;
   }
 
+  // Handle individual sports (golf, motorsport, combat) that don't have teams
+  const isIndividualSport = !event.strHomeTeam || !event.strAwayTeam ||
+    event.strHomeTeam === event.strAwayTeam ||
+    ['Golf', 'Motorsport', 'Boxing', 'MMA'].includes(sport);
+
+  const homeTeamName = event.strHomeTeam || event.strEvent || 'Tournament';
+  const awayTeamName = event.strAwayTeam || '';
+
   return {
     id: event.idEvent,
     name: event.strEvent,
     shortName: event.strEventAlternate || event.strEvent,
     date: dateTime,
     homeTeam: {
-      id: event.idHomeTeam,
-      name: event.strHomeTeam,
-      shortName: event.strHomeTeam.split(' ').pop() || event.strHomeTeam,
-      logo: event.strHomeTeamBadge || undefined,
+      id: event.idHomeTeam || event.idEvent,
+      name: isIndividualSport ? event.strEvent : homeTeamName,
+      shortName: isIndividualSport
+        ? (event.strEventAlternate || event.strEvent || '').split(' ').slice(0, 2).join(' ')
+        : ((homeTeamName || '').split(' ').pop() || homeTeamName),
+      logo: event.strHomeTeamBadge || event.strThumb || undefined,
     },
     awayTeam: {
-      id: event.idAwayTeam,
-      name: event.strAwayTeam,
-      shortName: event.strAwayTeam.split(' ').pop() || event.strAwayTeam,
+      id: event.idAwayTeam || '',
+      name: isIndividualSport ? league : awayTeamName,
+      shortName: isIndividualSport ? league : ((awayTeamName || '').split(' ').pop() || awayTeamName),
       logo: event.strAwayTeamBadge || undefined,
     },
     venue: event.strVenue

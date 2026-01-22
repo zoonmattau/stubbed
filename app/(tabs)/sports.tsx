@@ -35,12 +35,12 @@ const SPORT_CATEGORIES: SportCategory[] = [
     description: 'Australian Football League',
   },
   {
-    id: 'aleague',
-    name: 'A-League',
+    id: 'soccer',
+    name: 'Soccer',
     icon: 'football',
-    color: '#a855f7',
-    route: '/sports/aleague',
-    description: 'Australian Soccer League',
+    color: '#22c55e',
+    route: '/sports/soccer',
+    description: 'EPL, La Liga, A-League, MLS & more',
   },
   {
     id: 'basketball',
@@ -133,7 +133,7 @@ export default function SportsScreen() {
     >
       <View style={styles.header}>
         <Text style={styles.title}>Sports</Text>
-        <Text style={styles.subtitle}>Explore live scores, fixtures & rankings</Text>
+        <Text style={styles.subtitle}>Live scores, upcoming fixtures & past results</Text>
       </View>
 
       <View style={styles.grid}>

@@ -107,10 +107,10 @@ const SPORT_CONFIGS: Record<string, SportConfig> = {
     sportName: 'Basketball',
   },
   soccer: {
-    title: 'Soccer Cups',
+    title: 'Soccer',
     icon: 'football',
     color: '#16a34a',
-    leagues: ['europa_league', 'conference_league', 'fa_cup', 'copa_del_rey', 'dfb_pokal', 'coppa_italia', 'coupe_de_france', 'efl_cup', 'copa_libertadores', 'copa_sudamericana', 'copa_america', 'world_cup', 'nations_league'],
+    leagues: ['aleague_sdb', 'europa_league', 'conference_league', 'fa_cup', 'copa_del_rey', 'dfb_pokal', 'coppa_italia', 'coupe_de_france', 'efl_cup', 'copa_libertadores', 'copa_sudamericana', 'copa_america', 'world_cup', 'nations_league'],
     sportName: 'Soccer',
   },
   hockey: {
@@ -405,6 +405,11 @@ export default function SportScreen() {
     const isCompleted = event.status === 'completed';
     const roundDisplay = formatRound(event.round);
 
+    // Detect individual sports (golf, motorsport, combat) - awayTeam name equals league name
+    const isIndividualSport = event.awayTeam.name === event.league ||
+      !event.awayTeam.id ||
+      ['Golf', 'Motorsport', 'Boxing', 'MMA'].includes(event.sport);
+
     return (
       <Card key={event.id} style={styles.eventCard}>
         <View style={styles.eventHeader}>
@@ -412,49 +417,66 @@ export default function SportScreen() {
           {roundDisplay && <Text style={styles.roundText}>{roundDisplay}</Text>}
         </View>
 
-        <View style={styles.teamsContainer}>
-          <View style={styles.teamRow}>
+        {isIndividualSport ? (
+          /* Individual sport layout - just show event name */
+          <View style={styles.individualEventContainer}>
             {event.homeTeam.logo ? (
-              <Image source={{ uri: event.homeTeam.logo }} style={styles.teamLogo} />
+              <Image source={{ uri: event.homeTeam.logo }} style={styles.individualEventLogo} />
             ) : (
-              <View style={styles.teamLogoPlaceholder}>
-                <Text style={styles.teamInitial}>{event.homeTeam.name[0]}</Text>
+              <View style={[styles.teamLogoPlaceholder, styles.individualEventPlaceholder]}>
+                <Ionicons name={config.icon as any} size={24} color={config.color} />
               </View>
             )}
-            <Text style={[styles.teamName, isCompleted && event.homeScore && event.awayScore &&
-              parseInt(event.homeScore) > parseInt(event.awayScore) && styles.teamNameWinner]}
-              numberOfLines={1}
-            >
-              {event.homeTeam.name}
+            <Text style={styles.individualEventName} numberOfLines={2}>
+              {event.name}
             </Text>
-            {isCompleted && event.homeScore && (
-              <Text style={[styles.score, parseInt(event.homeScore) > parseInt(event.awayScore || '0') && styles.scoreWinner]}>
-                {event.homeScore}
-              </Text>
-            )}
           </View>
+        ) : (
+          /* Team sport layout - home vs away */
+          <View style={styles.teamsContainer}>
+            <View style={styles.teamRow}>
+              {event.homeTeam.logo ? (
+                <Image source={{ uri: event.homeTeam.logo }} style={styles.teamLogo} />
+              ) : (
+                <View style={styles.teamLogoPlaceholder}>
+                  <Text style={styles.teamInitial}>{event.homeTeam.name[0]}</Text>
+                </View>
+              )}
+              <Text style={[styles.teamName, isCompleted && event.homeScore && event.awayScore &&
+                parseInt(event.homeScore) > parseInt(event.awayScore) && styles.teamNameWinner]}
+                numberOfLines={1}
+              >
+                {event.homeTeam.name}
+              </Text>
+              {isCompleted && event.homeScore && (
+                <Text style={[styles.score, parseInt(event.homeScore) > parseInt(event.awayScore || '0') && styles.scoreWinner]}>
+                  {event.homeScore}
+                </Text>
+              )}
+            </View>
 
-          <View style={styles.teamRow}>
-            {event.awayTeam.logo ? (
-              <Image source={{ uri: event.awayTeam.logo }} style={styles.teamLogo} />
-            ) : (
-              <View style={styles.teamLogoPlaceholder}>
-                <Text style={styles.teamInitial}>{event.awayTeam.name[0]}</Text>
-              </View>
-            )}
-            <Text style={[styles.teamName, isCompleted && event.homeScore && event.awayScore &&
-              parseInt(event.awayScore) > parseInt(event.homeScore) && styles.teamNameWinner]}
-              numberOfLines={1}
-            >
-              {event.awayTeam.name}
-            </Text>
-            {isCompleted && event.awayScore && (
-              <Text style={[styles.score, parseInt(event.awayScore) > parseInt(event.homeScore || '0') && styles.scoreWinner]}>
-                {event.awayScore}
+            <View style={styles.teamRow}>
+              {event.awayTeam.logo ? (
+                <Image source={{ uri: event.awayTeam.logo }} style={styles.teamLogo} />
+              ) : (
+                <View style={styles.teamLogoPlaceholder}>
+                  <Text style={styles.teamInitial}>{event.awayTeam.name[0]}</Text>
+                </View>
+              )}
+              <Text style={[styles.teamName, isCompleted && event.homeScore && event.awayScore &&
+                parseInt(event.awayScore) > parseInt(event.homeScore) && styles.teamNameWinner]}
+                numberOfLines={1}
+              >
+                {event.awayTeam.name}
               </Text>
-            )}
+              {isCompleted && event.awayScore && (
+                <Text style={[styles.score, parseInt(event.awayScore) > parseInt(event.homeScore || '0') && styles.scoreWinner]}>
+                  {event.awayScore}
+                </Text>
+              )}
+            </View>
           </View>
-        </View>
+        )}
 
         <View style={styles.eventFooter}>
           <View style={styles.dateContainer}>
@@ -493,10 +515,10 @@ export default function SportScreen() {
           activeOpacity={0.7}
         >
           {isAdding ? (
-            <ActivityIndicator size="small" color={colors.primary} />
+            <ActivityIndicator size="small" color={colors.white} />
           ) : (
             <>
-              <Ionicons name="add" size={14} color={colors.primary} />
+              <Ionicons name="add" size={14} color={colors.white} />
               <Text style={styles.addButtonText}>Add</Text>
             </>
           )}
@@ -695,6 +717,28 @@ const styles = StyleSheet.create({
   teamsContainer: {
     gap: spacing.xs,
   },
+  // Individual sport styles (golf, motorsport, etc.)
+  individualEventContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    paddingVertical: spacing.sm,
+  },
+  individualEventLogo: {
+    width: 48,
+    height: 48,
+    borderRadius: borderRadius.md,
+  },
+  individualEventPlaceholder: {
+    width: 48,
+    height: 48,
+  },
+  individualEventName: {
+    flex: 1,
+    fontSize: fontSize.md,
+    fontWeight: fontWeight.semibold,
+    color: colors.text,
+  },
   teamRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -773,15 +817,15 @@ const styles = StyleSheet.create({
   },
   addButton: {
     position: 'absolute',
-    top: spacing.sm,
+    bottom: spacing.sm,
     right: spacing.sm,
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: colors.primary + '15',
-    paddingVertical: 2,
-    paddingHorizontal: spacing.xs,
+    backgroundColor: colors.primary,
+    paddingVertical: spacing.xs,
+    paddingHorizontal: spacing.sm,
     borderRadius: borderRadius.full,
-    gap: 2,
+    gap: 4,
     borderWidth: 1,
     borderColor: colors.primary + '30',
   },
@@ -791,7 +835,7 @@ const styles = StyleSheet.create({
   addButtonText: {
     fontSize: fontSize.xs,
     fontWeight: fontWeight.semibold,
-    color: colors.primary,
+    color: colors.white,
   },
   // Standings table styles
   standingsCard: {
