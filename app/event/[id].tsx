@@ -640,6 +640,18 @@ export default function EventDetailScreen() {
         </View>
       )}
 
+      {/* Write Review Button */}
+      <View style={styles.reviewSection}>
+        <TouchableOpacity
+          style={styles.writeReviewButton}
+          onPress={() => router.push(`/event/review/${attendance.id}`)}
+        >
+          <Ionicons name="create-outline" size={24} color={colors.white} />
+          <Text style={styles.writeReviewText}>Write a Public Review</Text>
+        </TouchableOpacity>
+        <Text style={styles.reviewHint}>Share your experience with the community</Text>
+      </View>
+
       {/* Actions */}
       <View style={styles.actions}>
         <TouchableOpacity
@@ -1028,5 +1040,30 @@ const styles = StyleSheet.create({
     fontSize: fontSize.sm,
     fontWeight: fontWeight.medium,
     color: colors.white,
+  },
+  reviewSection: {
+    padding: spacing.lg,
+    alignItems: 'center',
+  },
+  writeReviewButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.sm,
+    backgroundColor: colors.primary,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.xl,
+    borderRadius: borderRadius.lg,
+    width: '100%',
+  },
+  writeReviewText: {
+    fontSize: fontSize.md,
+    fontWeight: fontWeight.semibold,
+    color: colors.white,
+  },
+  reviewHint: {
+    fontSize: fontSize.sm,
+    color: colors.textMuted,
+    marginTop: spacing.sm,
   },
 });

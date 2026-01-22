@@ -19,7 +19,7 @@ import { sortByDate } from '@/utils/dates';
 import { useIsMounted } from '@/hooks/useSafeAsync';
 import type { AttendedEventWithDetails } from '@/types';
 
-type MainTabType = 'my_events' | 'live';
+type MainTabType = 'my_events' | 'live' | 'stats';
 type FilterType = 'all' | 'favorites';
 type SortType = 'date_desc' | 'date_asc' | 'rating';
 
@@ -175,6 +175,19 @@ export default function EventsScreen() {
         />
         <Text style={[styles.mainTabText, mainTab === 'my_events' && styles.mainTabTextActive]}>
           My Events
+        </Text>
+      </TouchableOpacity>
+      <TouchableOpacity
+        style={[styles.mainTab, mainTab === 'stats' && styles.mainTabActive]}
+        onPress={() => setMainTab('stats')}
+      >
+        <Ionicons
+          name="stats-chart"
+          size={16}
+          color={mainTab === 'stats' ? colors.white : colors.textSecondary}
+        />
+        <Text style={[styles.mainTabText, mainTab === 'stats' && styles.mainTabTextActive]}>
+          Stats
         </Text>
       </TouchableOpacity>
       <TouchableOpacity
@@ -384,11 +397,116 @@ export default function EventsScreen() {
     </>
   );
 
+  const renderStatsPreview = () => (
+    <ScrollView
+      style={styles.statsContainer}
+      contentContainerStyle={styles.statsContent}
+      showsVerticalScrollIndicator={false}
+    >
+      <View style={styles.statsHeader}>
+        <Text style={styles.statsTitle}>Your Statistics</Text>
+        <Text style={styles.statsSubtitle}>Track your sports attendance journey</Text>
+      </View>
+
+      {/* Quick Stats Summary */}
+      <View style={styles.quickStatsGrid}>
+        <View style={styles.quickStatCard}>
+          <Ionicons name="ticket" size={24} color={colors.primary} />
+          <Text style={styles.quickStatValue}>{attendedEvents.length}</Text>
+          <Text style={styles.quickStatLabel}>Events</Text>
+        </View>
+        <View style={styles.quickStatCard}>
+          <Ionicons name="trophy" size={24} color={colors.gold} />
+          <Text style={styles.quickStatValue}>
+            {attendedEvents.filter(e => e.result === 'win').length}
+          </Text>
+          <Text style={styles.quickStatLabel}>Wins</Text>
+        </View>
+        <View style={styles.quickStatCard}>
+          <Ionicons name="location" size={24} color={colors.success} />
+          <Text style={styles.quickStatValue}>
+            {new Set(attendedEvents.map(e => e.event?.venue?.name || e.event?.venue_name).filter(Boolean)).size}
+          </Text>
+          <Text style={styles.quickStatLabel}>Venues</Text>
+        </View>
+        <View style={styles.quickStatCard}>
+          <Ionicons name="shield" size={24} color={colors.info} />
+          <Text style={styles.quickStatValue}>
+            {new Set(attendedEvents.flatMap(e => [
+              e.event?.home_team?.name || e.event?.home_team_name,
+              e.event?.away_team?.name || e.event?.away_team_name
+            ].filter(Boolean))).size}
+          </Text>
+          <Text style={styles.quickStatLabel}>Teams</Text>
+        </View>
+      </View>
+
+      {/* View Full Stats Button */}
+      <TouchableOpacity
+        style={styles.viewFullStatsButton}
+        onPress={() => router.push('/stats')}
+      >
+        <Ionicons name="stats-chart" size={20} color={colors.white} />
+        <Text style={styles.viewFullStatsText}>View Full Statistics</Text>
+        <Ionicons name="chevron-forward" size={20} color={colors.white} />
+      </TouchableOpacity>
+
+      {/* Quick Links */}
+      <View style={styles.statsLinksContainer}>
+        <TouchableOpacity
+          style={styles.statsLinkCard}
+          onPress={() => router.push('/stats/teams')}
+        >
+          <View style={[styles.statsLinkIcon, { backgroundColor: `${colors.info}20` }]}>
+            <Ionicons name="shield" size={20} color={colors.info} />
+          </View>
+          <Text style={styles.statsLinkText}>Teams</Text>
+          <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.statsLinkCard}
+          onPress={() => router.push('/stats/venues')}
+        >
+          <View style={[styles.statsLinkIcon, { backgroundColor: `${colors.success}20` }]}>
+            <Ionicons name="location" size={20} color={colors.success} />
+          </View>
+          <Text style={styles.statsLinkText}>Venues</Text>
+          <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.statsLinkCard}
+          onPress={() => router.push('/stats/map')}
+        >
+          <View style={[styles.statsLinkIcon, { backgroundColor: `${colors.primary}20` }]}>
+            <Ionicons name="globe" size={20} color={colors.primary} />
+          </View>
+          <Text style={styles.statsLinkText}>Map View</Text>
+          <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.statsLinkCard}
+          onPress={() => router.push('/achievements')}
+        >
+          <View style={[styles.statsLinkIcon, { backgroundColor: `${colors.gold}20` }]}>
+            <Ionicons name="trophy" size={20} color={colors.gold} />
+          </View>
+          <Text style={styles.statsLinkText}>Achievements</Text>
+          <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
+        </TouchableOpacity>
+      </View>
+    </ScrollView>
+  );
+
   return (
     <View style={styles.container}>
       {renderMainTabs()}
 
-      {mainTab === 'my_events' ? renderMyEvents() : renderLiveSports()}
+      {mainTab === 'my_events' && renderMyEvents()}
+      {mainTab === 'stats' && renderStatsPreview()}
+      {mainTab === 'live' && renderLiveSports()}
 
       {/* FAB - only show on My Events */}
       {mainTab === 'my_events' && (
@@ -700,5 +818,96 @@ const styles = StyleSheet.create({
     fontSize: fontSize.md,
     fontWeight: fontWeight.semibold,
     color: colors.white,
+  },
+  // Stats tab styles
+  statsContainer: {
+    flex: 1,
+  },
+  statsContent: {
+    padding: spacing.lg,
+  },
+  statsHeader: {
+    marginBottom: spacing.lg,
+  },
+  statsTitle: {
+    fontSize: fontSize.xl,
+    fontWeight: fontWeight.bold,
+    color: colors.text,
+    marginBottom: spacing.xs,
+  },
+  statsSubtitle: {
+    fontSize: fontSize.sm,
+    color: colors.textSecondary,
+  },
+  quickStatsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.md,
+    marginBottom: spacing.lg,
+  },
+  quickStatCard: {
+    flex: 1,
+    minWidth: '45%',
+    backgroundColor: colors.surface,
+    borderRadius: borderRadius.lg,
+    padding: spacing.lg,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  quickStatValue: {
+    fontSize: fontSize['2xl'],
+    fontWeight: fontWeight.bold,
+    color: colors.text,
+    marginTop: spacing.sm,
+  },
+  quickStatLabel: {
+    fontSize: fontSize.sm,
+    color: colors.textSecondary,
+    marginTop: spacing.xs,
+  },
+  viewFullStatsButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.primary,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.lg,
+    borderRadius: borderRadius.lg,
+    gap: spacing.sm,
+    marginBottom: spacing.xl,
+  },
+  viewFullStatsText: {
+    fontSize: fontSize.md,
+    fontWeight: fontWeight.semibold,
+    color: colors.white,
+    flex: 1,
+    textAlign: 'center',
+  },
+  statsLinksContainer: {
+    gap: spacing.sm,
+  },
+  statsLinkCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.surface,
+    padding: spacing.md,
+    borderRadius: borderRadius.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    gap: spacing.md,
+  },
+  statsLinkIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  statsLinkText: {
+    flex: 1,
+    fontSize: fontSize.md,
+    fontWeight: fontWeight.medium,
+    color: colors.text,
   },
 });
