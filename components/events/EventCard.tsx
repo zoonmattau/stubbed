@@ -16,11 +16,18 @@ interface EventCardProps {
 }
 
 export function EventCard({ event, attendance, onPress, compact = false, mini = false }: EventCardProps) {
-  const sportColor = getSportColor(event.sport?.name?.toLowerCase() || '');
+  // Use text fields as fallback for manually entered events
+  const homeTeamName = event.home_team?.name || event.home_team_name || 'Home Team';
+  const awayTeamName = event.away_team?.name || event.away_team_name || 'Away Team';
+  const homeTeamShort = event.home_team?.short_name || event.home_team_name || 'Home';
+  const awayTeamShort = event.away_team?.short_name || event.away_team_name || 'Away';
+  const venueName = event.venue?.name || event.venue_name;
+  const sportName = event.sport?.name || event.sport_name || 'Sport';
+  const sportColor = getSportColor(sportName.toLowerCase());
 
   // Mini version - fun card style with team logos and gradient
   if (mini) {
-    const isCricket = event.sport?.name?.toLowerCase() === 'cricket';
+    const isCricket = sportName.toLowerCase() === 'cricket';
 
     // For cricket, extract runs from "450/10" format
     // Also supports combined innings like "450+280" or "450/10+280/10"
@@ -54,9 +61,7 @@ export function EventCard({ event, attendance, onPress, compact = false, mini = 
     const awayWon = hasScore && awayScoreNum > homeScoreNum;
     const isDraw = hasScore && homeScoreNum === awayScoreNum;
     const margin = Math.abs(homeScoreNum - awayScoreNum);
-    const winnerName = homeWon
-      ? (event.home_team?.short_name || event.home_team?.name || 'Home')
-      : (event.away_team?.short_name || event.away_team?.name || 'Away');
+    const winnerName = homeWon ? homeTeamShort : awayTeamShort;
 
     // Format cricket scores to show innings nicely
     const formatCricketScore = (score: string | number | null | undefined): { total: number; innings: string[] } => {
@@ -82,7 +87,7 @@ export function EventCard({ event, attendance, onPress, compact = false, mini = 
           {/* Top row - Sport badge, competition, and date */}
           <View style={styles.miniHeader}>
             <View style={styles.miniHeaderLeft}>
-              <Badge label={event.sport?.name || 'Sport'} size="sm" color={sportColor} />
+              <Badge label={sportName} size="sm" color={sportColor} />
               {event.competition && (
                 <Text style={styles.miniCompetition} numberOfLines={1}>{event.competition}</Text>
               )}
@@ -99,12 +104,12 @@ export function EventCard({ event, attendance, onPress, compact = false, mini = 
               ) : (
                 <View style={[styles.miniTeamLogoPlaceholder, { backgroundColor: sportColor }]}>
                   <Text style={styles.miniTeamLogoText}>
-                    {event.home_team?.short_name?.[0] || 'H'}
+                    {homeTeamShort[0]}
                   </Text>
                 </View>
               )}
               <Text style={[styles.miniTeamName, homeWon && styles.miniTeamNameWinner]} numberOfLines={1}>
-                {event.home_team?.short_name || event.home_team?.name || 'Home'}
+                {homeTeamShort}
               </Text>
               {homeWon && <View style={[styles.miniWinIndicator, { backgroundColor: sportColor }]} />}
             </View>
@@ -166,12 +171,12 @@ export function EventCard({ event, attendance, onPress, compact = false, mini = 
               ) : (
                 <View style={[styles.miniTeamLogoPlaceholder, { backgroundColor: sportColor }]}>
                   <Text style={styles.miniTeamLogoText}>
-                    {event.away_team?.short_name?.[0] || 'A'}
+                    {awayTeamShort[0]}
                   </Text>
                 </View>
               )}
               <Text style={[styles.miniTeamName, awayWon && styles.miniTeamNameWinner]} numberOfLines={1}>
-                {event.away_team?.short_name || event.away_team?.name || 'Away'}
+                {awayTeamShort}
               </Text>
               {awayWon && <View style={[styles.miniWinIndicator, { backgroundColor: sportColor }]} />}
             </View>
@@ -197,10 +202,10 @@ export function EventCard({ event, attendance, onPress, compact = false, mini = 
             ) : (
               <View />
             )}
-            {event.venue?.name ? (
+            {venueName ? (
               <View style={styles.miniVenue}>
                 <Ionicons name="location" size={12} color={colors.textSecondary} />
-                <Text style={styles.miniVenueText} numberOfLines={1}>{event.venue.name}</Text>
+                <Text style={styles.miniVenueText} numberOfLines={1}>{venueName}</Text>
               </View>
             ) : (
               <View />
@@ -212,7 +217,7 @@ export function EventCard({ event, attendance, onPress, compact = false, mini = 
   }
 
   // Regular card - calculate winner info
-  const isCricketRegular = event.sport?.name?.toLowerCase() === 'cricket';
+  const isCricketRegular = sportName.toLowerCase() === 'cricket';
   const parseScoreRegular = (score: string | number | null | undefined): number => {
     if (score === null || score === undefined) return 0;
     const scoreStr = String(score);
@@ -237,9 +242,7 @@ export function EventCard({ event, attendance, onPress, compact = false, mini = 
   const awayWonRegular = hasScoreRegular && awayScoreNumRegular > homeScoreNumRegular;
   const isDrawRegular = hasScoreRegular && homeScoreNumRegular === awayScoreNumRegular;
   const marginRegular = Math.abs(homeScoreNumRegular - awayScoreNumRegular);
-  const winnerNameRegular = homeWonRegular
-    ? (event.home_team?.short_name || event.home_team?.name || 'Home')
-    : (event.away_team?.short_name || event.away_team?.name || 'Away');
+  const winnerNameRegular = homeWonRegular ? homeTeamShort : awayTeamShort;
 
   return (
     <Card onPress={onPress} style={styles.container}>
@@ -248,7 +251,7 @@ export function EventCard({ event, attendance, onPress, compact = false, mini = 
         <View style={styles.header}>
           <View style={styles.headerLeft}>
             <Badge
-              label={event.sport?.name || 'Sport'}
+              label={sportName}
               size="sm"
               color={sportColor}
             />
@@ -269,12 +272,12 @@ export function EventCard({ event, attendance, onPress, compact = false, mini = 
             ) : (
               <View style={[styles.teamLogoPlaceholder, { backgroundColor: sportColor }]}>
                 <Text style={styles.teamLogoText}>
-                  {event.home_team?.short_name?.[0] || 'H'}
+                  {homeTeamShort[0]}
                 </Text>
               </View>
             )}
             <Text style={[styles.teamName, homeWonRegular && styles.teamNameWinner]} numberOfLines={1}>
-              {event.home_team?.name || 'Home Team'}
+              {homeTeamName}
             </Text>
           </View>
 
@@ -303,12 +306,12 @@ export function EventCard({ event, attendance, onPress, compact = false, mini = 
             ) : (
               <View style={[styles.teamLogoPlaceholder, { backgroundColor: sportColor }]}>
                 <Text style={styles.teamLogoText}>
-                  {event.away_team?.short_name?.[0] || 'A'}
+                  {awayTeamShort[0]}
                 </Text>
               </View>
             )}
             <Text style={[styles.teamName, awayWonRegular && styles.teamNameWinner]} numberOfLines={1}>
-              {event.away_team?.name || 'Away Team'}
+              {awayTeamName}
             </Text>
           </View>
         </View>
@@ -322,7 +325,7 @@ export function EventCard({ event, attendance, onPress, compact = false, mini = 
           </View>
         )}
 
-        {!compact && (event.event_time || event.venue?.name) && (
+        {!compact && (event.event_time || venueName) && (
           <View style={styles.details}>
             {event.event_time && (
               <View style={styles.detailItem}>
@@ -330,11 +333,11 @@ export function EventCard({ event, attendance, onPress, compact = false, mini = 
                 <Text style={styles.detailText}>{formatTime(event.event_time)}</Text>
               </View>
             )}
-            {event.venue?.name && (
+            {venueName && (
               <View style={styles.detailItem}>
                 <Ionicons name="location-outline" size={14} color={colors.textSecondary} />
                 <Text style={styles.detailText} numberOfLines={1}>
-                  {event.venue.name}
+                  {venueName}
                 </Text>
               </View>
             )}
