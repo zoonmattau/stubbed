@@ -128,31 +128,24 @@ export const useEventsStore = create<EventsState>((set, get) => ({
       if (eventData.id) {
         eventId = eventData.id;
       } else {
-        // Build the event insert data - explicitly exclude sport_id as it's a text code, not a UUID
+        // Build the event insert data explicitly - DO NOT include sport_id (it's a text code, not a UUID)
         const insertData: Record<string, unknown> = {
-          ...restEventData,
           created_by: userId,
+          event_date: eventData.event_date,
+          event_time: eventData.event_time || null,
+          competition: eventData.competition || null,
+          round: eventData.round || null,
+          home_score: eventData.home_score || null,
+          away_score: eventData.away_score || null,
+          is_draw: eventData.is_draw || false,
+          is_abandoned: eventData.is_abandoned || false,
+          // Store sport as text name (sport_id from form is actually the sport code like 'afl', 'tennis')
+          sport_name: sport_id || null,
+          // Store team/venue as text fields
+          home_team_name: home_team_name || null,
+          away_team_name: away_team_name || null,
+          venue_name: venue_name || null,
         };
-
-        // Remove sport_id if it somehow got included (it's a text code, not a UUID)
-        delete insertData.sport_id;
-
-        // Store sport as text name (sport_id from form is actually the sport code like 'afl', 'tennis')
-        if (sport_id) {
-          insertData.sport_name = sport_id;
-        }
-
-        // Add team and venue names as text fields if they exist
-        // These are stored as text since we don't have foreign key relationships for manually entered teams
-        if (home_team_name) {
-          insertData.home_team_name = home_team_name;
-        }
-        if (away_team_name) {
-          insertData.away_team_name = away_team_name;
-        }
-        if (venue_name) {
-          insertData.venue_name = venue_name;
-        }
 
         // Create new event
         const { data: newEvent, error: eventError } = await supabase
