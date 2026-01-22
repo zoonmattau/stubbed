@@ -1,7 +1,7 @@
 import { Stack } from 'expo-router';
 import { colors, fontWeight } from '@/constants/theme';
 
-export default function ProfileLayout() {
+export default function ReviewLayout() {
   return (
     <Stack
       screenOptions={{
@@ -13,8 +13,7 @@ export default function ProfileLayout() {
         headerBackTitle: 'Back',
       }}
     >
-      <Stack.Screen name="[userId]" />
-      <Stack.Screen name="edit" options={{ title: 'Edit Profile' }} />
+      <Stack.Screen name="[id]" options={{ title: 'Review' }} />
     </Stack>
   );
 }

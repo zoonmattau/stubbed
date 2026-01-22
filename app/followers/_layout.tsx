@@ -1,7 +1,7 @@
 import { Stack } from 'expo-router';
 import { colors, fontWeight } from '@/constants/theme';
 
-export default function ProfileLayout() {
+export default function FollowersLayout() {
   return (
     <Stack
       screenOptions={{
@@ -14,7 +14,6 @@ export default function ProfileLayout() {
       }}
     >
       <Stack.Screen name="[userId]" />
-      <Stack.Screen name="edit" options={{ title: 'Edit Profile' }} />
     </Stack>
   );
 }

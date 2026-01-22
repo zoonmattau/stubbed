@@ -1,7 +1,7 @@
 import { Stack } from 'expo-router';
 import { colors, fontWeight } from '@/constants/theme';
 
-export default function ProfileLayout() {
+export default function ExploreLayout() {
   return (
     <Stack
       screenOptions={{
@@ -13,8 +13,8 @@ export default function ProfileLayout() {
         headerBackTitle: 'Back',
       }}
     >
-      <Stack.Screen name="[userId]" />
-      <Stack.Screen name="edit" options={{ title: 'Edit Profile' }} />
+      <Stack.Screen name="search" options={{ title: 'Search' }} />
+      <Stack.Screen name="discover" options={{ title: 'Discover Users' }} />
     </Stack>
   );
 }
