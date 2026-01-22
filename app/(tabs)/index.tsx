@@ -114,7 +114,7 @@ export default function HomeScreen() {
         onPress={() => router.push('/(tabs)/stats')}
       >
         <ImageBackground
-          source={{ uri: 'https://images.unsplash.com/photo-1577223625816-7546f13df25d?w=800&q=80' }}
+          source={require('@/assets/images/stadium-hero.jpg')}
           style={styles.heroCard}
           imageStyle={styles.heroCardImage}
         >
@@ -289,79 +289,59 @@ export default function HomeScreen() {
         </View>
         <View style={styles.exploreGrid}>
           <TouchableOpacity
-            style={styles.exploreCard}
+            style={[styles.exploreCard, { backgroundColor: colors.success }]}
             onPress={() => router.push('/(tabs)/stats')}
             activeOpacity={0.8}
           >
-            <LinearGradient
-              colors={[colors.success, '#059669']}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={styles.exploreCardGradient}
-            >
+            <View style={styles.exploreCardContent}>
               <View style={styles.exploreCardIcon}>
                 <Ionicons name="stats-chart" size={24} color={colors.white} />
               </View>
               <Text style={styles.exploreCardTitle}>Your Stats</Text>
               <Text style={styles.exploreCardSubtitle}>View detailed analytics</Text>
-            </LinearGradient>
+            </View>
           </TouchableOpacity>
 
           <TouchableOpacity
-            style={styles.exploreCard}
+            style={[styles.exploreCard, { backgroundColor: colors.info }]}
             onPress={() => router.push('/friends')}
             activeOpacity={0.8}
           >
-            <LinearGradient
-              colors={[colors.info, '#0284c7']}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={styles.exploreCardGradient}
-            >
+            <View style={styles.exploreCardContent}>
               <View style={styles.exploreCardIcon}>
                 <Ionicons name="people" size={24} color={colors.white} />
               </View>
               <Text style={styles.exploreCardTitle}>Friends</Text>
               <Text style={styles.exploreCardSubtitle}>Connect with fans</Text>
-            </LinearGradient>
+            </View>
           </TouchableOpacity>
 
           <TouchableOpacity
-            style={styles.exploreCard}
+            style={[styles.exploreCard, { backgroundColor: colors.gold }]}
             onPress={() => router.push('/achievements')}
             activeOpacity={0.8}
           >
-            <LinearGradient
-              colors={[colors.gold, '#d97706']}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={styles.exploreCardGradient}
-            >
+            <View style={styles.exploreCardContent}>
               <View style={styles.exploreCardIcon}>
                 <Ionicons name="trophy" size={24} color={colors.white} />
               </View>
               <Text style={styles.exploreCardTitle}>Achievements</Text>
               <Text style={styles.exploreCardSubtitle}>Unlock rewards</Text>
-            </LinearGradient>
+            </View>
           </TouchableOpacity>
 
           <TouchableOpacity
-            style={styles.exploreCard}
+            style={[styles.exploreCard, { backgroundColor: colors.primary }]}
             onPress={() => router.push('/stats/map')}
             activeOpacity={0.8}
           >
-            <LinearGradient
-              colors={[colors.primary, colors.primaryDark || '#1a365d']}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={styles.exploreCardGradient}
-            >
+            <View style={styles.exploreCardContent}>
               <View style={styles.exploreCardIcon}>
                 <Ionicons name="globe" size={24} color={colors.white} />
               </View>
               <Text style={styles.exploreCardTitle}>World Map</Text>
               <Text style={styles.exploreCardSubtitle}>Places you've been</Text>
-            </LinearGradient>
+            </View>
           </TouchableOpacity>
 
         </View>
@@ -546,7 +526,7 @@ const styles = StyleSheet.create({
     borderRadius: borderRadius.lg,
     overflow: 'hidden',
   },
-  exploreCardGradient: {
+  exploreCardContent: {
     padding: spacing.md,
     minHeight: 100,
   },
