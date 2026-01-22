@@ -4,8 +4,18 @@ import { Ionicons } from '@expo/vector-icons';
 import { Card, Badge } from '@/components/ui';
 import { colors, spacing, fontSize, fontWeight, borderRadius } from '@/constants/theme';
 import { formatDate, formatTime } from '@/utils/dates';
-import { getSportColor } from '@/constants/sports';
+import { getSportColor, SPORTS } from '@/constants/sports';
 import type { EventWithDetails, AttendedEventWithDetails } from '@/types';
+
+// Helper to get display name from sport code
+function getSportDisplayName(sportCode: string | null | undefined): string {
+  if (!sportCode) return 'Sport';
+  // Try to find in SPORTS constant
+  const sport = SPORTS.find(s => s.id.toLowerCase() === sportCode.toLowerCase());
+  if (sport) return sport.name;
+  // Fallback: capitalize first letter
+  return sportCode.charAt(0).toUpperCase() + sportCode.slice(1);
+}
 
 interface EventCardProps {
   event: EventWithDetails;
@@ -22,7 +32,7 @@ export function EventCard({ event, attendance, onPress, compact = false, mini = 
   const homeTeamShort = event.home_team?.short_name || event.home_team_name || 'Home';
   const awayTeamShort = event.away_team?.short_name || event.away_team_name || 'Away';
   const venueName = event.venue?.name || event.venue_name;
-  const sportName = event.sport?.name || event.sport_name || 'Sport';
+  const sportName = getSportDisplayName(event.sport?.name || event.sport_name);
   const sportColor = getSportColor(sportName.toLowerCase());
 
   // Mini version - fun card style with team logos and gradient

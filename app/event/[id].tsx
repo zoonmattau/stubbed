@@ -19,8 +19,18 @@ import { useAuthStore } from '@/stores/authStore';
 import { useEventsStore } from '@/stores/eventsStore';
 import { colors, spacing, fontSize, fontWeight, borderRadius } from '@/constants/theme';
 import { formatDate, formatTime } from '@/utils/dates';
-import { getSportColor } from '@/constants/sports';
+import { getSportColor, getSportById, SPORTS } from '@/constants/sports';
 import type { AttendedEventWithDetails } from '@/types';
+
+// Helper to get display name from sport code
+function getSportDisplayName(sportCode: string | null | undefined): string {
+  if (!sportCode) return 'Sport';
+  // Try to find in SPORTS constant
+  const sport = SPORTS.find(s => s.id.toLowerCase() === sportCode.toLowerCase());
+  if (sport) return sport.name;
+  // Fallback: capitalize first letter
+  return sportCode.charAt(0).toUpperCase() + sportCode.slice(1);
+}
 
 export default function EventDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -55,10 +65,19 @@ export default function EventDetailScreen() {
   }
 
   const event = attendance.event;
-  const sportColor = getSportColor(event.sport?.name?.toLowerCase() || '');
+
+  // Use text fields as fallback for manually entered events
+  const homeTeamName = event.home_team?.name || event.home_team_name || 'Home Team';
+  const awayTeamName = event.away_team?.name || event.away_team_name || 'Away Team';
+  const homeTeamShort = event.home_team?.short_name || event.home_team_name || 'Home';
+  const awayTeamShort = event.away_team?.short_name || event.away_team_name || 'Away';
+  const venueName = event.venue?.name || event.venue_name;
+  const venueCity = event.venue?.city;
+  const sportName = getSportDisplayName(event.sport?.name || event.sport_name);
+  const sportColor = getSportColor(sportName.toLowerCase());
 
   // Calculate winner info
-  const isCricket = event.sport?.name?.toLowerCase() === 'cricket';
+  const isCricket = sportName.toLowerCase() === 'cricket';
   const parseScore = (score: string | number | null | undefined): number => {
     if (score === null || score === undefined) return 0;
     const scoreStr = String(score);
@@ -83,9 +102,7 @@ export default function EventDetailScreen() {
   const awayWon = hasScore && awayScoreNum > homeScoreNum;
   const isDraw = hasScore && homeScoreNum === awayScoreNum;
   const margin = Math.abs(homeScoreNum - awayScoreNum);
-  const winnerName = homeWon
-    ? (event.home_team?.name || 'Home')
-    : (event.away_team?.name || 'Away');
+  const winnerName = homeWon ? homeTeamShort : awayTeamShort;
 
   // Format cricket scores to show innings nicely
   const formatCricketScore = (score: string | number | null | undefined): { total: number; innings: string[] } => {
@@ -213,7 +230,7 @@ export default function EventDetailScreen() {
       {/* Header with sport color */}
       <View style={[styles.header, { backgroundColor: sportColor }]}>
         <View style={styles.headerContent}>
-          <Badge label={event.sport?.name || 'Sport'} size="md" color={`${sportColor}dd`} />
+          <Badge label={sportName} size="md" color={`${sportColor}dd`} />
         </View>
       </View>
 
@@ -242,12 +259,12 @@ export default function EventDetailScreen() {
               ) : (
                 <View style={[styles.teamLogoPlaceholder, { backgroundColor: sportColor }]}>
                   <Text style={styles.teamLogoText}>
-                    {event.home_team?.short_name?.[0] || 'H'}
+                    {homeTeamShort[0]}
                   </Text>
                 </View>
               )}
             </View>
-            <Text style={styles.teamName}>{event.home_team?.name || 'Home'}</Text>
+            <Text style={styles.teamName}>{homeTeamName}</Text>
           </View>
 
           <View style={styles.scoreColumn}>
@@ -307,12 +324,12 @@ export default function EventDetailScreen() {
               ) : (
                 <View style={[styles.teamLogoPlaceholder, { backgroundColor: sportColor }]}>
                   <Text style={styles.teamLogoText}>
-                    {event.away_team?.short_name?.[0] || 'A'}
+                    {awayTeamShort[0]}
                   </Text>
                 </View>
               )}
             </View>
-            <Text style={styles.teamName}>{event.away_team?.name || 'Away'}</Text>
+            <Text style={styles.teamName}>{awayTeamName}</Text>
           </View>
         </View>
 
@@ -332,9 +349,9 @@ export default function EventDetailScreen() {
                 attendance.result === 'loss' && { color: colors.error },
               ]}>
                 {attendance.supported_team === 'home'
-                  ? event.home_team?.short_name || 'Home'
+                  ? homeTeamShort
                   : attendance.supported_team === 'away'
-                  ? event.away_team?.short_name || 'Away'
+                  ? awayTeamShort
                   : 'Neutral'}
                 {attendance.result && ` (${attendance.result})`}
               </Text>
@@ -381,12 +398,12 @@ export default function EventDetailScreen() {
             <Text style={styles.infoText}>{formatTime(event.event_time)}</Text>
           </View>
         )}
-        {event.venue && (
+        {venueName && (
           <View style={styles.infoRow}>
             <Ionicons name="location-outline" size={20} color={colors.textSecondary} />
             <Text style={styles.infoText}>
-              {event.venue.name}
-              {event.venue.city && `, ${event.venue.city}`}
+              {venueName}
+              {venueCity && `, ${venueCity}`}
             </Text>
           </View>
         )}
@@ -413,9 +430,9 @@ export default function EventDetailScreen() {
                   attendance.result === 'loss' && { color: colors.error },
                 ]}>
                   {attendance.supported_team === 'home'
-                    ? event.home_team?.name || 'Home Team'
+                    ? homeTeamName
                     : attendance.supported_team === 'away'
-                    ? event.away_team?.name || 'Away Team'
+                    ? awayTeamName
                     : 'Neutral'}
                 </Text>
                 {attendance.result && (
