@@ -129,7 +129,8 @@ export default function SearchEventsScreen() {
   const [showPast, setShowPast] = useState(false);
   const [showFilterModal, setShowFilterModal] = useState(false);
 
-  const { enabledSports, toggleSport, enableAllSports, disableAllSports } = usePreferencesStore();
+  const { enabledSports, toggleSport, enableAllSports, disableAllSports, categoryOrder, setCategoryOrder, getOrderedCategories } = usePreferencesStore();
+  const [showReorderModal, setShowReorderModal] = useState(false);
   const { addPlayer, removePlayer, isPlayerFavorite, addTeam, removeTeam, isTeamFavorite } = useFavoritesStore();
 
   // Filter leagues based on enabled sports and search query
@@ -148,7 +149,7 @@ export default function SearchEventsScreen() {
     });
   }, [enabledSports, searchQuery, searchType]);
 
-  // Group filtered leagues by category
+  // Group filtered leagues by category, respecting user's category order
   const groupedLeagues = useMemo(() => {
     const groups: Record<string, LeagueOption[]> = {};
     filteredLeagues.forEach((league) => {
@@ -159,6 +160,22 @@ export default function SearchEventsScreen() {
     });
     return groups;
   }, [filteredLeagues]);
+
+  const orderedCategoryEntries = useMemo(() => {
+    const ordered = getOrderedCategories();
+    return ordered
+      .filter((cat) => groupedLeagues[cat])
+      .map((cat) => [cat, groupedLeagues[cat]] as [string, LeagueOption[]]);
+  }, [groupedLeagues, categoryOrder]);
+
+  const moveCategoryItem = (index: number, direction: 'up' | 'down') => {
+    const ordered = getOrderedCategories();
+    const targetIndex = direction === 'up' ? index - 1 : index + 1;
+    if (targetIndex < 0 || targetIndex >= ordered.length) return;
+    const newOrder = [...ordered];
+    [newOrder[index], newOrder[targetIndex]] = [newOrder[targetIndex], newOrder[index]];
+    setCategoryOrder(newOrder);
+  };
 
   const enabledCount = useMemo(() => {
     return Object.values(enabledSports).filter(Boolean).length;
@@ -519,11 +536,60 @@ export default function SearchEventsScreen() {
     </Modal>
   );
 
+  // Reorder sports modal
+  const renderReorderModal = () => (
+    <Modal
+      visible={showReorderModal}
+      animationType="slide"
+      transparent
+      onRequestClose={() => setShowReorderModal(false)}
+    >
+      <View style={styles.reorderOverlay}>
+        <View style={styles.reorderContent}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>Reorder Sports</Text>
+            <TouchableOpacity onPress={() => setShowReorderModal(false)}>
+              <Ionicons name="close" size={24} color={colors.text} />
+            </TouchableOpacity>
+          </View>
+          <Text style={styles.reorderSubtitle}>Move your most-used sports to the top</Text>
+          <ScrollView style={styles.modalContent}>
+            {getOrderedCategories().map((cat, index) => (
+              <View key={cat} style={styles.reorderItem}>
+                <Text style={styles.reorderItemText}>{cat}</Text>
+                <View style={styles.reorderArrows}>
+                  <TouchableOpacity
+                    onPress={() => moveCategoryItem(index, 'up')}
+                    disabled={index === 0}
+                    style={[styles.arrowBtn, index === 0 && styles.arrowBtnDisabled]}
+                  >
+                    <Ionicons name="chevron-up" size={20} color={index === 0 ? colors.border : colors.text} />
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={() => moveCategoryItem(index, 'down')}
+                    disabled={index === getOrderedCategories().length - 1}
+                    style={[styles.arrowBtn, index === getOrderedCategories().length - 1 && styles.arrowBtnDisabled]}
+                  >
+                    <Ionicons name="chevron-down" size={20} color={index === getOrderedCategories().length - 1 ? colors.border : colors.text} />
+                  </TouchableOpacity>
+                </View>
+              </View>
+            ))}
+          </ScrollView>
+          <TouchableOpacity style={styles.modalDoneButton} onPress={() => setShowReorderModal(false)}>
+            <Text style={styles.modalDoneText}>Done</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </Modal>
+  );
+
   // Browse view (leagues, players, teams)
   if (viewMode === 'browse' || viewMode === 'playerResults' || viewMode === 'teamResults') {
     return (
       <View style={styles.container}>
         {renderFilterModal()}
+        {renderReorderModal()}
 
         <View style={styles.header}>
           <View style={styles.headerRow}>
@@ -581,7 +647,7 @@ export default function SearchEventsScreen() {
           </View>
         ) : searchType === 'leagues' ? (
           <ScrollView style={styles.scrollContent}>
-            {Object.keys(groupedLeagues).length === 0 ? (
+            {orderedCategoryEntries.length === 0 ? (
               <View style={styles.noResultsContainer}>
                 <Ionicons name="search-outline" size={48} color={colors.textMuted} />
                 <Text style={styles.noResultsTitle}>No results found</Text>
@@ -591,7 +657,17 @@ export default function SearchEventsScreen() {
               </View>
             ) : (
               <>
-                {Object.entries(groupedLeagues).map(([category, leagues]) => (
+                {/* Reorder button */}
+                <View style={styles.reorderRow}>
+                  <TouchableOpacity
+                    style={styles.reorderButton}
+                    onPress={() => setShowReorderModal(true)}
+                  >
+                    <Ionicons name="swap-vertical" size={16} color={colors.primary} />
+                    <Text style={styles.reorderButtonText}>Reorder Sports</Text>
+                  </TouchableOpacity>
+                </View>
+                {orderedCategoryEntries.map(([category, leagues]) => (
                   <View key={category} style={styles.categorySection}>
                     <Text style={styles.categoryTitle}>{category}</Text>
                     <Card style={styles.leaguesCard}>
@@ -1245,5 +1321,69 @@ const styles = StyleSheet.create({
     fontSize: fontSize.md,
     color: colors.white,
     fontWeight: fontWeight.semibold,
+  },
+  reorderRow: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    paddingHorizontal: spacing.lg,
+    marginBottom: spacing.sm,
+  },
+  reorderButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  reorderButtonText: {
+    fontSize: fontSize.sm,
+    color: colors.primary,
+    fontWeight: fontWeight.medium,
+  },
+  reorderOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'flex-end',
+  },
+  reorderContent: {
+    backgroundColor: colors.surface,
+    borderTopLeftRadius: borderRadius.xl,
+    borderTopRightRadius: borderRadius.xl,
+    maxHeight: '80%',
+    paddingBottom: spacing.xl,
+  },
+  reorderSubtitle: {
+    fontSize: fontSize.sm,
+    color: colors.textSecondary,
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.sm,
+    paddingBottom: spacing.md,
+  },
+  reorderItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.lg,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  reorderItemText: {
+    flex: 1,
+    fontSize: fontSize.md,
+    fontWeight: fontWeight.medium,
+    color: colors.text,
+  },
+  reorderArrows: {
+    flexDirection: 'row',
+    gap: spacing.xs,
+  },
+  arrowBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: borderRadius.md,
+    backgroundColor: colors.surfaceLight,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  arrowBtnDisabled: {
+    opacity: 0.3,
   },
 });

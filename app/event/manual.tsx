@@ -11,6 +11,7 @@ import {
   Image,
   Switch,
   Pressable,
+  Modal,
 } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -26,8 +27,11 @@ import { useStatsStore } from '@/stores/statsStore';
 import { useEventInvitations } from '@/hooks/useEventInvitations';
 import { useReviews } from '@/hooks/useReviews';
 import { colors, spacing, fontSize, fontWeight, borderRadius } from '@/constants/theme';
-import { SPORTS, isIndividualSport, isRacingSport } from '@/constants/sports';
+import { SPORTS, isIndividualSport, isRacingSport, SportDefinition } from '@/constants/sports';
 import { pickImage, uploadEventPhoto } from '@/lib/storage';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
+const SPORT_ORDER_KEY = 'stubbed_sport_order';
 import type { ESPNSearchResult } from '@/lib/espn';
 
 // Map sport types from APIs to local sport IDs
@@ -152,6 +156,46 @@ export default function ManualEventScreen() {
 
   const [isLoading, setIsLoading] = useState(false);
   const [selectedSport, setSelectedSport] = useState<string>('');
+  const [orderedSports, setOrderedSports] = useState<SportDefinition[]>(SPORTS);
+  const [showReorderModal, setShowReorderModal] = useState(false);
+
+  // Load saved sport order
+  useEffect(() => {
+    const loadSportOrder = async () => {
+      try {
+        const savedOrder = await AsyncStorage.getItem(SPORT_ORDER_KEY);
+        if (savedOrder) {
+          const orderIds: string[] = JSON.parse(savedOrder);
+          const sorted = [...SPORTS].sort((a, b) => {
+            const aIdx = orderIds.indexOf(a.id);
+            const bIdx = orderIds.indexOf(b.id);
+            if (aIdx === -1 && bIdx === -1) return 0;
+            if (aIdx === -1) return 1;
+            if (bIdx === -1) return -1;
+            return aIdx - bIdx;
+          });
+          setOrderedSports(sorted);
+        }
+      } catch (err) {
+        console.warn('Failed to load sport order:', err);
+      }
+    };
+    loadSportOrder();
+  }, []);
+
+  const saveSportOrder = async (sports: SportDefinition[]) => {
+    const orderIds = sports.map(s => s.id);
+    await AsyncStorage.setItem(SPORT_ORDER_KEY, JSON.stringify(orderIds));
+  };
+
+  const moveSport = (index: number, direction: 'up' | 'down') => {
+    const newOrder = [...orderedSports];
+    const targetIndex = direction === 'up' ? index - 1 : index + 1;
+    if (targetIndex < 0 || targetIndex >= newOrder.length) return;
+    [newOrder[index], newOrder[targetIndex]] = [newOrder[targetIndex], newOrder[index]];
+    setOrderedSports(newOrder);
+    saveSportOrder(newOrder);
+  };
   const [photos, setPhotos] = useState<string[]>([]);
   const [rating, setRating] = useState(0);
   const [atmosphereRating, setAtmosphereRating] = useState(0);
@@ -675,10 +719,19 @@ export default function ManualEventScreen() {
 
         {/* Sport Selection */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Sport *</Text>
+          <View style={styles.sectionTitleRow}>
+            <Text style={styles.sectionTitle}>Sport *</Text>
+            <TouchableOpacity
+              style={styles.reorderButton}
+              onPress={() => setShowReorderModal(true)}
+            >
+              <Ionicons name="swap-vertical" size={16} color={colors.primary} />
+              <Text style={styles.reorderButtonText}>Reorder</Text>
+            </TouchableOpacity>
+          </View>
           <ScrollView horizontal showsHorizontalScrollIndicator={false}>
             <View style={styles.sportsList}>
-              {SPORTS.map((sport) => (
+              {orderedSports.map((sport) => (
                 <TouchableOpacity
                   key={sport.id}
                   style={[
@@ -1424,6 +1477,66 @@ export default function ManualEventScreen() {
           />
         </View>
       </ScrollView>
+
+      {/* Reorder Sports Modal */}
+      <Modal
+        visible={showReorderModal}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setShowReorderModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Reorder Sports</Text>
+              <TouchableOpacity onPress={() => setShowReorderModal(false)}>
+                <Ionicons name="close" size={24} color={colors.text} />
+              </TouchableOpacity>
+            </View>
+            <Text style={styles.modalSubtitle}>
+              Move your most-used sports to the top
+            </Text>
+            <ScrollView style={styles.modalList}>
+              {orderedSports.map((sport, index) => (
+                <View key={sport.id} style={styles.reorderItem}>
+                  <View style={[styles.reorderColorDot, { backgroundColor: sport.color }]} />
+                  <Text style={styles.reorderItemText}>{sport.name}</Text>
+                  <View style={styles.reorderArrows}>
+                    <TouchableOpacity
+                      onPress={() => moveSport(index, 'up')}
+                      disabled={index === 0}
+                      style={[styles.arrowButton, index === 0 && styles.arrowButtonDisabled]}
+                    >
+                      <Ionicons
+                        name="chevron-up"
+                        size={20}
+                        color={index === 0 ? colors.border : colors.text}
+                      />
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={() => moveSport(index, 'down')}
+                      disabled={index === orderedSports.length - 1}
+                      style={[styles.arrowButton, index === orderedSports.length - 1 && styles.arrowButtonDisabled]}
+                    >
+                      <Ionicons
+                        name="chevron-down"
+                        size={20}
+                        color={index === orderedSports.length - 1 ? colors.border : colors.text}
+                      />
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              ))}
+            </ScrollView>
+            <TouchableOpacity
+              style={styles.modalDoneButton}
+              onPress={() => setShowReorderModal(false)}
+            >
+              <Text style={styles.modalDoneText}>Done</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </KeyboardAvoidingView>
   );
 }
@@ -1993,5 +2106,103 @@ const styles = StyleSheet.create({
   checkboxActive: {
     backgroundColor: colors.primary,
     borderColor: colors.primary,
+  },
+  sectionTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: spacing.sm,
+  },
+  reorderButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  reorderButtonText: {
+    fontSize: fontSize.sm,
+    color: colors.primary,
+    fontWeight: fontWeight.medium,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'flex-end',
+  },
+  modalContent: {
+    backgroundColor: colors.surface,
+    borderTopLeftRadius: borderRadius.xl,
+    borderTopRightRadius: borderRadius.xl,
+    maxHeight: '80%',
+    paddingBottom: spacing.xl,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: spacing.lg,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  modalTitle: {
+    fontSize: fontSize.lg,
+    fontWeight: fontWeight.bold,
+    color: colors.text,
+  },
+  modalSubtitle: {
+    fontSize: fontSize.sm,
+    color: colors.textSecondary,
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.sm,
+    paddingBottom: spacing.md,
+  },
+  modalList: {
+    paddingHorizontal: spacing.lg,
+  },
+  reorderItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+    gap: spacing.md,
+  },
+  reorderColorDot: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+  },
+  reorderItemText: {
+    flex: 1,
+    fontSize: fontSize.md,
+    fontWeight: fontWeight.medium,
+    color: colors.text,
+  },
+  reorderArrows: {
+    flexDirection: 'row',
+    gap: spacing.xs,
+  },
+  arrowButton: {
+    width: 32,
+    height: 32,
+    borderRadius: borderRadius.md,
+    backgroundColor: colors.surfaceLight,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  arrowButtonDisabled: {
+    opacity: 0.3,
+  },
+  modalDoneButton: {
+    marginHorizontal: spacing.lg,
+    marginTop: spacing.lg,
+    backgroundColor: colors.primary,
+    paddingVertical: spacing.md,
+    borderRadius: borderRadius.lg,
+    alignItems: 'center',
+  },
+  modalDoneText: {
+    fontSize: fontSize.md,
+    fontWeight: fontWeight.semibold,
+    color: colors.white,
   },
 });

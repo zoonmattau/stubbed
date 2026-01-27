@@ -13,7 +13,7 @@ export default function ExploreLayout() {
         headerBackTitle: 'Back',
       }}
     >
-      <Stack.Screen name="search" options={{ title: 'Search' }} />
+      <Stack.Screen name="search" options={{ title: 'Explore Search' }} />
       <Stack.Screen name="discover" options={{ title: 'Discover Users' }} />
     </Stack>
   );

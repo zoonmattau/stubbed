@@ -26,12 +26,17 @@ interface PreferencesState {
   // Enabled sports (all enabled by default)
   enabledSports: Record<SportCategory, boolean>;
 
+  // Sport category ordering
+  categoryOrder: SportCategory[];
+
   // Actions
   toggleSport: (sport: SportCategory) => void;
   setSportEnabled: (sport: SportCategory, enabled: boolean) => void;
   enableAllSports: () => void;
   disableAllSports: () => void;
   getEnabledSports: () => SportCategory[];
+  setCategoryOrder: (order: SportCategory[]) => void;
+  getOrderedCategories: () => SportCategory[];
 }
 
 // Default: all sports enabled
@@ -47,6 +52,7 @@ export const usePreferencesStore = create<PreferencesState>()(
   persist(
     (set, get) => ({
       enabledSports: { ...defaultEnabledSports },
+      categoryOrder: [...ALL_SPORT_CATEGORIES],
 
       toggleSport: (sport) =>
         set((state) => ({
@@ -81,6 +87,18 @@ export const usePreferencesStore = create<PreferencesState>()(
       getEnabledSports: () => {
         const { enabledSports } = get();
         return ALL_SPORT_CATEGORIES.filter((sport) => enabledSports[sport]);
+      },
+
+      setCategoryOrder: (order) => set({ categoryOrder: order }),
+
+      getOrderedCategories: () => {
+        const { categoryOrder } = get();
+        // Ensure any new categories not in the saved order are appended
+        const ordered = [...categoryOrder];
+        ALL_SPORT_CATEGORIES.forEach((cat) => {
+          if (!ordered.includes(cat)) ordered.push(cat);
+        });
+        return ordered;
       },
     }),
     {

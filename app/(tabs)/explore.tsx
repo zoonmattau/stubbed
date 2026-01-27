@@ -7,14 +7,30 @@ import {
   ActivityIndicator,
   TouchableOpacity,
   RefreshControl,
+  Image,
 } from 'react-native';
 import { useFocusEffect, router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuthStore } from '@/stores/authStore';
 import { useExploreStore } from '@/stores/exploreStore';
 import { ReviewCard, FeedToggle, SportFilter } from '@/components/explore';
+import { Avatar, Card } from '@/components/ui';
+import { supabase } from '@/lib/supabase';
 import { colors, spacing, fontSize, fontWeight, borderRadius } from '@/constants/theme';
 import type { ReviewWithDetails } from '@/types';
+
+type SortField = 'events' | 'xp' | 'followers' | 'reviews';
+
+interface LeaderboardEntry {
+  user_id: string;
+  username: string;
+  display_name: string | null;
+  avatar_url: string | null;
+  total_events: number;
+  total_points: number;
+  followers_count: number;
+  reviews_count: number;
+}
 
 export default function ExploreScreen() {
   const { user } = useAuthStore();
@@ -37,6 +53,11 @@ export default function ExploreScreen() {
 
   const [refreshing, setRefreshing] = useState(false);
 
+  // Leaderboard state
+  const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
+  const [leaderboardLoading, setLeaderboardLoading] = useState(false);
+  const [sortField, setSortField] = useState<SortField>('events');
+
   // Get current feed based on type
   const reviews = feedType === 'trending' ? trendingReviews : followingReviews;
   const isLoading = feedType === 'trending' ? isLoadingTrending : isLoadingFollowing;
@@ -50,7 +71,7 @@ export default function ExploreScreen() {
         if (trendingReviews.length === 0) {
           fetchTrending(true);
         }
-      } else if (user?.id) {
+      } else if (feedType === 'following' && user?.id) {
         if (followingReviews.length === 0) {
           fetchFollowingFeed(user.id, true);
         }
@@ -58,14 +79,101 @@ export default function ExploreScreen() {
     }, [feedType, user?.id])
   );
 
+  // Fetch leaderboard when tab or sort changes
+  useEffect(() => {
+    if (feedType === 'leaderboard') {
+      fetchLeaderboard();
+    }
+  }, [feedType, sortField]);
+
+  const fetchLeaderboard = async () => {
+    setLeaderboardLoading(true);
+    try {
+      // Get profiles with stats
+      const { data: profiles, error: profilesError } = await supabase
+        .from('profiles')
+        .select('id, username, display_name, avatar_url, total_points');
+
+      if (profilesError) throw profilesError;
+
+      // Get event counts per user
+      const { data: eventCounts, error: eventsError } = await supabase
+        .from('attended_events')
+        .select('user_id');
+
+      if (eventsError) throw eventsError;
+
+      // Get follower counts per user
+      const { data: followerCounts, error: followersError } = await supabase
+        .from('follows')
+        .select('following_id');
+
+      if (followersError) throw followersError;
+
+      // Get review counts per user
+      const { data: reviewCounts, error: reviewsError } = await supabase
+        .from('event_reviews')
+        .select('user_id')
+        .eq('is_public', true);
+
+      if (reviewsError) throw reviewsError;
+
+      // Aggregate counts
+      const eventsByUser: Record<string, number> = {};
+      (eventCounts || []).forEach((e: any) => {
+        eventsByUser[e.user_id] = (eventsByUser[e.user_id] || 0) + 1;
+      });
+
+      const followersByUser: Record<string, number> = {};
+      (followerCounts || []).forEach((f: any) => {
+        followersByUser[f.following_id] = (followersByUser[f.following_id] || 0) + 1;
+      });
+
+      const reviewsByUser: Record<string, number> = {};
+      (reviewCounts || []).forEach((r: any) => {
+        reviewsByUser[r.user_id] = (reviewsByUser[r.user_id] || 0) + 1;
+      });
+
+      // Build leaderboard entries
+      const entries: LeaderboardEntry[] = (profiles || []).map((p: any) => ({
+        user_id: p.id,
+        username: p.username,
+        display_name: p.display_name,
+        avatar_url: p.avatar_url,
+        total_events: eventsByUser[p.id] || 0,
+        total_points: p.total_points || 0,
+        followers_count: followersByUser[p.id] || 0,
+        reviews_count: reviewsByUser[p.id] || 0,
+      }));
+
+      // Sort
+      entries.sort((a, b) => {
+        switch (sortField) {
+          case 'events': return b.total_events - a.total_events;
+          case 'xp': return b.total_points - a.total_points;
+          case 'followers': return b.followers_count - a.followers_count;
+          case 'reviews': return b.reviews_count - a.reviews_count;
+          default: return 0;
+        }
+      });
+
+      // Top 50
+      setLeaderboard(entries.slice(0, 50));
+    } catch (err) {
+      console.error('[Explore] Leaderboard fetch error:', err);
+    } finally {
+      setLeaderboardLoading(false);
+    }
+  };
+
   // Handle feed type change
-  const handleFeedTypeChange = (type: 'trending' | 'following') => {
-    setFeedType(type);
+  const handleFeedTypeChange = (type: 'trending' | 'following' | 'leaderboard') => {
+    setFeedType(type as any);
     if (type === 'trending') {
       if (trendingReviews.length === 0) {
         fetchTrending(true);
       }
-    } else if (user?.id && followingReviews.length === 0) {
+    } else if (type === 'following' && user?.id && followingReviews.length === 0) {
       fetchFollowingFeed(user.id, true);
     }
   };
@@ -75,19 +183,42 @@ export default function ExploreScreen() {
     setRefreshing(true);
     if (feedType === 'trending') {
       await fetchTrending(true);
-    } else if (user?.id) {
+    } else if (feedType === 'following' && user?.id) {
       await fetchFollowingFeed(user.id, true);
+    } else if (feedType === 'leaderboard') {
+      await fetchLeaderboard();
     }
     setRefreshing(false);
   };
 
   // Handle load more
   const handleLoadMore = () => {
+    if (feedType === 'leaderboard') return;
     if (isLoading || !hasMore) return;
     if (feedType === 'trending') {
       fetchTrending();
     } else if (user?.id) {
       fetchFollowingFeed(user.id);
+    }
+  };
+
+  // Get sort value for display
+  const getSortValue = (entry: LeaderboardEntry): number => {
+    switch (sortField) {
+      case 'events': return entry.total_events;
+      case 'xp': return entry.total_points;
+      case 'followers': return entry.followers_count;
+      case 'reviews': return entry.reviews_count;
+      default: return 0;
+    }
+  };
+
+  const getSortLabel = (field: SortField): string => {
+    switch (field) {
+      case 'events': return 'Events';
+      case 'xp': return 'XP';
+      case 'followers': return 'Followers';
+      case 'reviews': return 'Reviews';
     }
   };
 
@@ -98,17 +229,76 @@ export default function ExploreScreen() {
     </View>
   );
 
+  // Render leaderboard item
+  const renderLeaderboardItem = ({ item, index }: { item: LeaderboardEntry; index: number }) => {
+    const rank = index + 1;
+    const isTop3 = rank <= 3;
+    const isCurrentUser = item.user_id === user?.id;
+    const medalColors: Record<number, string> = { 1: '#FFD700', 2: '#C0C0C0', 3: '#CD7F32' };
+
+    return (
+      <TouchableOpacity
+        style={[styles.leaderboardItem, isCurrentUser && styles.leaderboardItemCurrent]}
+        onPress={() => router.push(`/profile/${item.user_id}`)}
+        activeOpacity={0.7}
+      >
+        <View style={styles.rankContainer}>
+          {isTop3 ? (
+            <View style={[styles.medalBadge, { backgroundColor: medalColors[rank] }]}>
+              <Text style={styles.medalText}>{rank}</Text>
+            </View>
+          ) : (
+            <Text style={styles.rankText}>{rank}</Text>
+          )}
+        </View>
+
+        <Avatar
+          source={item.avatar_url}
+          name={item.display_name || item.username}
+          size="sm"
+        />
+
+        <View style={styles.leaderboardInfo}>
+          <Text style={styles.leaderboardName} numberOfLines={1}>
+            {item.display_name || item.username || 'Anonymous'}
+          </Text>
+          <Text style={styles.leaderboardUsername}>@{item.username}</Text>
+        </View>
+
+        <View style={styles.leaderboardValue}>
+          <Text style={[styles.leaderboardValueText, isTop3 && { color: colors.primary }]}>
+            {getSortValue(item).toLocaleString()}
+          </Text>
+          <Text style={styles.leaderboardValueLabel}>{getSortLabel(sortField)}</Text>
+        </View>
+      </TouchableOpacity>
+    );
+  };
+
   // Render empty state
   const renderEmptyState = () => {
+    if (feedType === 'leaderboard') {
+      if (leaderboardLoading) return null;
+      return (
+        <View style={styles.emptyContainer}>
+          <Ionicons name="podium-outline" size={64} color={colors.textMuted} />
+          <Text style={styles.emptyTitle}>No Data Yet</Text>
+          <Text style={styles.emptySubtitle}>
+            The leaderboard will populate as users join
+          </Text>
+        </View>
+      );
+    }
+
     if (isLoading) return null;
 
     if (feedType === 'following') {
       return (
         <View style={styles.emptyContainer}>
           <Ionicons name="people-outline" size={64} color={colors.textMuted} />
-          <Text style={styles.emptyTitle}>No Reviews Yet</Text>
+          <Text style={styles.emptyTitle}>Your Feed is Empty</Text>
           <Text style={styles.emptySubtitle}>
-            Follow other users to see their reviews here
+            You're not following anyone yet. Discover other fans and follow them to see their reviews here.
           </Text>
           <TouchableOpacity
             style={styles.discoverButton}
@@ -123,23 +313,39 @@ export default function ExploreScreen() {
     return (
       <View style={styles.emptyContainer}>
         <Ionicons name="document-text-outline" size={64} color={colors.textMuted} />
-        <Text style={styles.emptyTitle}>No Reviews Yet</Text>
+        <Text style={styles.emptyTitle}>No Trending Reviews</Text>
         <Text style={styles.emptySubtitle}>
-          Be the first to share a review!
+          There are no public reviews yet. Be the first — add an event and share your experience!
         </Text>
+        <TouchableOpacity
+          style={styles.discoverButton}
+          onPress={() => router.push('/(tabs)/add')}
+        >
+          <Text style={styles.discoverButtonText}>Add an Event</Text>
+        </TouchableOpacity>
       </View>
     );
   };
 
   // Render footer (loading indicator)
   const renderFooter = () => {
-    if (!isLoading || reviews.length === 0) return null;
+    const loading = feedType === 'leaderboard' ? leaderboardLoading : isLoading;
+    const data = feedType === 'leaderboard' ? leaderboard : reviews;
+    if (!loading || data.length === 0) return null;
     return (
       <View style={styles.footer}>
         <ActivityIndicator size="small" color={colors.primary} />
       </View>
     );
   };
+
+  // Sort options for leaderboard
+  const SORT_OPTIONS: { key: SortField; label: string; icon: string }[] = [
+    { key: 'events', label: 'Events', icon: 'ticket' },
+    { key: 'xp', label: 'XP', icon: 'flash' },
+    { key: 'followers', label: 'Followers', icon: 'people' },
+    { key: 'reviews', label: 'Reviews', icon: 'star' },
+  ];
 
   // Header component with search and feed toggle
   const renderHeader = () => (
@@ -156,7 +362,7 @@ export default function ExploreScreen() {
 
       {/* Feed Toggle */}
       <View style={styles.feedToggleContainer}>
-        <FeedToggle activeTab={feedType} onTabChange={handleFeedTypeChange} />
+        <FeedToggle activeTab={feedType as any} onTabChange={handleFeedTypeChange} />
       </View>
 
       {/* Sport Filter - only for trending */}
@@ -167,15 +373,52 @@ export default function ExploreScreen() {
           onSelect={setSportFilter}
         />
       )}
+
+      {/* Leaderboard sort options */}
+      {feedType === 'leaderboard' && (
+        <View style={styles.sortContainer}>
+          <View style={styles.sortHeader}>
+            <Ionicons name="podium" size={18} color={colors.primary} />
+            <Text style={styles.sortTitle}>Worldwide Leaderboard</Text>
+          </View>
+          <View style={styles.sortOptions}>
+            {SORT_OPTIONS.map((opt) => (
+              <TouchableOpacity
+                key={opt.key}
+                style={[styles.sortOption, sortField === opt.key && styles.sortOptionActive]}
+                onPress={() => setSortField(opt.key)}
+              >
+                <Ionicons
+                  name={opt.icon as any}
+                  size={14}
+                  color={sortField === opt.key ? colors.white : colors.textSecondary}
+                />
+                <Text style={[styles.sortOptionText, sortField === opt.key && styles.sortOptionTextActive]}>
+                  {opt.label}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </View>
+      )}
     </View>
   );
+
+  // Determine data and renderers based on feed type
+  const listData = feedType === 'leaderboard' ? leaderboard : reviews;
+  const keyExtractor = feedType === 'leaderboard'
+    ? (item: any) => item.user_id
+    : (item: any) => item.review_id;
+  const renderItem = feedType === 'leaderboard'
+    ? renderLeaderboardItem
+    : renderReviewItem;
 
   return (
     <View style={styles.container}>
       <FlatList
-        data={reviews}
-        keyExtractor={(item) => item.review_id}
-        renderItem={renderReviewItem}
+        data={listData as any}
+        keyExtractor={keyExtractor}
+        renderItem={renderItem as any}
         ListHeaderComponent={renderHeader}
         ListEmptyComponent={renderEmptyState}
         ListFooterComponent={renderFooter}
@@ -266,5 +509,107 @@ const styles = StyleSheet.create({
   footer: {
     paddingVertical: spacing.xl,
     alignItems: 'center',
+  },
+
+  // Leaderboard styles
+  sortContainer: {
+    paddingHorizontal: spacing.lg,
+    marginTop: spacing.sm,
+  },
+  sortHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginBottom: spacing.md,
+  },
+  sortTitle: {
+    fontSize: fontSize.lg,
+    fontWeight: fontWeight.bold,
+    color: colors.text,
+  },
+  sortOptions: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    marginBottom: spacing.md,
+  },
+  sortOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    borderRadius: borderRadius.full,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  sortOptionActive: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  sortOptionText: {
+    fontSize: fontSize.sm,
+    fontWeight: fontWeight.medium,
+    color: colors.textSecondary,
+  },
+  sortOptionTextActive: {
+    color: colors.white,
+  },
+  leaderboardItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.lg,
+    gap: spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  leaderboardItemCurrent: {
+    backgroundColor: `${colors.primary}10`,
+  },
+  rankContainer: {
+    width: 32,
+    alignItems: 'center',
+  },
+  rankText: {
+    fontSize: fontSize.md,
+    fontWeight: fontWeight.medium,
+    color: colors.textSecondary,
+  },
+  medalBadge: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  medalText: {
+    fontSize: fontSize.sm,
+    fontWeight: fontWeight.bold,
+    color: colors.white,
+  },
+  leaderboardInfo: {
+    flex: 1,
+  },
+  leaderboardName: {
+    fontSize: fontSize.md,
+    fontWeight: fontWeight.medium,
+    color: colors.text,
+  },
+  leaderboardUsername: {
+    fontSize: fontSize.sm,
+    color: colors.textMuted,
+  },
+  leaderboardValue: {
+    alignItems: 'flex-end',
+  },
+  leaderboardValueText: {
+    fontSize: fontSize.lg,
+    fontWeight: fontWeight.bold,
+    color: colors.text,
+  },
+  leaderboardValueLabel: {
+    fontSize: fontSize.xs,
+    color: colors.textMuted,
   },
 });

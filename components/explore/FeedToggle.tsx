@@ -2,35 +2,34 @@ import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { colors, spacing, fontSize, fontWeight, borderRadius } from '@/constants/theme';
 
-type FeedType = 'trending' | 'following';
+type FeedType = 'trending' | 'following' | 'leaderboard';
 
 interface FeedToggleProps {
   activeTab: FeedType;
   onTabChange: (tab: FeedType) => void;
 }
 
+const TABS: { key: FeedType; label: string }[] = [
+  { key: 'trending', label: 'Trending' },
+  { key: 'following', label: 'Following' },
+  { key: 'leaderboard', label: 'Leaderboard' },
+];
+
 export function FeedToggle({ activeTab, onTabChange }: FeedToggleProps) {
   return (
     <View style={styles.container}>
-      <TouchableOpacity
-        style={[styles.tab, activeTab === 'trending' && styles.tabActive]}
-        onPress={() => onTabChange('trending')}
-        activeOpacity={0.7}
-      >
-        <Text style={[styles.tabText, activeTab === 'trending' && styles.tabTextActive]}>
-          Trending
-        </Text>
-      </TouchableOpacity>
-
-      <TouchableOpacity
-        style={[styles.tab, activeTab === 'following' && styles.tabActive]}
-        onPress={() => onTabChange('following')}
-        activeOpacity={0.7}
-      >
-        <Text style={[styles.tabText, activeTab === 'following' && styles.tabTextActive]}>
-          Following
-        </Text>
-      </TouchableOpacity>
+      {TABS.map((tab) => (
+        <TouchableOpacity
+          key={tab.key}
+          style={[styles.tab, activeTab === tab.key && styles.tabActive]}
+          onPress={() => onTabChange(tab.key)}
+          activeOpacity={0.7}
+        >
+          <Text style={[styles.tabText, activeTab === tab.key && styles.tabTextActive]}>
+            {tab.label}
+          </Text>
+        </TouchableOpacity>
+      ))}
     </View>
   );
 }

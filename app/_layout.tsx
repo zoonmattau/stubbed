@@ -65,10 +65,10 @@ export default function RootLayout() {
         <Stack.Screen name="achievements" options={{ headerShown: false }} />
         <Stack.Screen name="settings" options={{ headerShown: false }} />
         <Stack.Screen name="stats" options={{ headerShown: false }} />
-        <Stack.Screen name="profile" options={{ headerShown: true }} />
-        <Stack.Screen name="explore" options={{ headerShown: true }} />
-        <Stack.Screen name="review" options={{ headerShown: true }} />
-        <Stack.Screen name="followers" options={{ headerShown: true }} />
+        <Stack.Screen name="profile" options={{ headerShown: false }} />
+        <Stack.Screen name="explore" options={{ headerShown: false }} />
+        <Stack.Screen name="review" options={{ headerShown: false }} />
+        <Stack.Screen name="followers" options={{ headerShown: false }} />
         <Stack.Screen name="sports" options={{ headerShown: false }} />
         <Stack.Screen name="tennis" options={{ headerShown: false }} />
       </Stack>

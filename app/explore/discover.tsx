@@ -1,24 +1,30 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   FlatList,
+  TextInput,
   RefreshControl,
   ActivityIndicator,
+  TouchableOpacity,
 } from 'react-native';
 import { Stack } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useFollows } from '@/hooks/useFollows';
 import { UserCard } from '@/components/explore';
-import { colors, spacing, fontSize, fontWeight } from '@/constants/theme';
+import { colors, spacing, fontSize, fontWeight, borderRadius } from '@/constants/theme';
 import type { UserSuggestion } from '@/types';
 
 export default function DiscoverScreen() {
-  const { getSuggestedUsers } = useFollows();
+  const { getSuggestedUsers, searchUsers } = useFollows();
   const [suggestions, setSuggestions] = useState<UserSuggestion[]>([]);
+  const [searchResults, setSearchResults] = useState<UserSuggestion[]>([]);
+  const [searchQuery, setSearchQuery] = useState('');
   const [isLoading, setIsLoading] = useState(true);
+  const [isSearching, setIsSearching] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const searchTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Fetch suggestions
   const fetchSuggestions = useCallback(async () => {
@@ -36,6 +42,31 @@ export default function DiscoverScreen() {
     load();
   }, []);
 
+  // Debounced search
+  const handleSearch = (query: string) => {
+    setSearchQuery(query);
+    if (searchTimeout.current) clearTimeout(searchTimeout.current);
+
+    if (!query.trim()) {
+      setSearchResults([]);
+      setIsSearching(false);
+      return;
+    }
+
+    setIsSearching(true);
+    searchTimeout.current = setTimeout(async () => {
+      const results = await searchUsers(query.trim());
+      setSearchResults(results);
+      setIsSearching(false);
+    }, 300);
+  };
+
+  const clearSearch = () => {
+    setSearchQuery('');
+    setSearchResults([]);
+    setIsSearching(false);
+  };
+
   // Handle refresh
   const handleRefresh = async () => {
     setRefreshing(true);
@@ -47,6 +78,7 @@ export default function DiscoverScreen() {
   const handleFollowChange = (userId: string, isFollowing: boolean) => {
     if (isFollowing) {
       setSuggestions(prev => prev.filter(u => u.user_id !== userId));
+      setSearchResults(prev => prev.filter(u => u.user_id !== userId));
     }
   };
 
@@ -58,13 +90,24 @@ export default function DiscoverScreen() {
     />
   );
 
+  const isSearchActive = searchQuery.trim().length > 0;
+  const displayData = isSearchActive ? searchResults : suggestions;
+
   // Render empty state
   const renderEmptyState = () => (
     <View style={styles.emptyContainer}>
-      <Ionicons name="people-outline" size={64} color={colors.textMuted} />
-      <Text style={styles.emptyTitle}>No Suggestions</Text>
+      <Ionicons
+        name={isSearchActive ? 'search-outline' : 'people-outline'}
+        size={64}
+        color={colors.textMuted}
+      />
+      <Text style={styles.emptyTitle}>
+        {isSearchActive ? 'No Users Found' : 'No Suggestions'}
+      </Text>
       <Text style={styles.emptySubtitle}>
-        We couldn't find any users to suggest right now
+        {isSearchActive
+          ? `No results for "${searchQuery}"`
+          : "We couldn't find any users to suggest right now"}
       </Text>
     </View>
   );
@@ -88,16 +131,48 @@ export default function DiscoverScreen() {
 
       <FlatList
         style={styles.container}
-        data={suggestions}
+        data={displayData}
         keyExtractor={(item) => item.user_id}
         renderItem={renderItem}
-        ListEmptyComponent={renderEmptyState}
+        ListEmptyComponent={isSearching ? (
+          <View style={styles.searchingContainer}>
+            <ActivityIndicator size="small" color={colors.primary} />
+          </View>
+        ) : renderEmptyState}
         ListHeaderComponent={
           <View style={styles.header}>
-            <Text style={styles.headerTitle}>Suggested for you</Text>
-            <Text style={styles.headerSubtitle}>
-              Users with public reviews you might be interested in
-            </Text>
+            {/* Search Bar */}
+            <View style={styles.searchBar}>
+              <Ionicons name="search" size={20} color={colors.textMuted} />
+              <TextInput
+                style={styles.searchInput}
+                placeholder="Search users by name or username..."
+                placeholderTextColor={colors.textMuted}
+                value={searchQuery}
+                onChangeText={handleSearch}
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
+              {searchQuery.length > 0 && (
+                <TouchableOpacity onPress={clearSearch}>
+                  <Ionicons name="close-circle" size={20} color={colors.textMuted} />
+                </TouchableOpacity>
+              )}
+            </View>
+
+            {!isSearchActive && (
+              <>
+                <Text style={styles.headerTitle}>Suggested for you</Text>
+                <Text style={styles.headerSubtitle}>
+                  Users with public reviews you might be interested in
+                </Text>
+              </>
+            )}
+            {isSearchActive && !isSearching && (
+              <Text style={styles.searchResultsText}>
+                {searchResults.length} result{searchResults.length !== 1 ? 's' : ''}
+              </Text>
+            )}
           </View>
         }
         contentContainerStyle={styles.listContent}
@@ -127,6 +202,31 @@ const styles = StyleSheet.create({
   header: {
     padding: spacing.lg,
     paddingBottom: spacing.md,
+  },
+  searchBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.surface,
+    borderRadius: borderRadius.lg,
+    paddingHorizontal: spacing.md,
+    marginBottom: spacing.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: fontSize.md,
+    color: colors.text,
+    paddingVertical: spacing.md,
+    marginLeft: spacing.sm,
+  },
+  searchResultsText: {
+    fontSize: fontSize.sm,
+    color: colors.textSecondary,
+  },
+  searchingContainer: {
+    paddingVertical: spacing['3xl'],
+    alignItems: 'center',
   },
   headerTitle: {
     fontSize: fontSize.xl,

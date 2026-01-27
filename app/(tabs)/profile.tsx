@@ -283,6 +283,17 @@ export default function ProfileScreen() {
             </Text>
             <Text style={styles.username}>@{profile?.username || 'unknown'}</Text>
             {profile?.bio && <Text style={styles.bio}>{profile.bio}</Text>}
+            <View style={styles.followCounts}>
+              <TouchableOpacity style={styles.followCount} onPress={() => router.push(`/followers/${user?.id}?tab=followers`)}>
+                <Text style={styles.followCountValue}>{followCounts.followers_count}</Text>
+                <Text style={styles.followCountLabel}> Followers</Text>
+              </TouchableOpacity>
+              <Text style={styles.followCountDot}>&middot;</Text>
+              <TouchableOpacity style={styles.followCount} onPress={() => router.push(`/followers/${user?.id}?tab=following`)}>
+                <Text style={styles.followCountValue}>{followCounts.following_count}</Text>
+                <Text style={styles.followCountLabel}> Following</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
 
@@ -819,6 +830,29 @@ const styles = StyleSheet.create({
   pointsText: {
     fontSize: fontSize.sm,
     color: colors.textSecondary,
+  },
+  followCounts: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginTop: spacing.sm,
+  },
+  followCount: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  followCountValue: {
+    fontSize: fontSize.sm,
+    fontWeight: fontWeight.bold,
+    color: colors.text,
+  },
+  followCountLabel: {
+    fontSize: fontSize.sm,
+    color: colors.textSecondary,
+  },
+  followCountDot: {
+    fontSize: fontSize.sm,
+    color: colors.textMuted,
   },
   editButton: {
     flexDirection: 'row',

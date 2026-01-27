@@ -30,6 +30,7 @@ export default function PublicProfileScreen() {
 
   const [profile, setProfile] = useState<Profile | null>(null);
   const [userStats, setUserStats] = useState<UserStats | null>(null);
+  const [privacySettings, setPrivacySettings] = useState<{ show_events: boolean; show_stats: boolean } | null>(null);
   const [followCounts, setFollowCounts] = useState<FollowCounts>({ followers_count: 0, following_count: 0 });
   const [isFollowing, setIsFollowing] = useState(false);
   const [reviews, setReviews] = useState<ReviewWithDetails[]>([]);
@@ -76,6 +77,28 @@ export default function PublicProfileScreen() {
     }
   }, [userId]);
 
+  // Fetch privacy settings
+  const fetchPrivacy = useCallback(async () => {
+    if (!userId) return;
+
+    try {
+      const { data, error } = await supabase
+        .from('user_settings')
+        .select('show_events, show_stats')
+        .eq('user_id', userId)
+        .maybeSingle();
+
+      if (!error && data) {
+        setPrivacySettings(data);
+      } else {
+        // Default: public
+        setPrivacySettings({ show_events: true, show_stats: true });
+      }
+    } catch (err) {
+      console.error('[PublicProfile] Error fetching privacy:', err);
+    }
+  }, [userId]);
+
   // Fetch follow counts and status
   const fetchFollowData = useCallback(async () => {
     if (!userId) return;
@@ -103,6 +126,7 @@ export default function PublicProfileScreen() {
       await Promise.all([
         fetchProfile(),
         fetchStats(),
+        fetchPrivacy(),
         fetchFollowData(),
         fetchReviews(),
       ]);
@@ -117,6 +141,7 @@ export default function PublicProfileScreen() {
     await Promise.all([
       fetchProfile(),
       fetchStats(),
+      fetchPrivacy(),
       fetchFollowData(),
       fetchReviews(),
     ]);
@@ -153,7 +178,7 @@ export default function PublicProfileScreen() {
     <>
       <Stack.Screen
         options={{
-          title: profile.display_name || profile.username,
+          title: profile.display_name || (profile.username ? profile.username.charAt(0).toUpperCase() + profile.username.slice(1) : 'Profile'),
           headerBackTitle: 'Back',
         }}
       />
@@ -217,12 +242,20 @@ export default function PublicProfileScreen() {
           </TouchableOpacity>
 
           <View style={styles.statItem}>
-            <Text style={styles.statValue}>{userStats?.total_events || 0}</Text>
+            {isOwnProfile ? (
+              <Text style={styles.statValue}>{userStats?.total_events || 0}</Text>
+            ) : (
+              <Ionicons name="lock-closed" size={20} color={colors.textMuted} />
+            )}
             <Text style={styles.statLabel}>Events</Text>
           </View>
 
           <View style={styles.statItem}>
-            <Text style={styles.statValue}>{userStats?.total_sports || 0}</Text>
+            {isOwnProfile ? (
+              <Text style={styles.statValue}>{userStats?.total_sports || 0}</Text>
+            ) : (
+              <Ionicons name="lock-closed" size={20} color={colors.textMuted} />
+            )}
             <Text style={styles.statLabel}>Sports</Text>
           </View>
         </View>
@@ -277,10 +310,10 @@ export default function PublicProfileScreen() {
 
           {activeTab === 'events' && (
             <View style={styles.emptyContainer}>
-              <Ionicons name="calendar-outline" size={48} color={colors.textMuted} />
+              <Ionicons name="lock-closed-outline" size={48} color={colors.textMuted} />
               <Text style={styles.emptyText}>Events are private</Text>
               <Text style={styles.emptySubtext}>
-                Only public reviews are shown
+                This user's event history is not public
               </Text>
             </View>
           )}

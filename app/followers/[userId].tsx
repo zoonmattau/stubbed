@@ -61,8 +61,13 @@ export default function FollowersScreen() {
   useEffect(() => {
     const load = async () => {
       setIsLoading(true);
-      await Promise.all([fetchProfile(), fetchFollowLists()]);
-      setIsLoading(false);
+      try {
+        await Promise.all([fetchProfile(), fetchFollowLists()]);
+      } catch (err) {
+        console.error('[Followers] Error loading data:', err);
+      } finally {
+        setIsLoading(false);
+      }
     };
     load();
   }, [userId]);
@@ -135,7 +140,7 @@ export default function FollowersScreen() {
     <>
       <Stack.Screen
         options={{
-          title: profile?.display_name || profile?.username || 'User',
+          title: profile?.display_name || profile?.username || 'Followers',
           headerBackTitle: 'Back',
         }}
       />
