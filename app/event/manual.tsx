@@ -382,12 +382,12 @@ export default function ManualEventScreen() {
     // Convert to array and filter by query
     const allVenues = Array.from(uniqueVenues).sort();
     if (!venueQuery.trim()) {
-      return allVenues.slice(0, 10); // Show top 10 when no query
+      return allVenues.slice(0, 20);
     }
     const query = venueQuery.toLowerCase();
     return allVenues
       .filter((v) => v.toLowerCase().includes(query))
-      .slice(0, 10);
+      .slice(0, 20);
   }, [attendedEvents, venues, venueQuery]);
 
   // Initialize form date from dropdown values on mount
@@ -651,7 +651,7 @@ export default function ManualEventScreen() {
   return (
     <KeyboardAvoidingView
       style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
       {/* Header with Back Button */}
       <View style={styles.header}>
@@ -662,8 +662,8 @@ export default function ManualEventScreen() {
         <View style={styles.headerSpacer} />
       </View>
 
-      {/* Dropdown backdrop overlay - closes dropdowns when tapping outside */}
-      {(showDayPicker || showMonthPicker || showYearPicker || showVenueSuggestions) && (
+      {/* Dropdown backdrop overlay - closes dropdowns when tapping outside (native only) */}
+      {Platform.OS !== 'web' && (showDayPicker || showMonthPicker || showYearPicker || showVenueSuggestions) && (
         <Pressable
           style={styles.dropdownBackdrop}
           onPress={closeAllDropdowns}
@@ -829,11 +829,11 @@ export default function ManualEventScreen() {
               />
             </>
           )}
-          <View style={styles.venueAutocompleteContainer}>
-            <Controller
-              control={control}
-              name="venue"
-              render={({ field: { onChange, onBlur, value } }) => (
+          <Controller
+            control={control}
+            name="venue"
+            render={({ field: { onChange, onBlur, value } }) => (
+              <View style={styles.venueAutocompleteContainer}>
                 <Input
                   label={isRacing ? 'Track/Venue *' : 'Venue *'}
                   placeholder={isRacing ? 'e.g. Flemington, Randwick' : 'Enter venue name'}
@@ -845,35 +845,34 @@ export default function ManualEventScreen() {
                   }}
                   onFocus={() => setShowVenueSuggestions(true)}
                   onBlur={() => {
-                    // Delay hiding to allow tap on suggestion
-                    setTimeout(() => setShowVenueSuggestions(false), 200);
+                    setTimeout(() => setShowVenueSuggestions(false), 300);
                     onBlur();
                   }}
                   error={errors.venue?.message}
                 />
-              )}
-            />
-            {showVenueSuggestions && venueSuggestions.length > 0 && (
-              <View style={styles.venueSuggestionsDropdown}>
-                <ScrollView style={styles.venueSuggestionsList} nestedScrollEnabled keyboardShouldPersistTaps="handled">
-                  {venueSuggestions.map((venue, index) => (
-                    <TouchableOpacity
-                      key={`${venue}-${index}`}
-                      style={styles.venueSuggestionItem}
-                      onPress={() => {
-                        setValue('venue', venue);
-                        setVenueQuery(venue);
-                        setShowVenueSuggestions(false);
-                      }}
-                    >
-                      <Ionicons name="location" size={16} color={colors.textSecondary} />
-                      <Text style={styles.venueSuggestionText}>{venue}</Text>
-                    </TouchableOpacity>
-                  ))}
-                </ScrollView>
+                {showVenueSuggestions && venueSuggestions.length > 0 && (
+                  <View style={styles.venueSuggestionsDropdown}>
+                    <ScrollView style={styles.venueSuggestionsList} nestedScrollEnabled keyboardShouldPersistTaps="handled">
+                      {venueSuggestions.map((venue, index) => (
+                        <TouchableOpacity
+                          key={`${venue}-${index}`}
+                          style={styles.venueSuggestionItem}
+                          onPress={() => {
+                            onChange(venue);
+                            setVenueQuery(venue);
+                            setShowVenueSuggestions(false);
+                          }}
+                        >
+                          <Ionicons name="location" size={16} color={colors.textSecondary} />
+                          <Text style={styles.venueSuggestionText}>{venue}</Text>
+                        </TouchableOpacity>
+                      ))}
+                    </ScrollView>
+                  </View>
+                )}
               </View>
             )}
-          </View>
+          />
         </View>
 
         {/* Date & Time */}
@@ -883,7 +882,7 @@ export default function ManualEventScreen() {
             {/* Day Dropdown */}
             <View style={styles.dateDropdownContainer}>
               <TouchableOpacity
-                style={styles.dateDropdown}
+                style={[styles.dateDropdown, showDayPicker && styles.dateDropdownOpen]}
                 onPress={() => {
                   setShowDayPicker(!showDayPicker);
                   setShowMonthPicker(false);
@@ -891,29 +890,14 @@ export default function ManualEventScreen() {
                 }}
               >
                 <Text style={styles.dateDropdownText}>{selectedDay.padStart(2, '0')}</Text>
-                <Ionicons name="chevron-down" size={16} color={colors.textMuted} />
+                <Ionicons name={showDayPicker ? 'chevron-up' : 'chevron-down'} size={16} color={colors.textMuted} />
               </TouchableOpacity>
-              {showDayPicker && (
-                <ScrollView style={styles.dropdownList} nestedScrollEnabled>
-                  {days.map((day) => (
-                    <TouchableOpacity
-                      key={day}
-                      style={[styles.dropdownItem, day === selectedDay && styles.dropdownItemActive]}
-                      onPress={() => handleDayChange(day)}
-                    >
-                      <Text style={[styles.dropdownItemText, day === selectedDay && styles.dropdownItemTextActive]}>
-                        {day.padStart(2, '0')}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </ScrollView>
-              )}
             </View>
 
             {/* Month Dropdown */}
             <View style={[styles.dateDropdownContainer, styles.monthDropdownContainer]}>
               <TouchableOpacity
-                style={styles.dateDropdown}
+                style={[styles.dateDropdown, showMonthPicker && styles.dateDropdownOpen]}
                 onPress={() => {
                   setShowMonthPicker(!showMonthPicker);
                   setShowDayPicker(false);
@@ -921,29 +905,14 @@ export default function ManualEventScreen() {
                 }}
               >
                 <Text style={styles.dateDropdownText}>{getMonthLabel(selectedMonth)}</Text>
-                <Ionicons name="chevron-down" size={16} color={colors.textMuted} />
+                <Ionicons name={showMonthPicker ? 'chevron-up' : 'chevron-down'} size={16} color={colors.textMuted} />
               </TouchableOpacity>
-              {showMonthPicker && (
-                <ScrollView style={styles.dropdownList} nestedScrollEnabled>
-                  {months.map((month) => (
-                    <TouchableOpacity
-                      key={month.value}
-                      style={[styles.dropdownItem, month.value === selectedMonth && styles.dropdownItemActive]}
-                      onPress={() => handleMonthChange(month.value)}
-                    >
-                      <Text style={[styles.dropdownItemText, month.value === selectedMonth && styles.dropdownItemTextActive]}>
-                        {month.label}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </ScrollView>
-              )}
             </View>
 
             {/* Year Dropdown */}
             <View style={styles.dateDropdownContainer}>
               <TouchableOpacity
-                style={styles.dateDropdown}
+                style={[styles.dateDropdown, showYearPicker && styles.dateDropdownOpen]}
                 onPress={() => {
                   setShowYearPicker(!showYearPicker);
                   setShowDayPicker(false);
@@ -951,25 +920,57 @@ export default function ManualEventScreen() {
                 }}
               >
                 <Text style={styles.dateDropdownText}>{selectedYear}</Text>
-                <Ionicons name="chevron-down" size={16} color={colors.textMuted} />
+                <Ionicons name={showYearPicker ? 'chevron-up' : 'chevron-down'} size={16} color={colors.textMuted} />
               </TouchableOpacity>
-              {showYearPicker && (
-                <ScrollView style={styles.dropdownList} nestedScrollEnabled>
-                  {years.map((year) => (
-                    <TouchableOpacity
-                      key={year}
-                      style={[styles.dropdownItem, year === selectedYear && styles.dropdownItemActive]}
-                      onPress={() => handleYearChange(year)}
-                    >
-                      <Text style={[styles.dropdownItemText, year === selectedYear && styles.dropdownItemTextActive]}>
-                        {year}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </ScrollView>
-              )}
             </View>
           </View>
+
+          {/* Dropdown lists render below the row */}
+          {showDayPicker && (
+            <ScrollView style={styles.dropdownList} nestedScrollEnabled>
+              {days.map((day) => (
+                <TouchableOpacity
+                  key={day}
+                  style={[styles.dropdownItem, day === selectedDay && styles.dropdownItemActive]}
+                  onPress={() => handleDayChange(day)}
+                >
+                  <Text style={[styles.dropdownItemText, day === selectedDay && styles.dropdownItemTextActive]}>
+                    {day.padStart(2, '0')}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          )}
+          {showMonthPicker && (
+            <ScrollView style={styles.dropdownList} nestedScrollEnabled>
+              {months.map((month) => (
+                <TouchableOpacity
+                  key={month.value}
+                  style={[styles.dropdownItem, month.value === selectedMonth && styles.dropdownItemActive]}
+                  onPress={() => handleMonthChange(month.value)}
+                >
+                  <Text style={[styles.dropdownItemText, month.value === selectedMonth && styles.dropdownItemTextActive]}>
+                    {month.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          )}
+          {showYearPicker && (
+            <ScrollView style={styles.dropdownList} nestedScrollEnabled>
+              {years.map((year) => (
+                <TouchableOpacity
+                  key={year}
+                  style={[styles.dropdownItem, year === selectedYear && styles.dropdownItemActive]}
+                  onPress={() => handleYearChange(year)}
+                >
+                  <Text style={[styles.dropdownItemText, year === selectedYear && styles.dropdownItemTextActive]}>
+                    {year}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          )}
           {errors.event_date && (
             <Text style={styles.error}>{errors.event_date.message}</Text>
           )}
@@ -1924,25 +1925,30 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     borderRadius: borderRadius.lg,
   },
+  dateDropdownOpen: {
+    borderColor: colors.primary,
+  },
   dateDropdownText: {
     fontSize: fontSize.md,
     color: colors.text,
   },
   dropdownList: {
-    position: 'absolute',
-    top: '100%',
-    left: 0,
-    right: 0,
     maxHeight: 200,
     backgroundColor: colors.surface,
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: borderRadius.lg,
     marginTop: spacing.xs,
-    zIndex: 1000,
     ...Platform.select({
       web: {
         boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+      },
+      default: {
+        position: 'absolute' as any,
+        top: '100%' as any,
+        left: 0,
+        right: 0,
+        zIndex: 1000,
       },
     }),
   },
@@ -1969,25 +1975,30 @@ const styles = StyleSheet.create({
     zIndex: 200,
   },
   venueSuggestionsDropdown: {
-    position: 'absolute',
-    top: '100%',
-    left: 0,
-    right: 0,
     backgroundColor: colors.surface,
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: borderRadius.lg,
     marginTop: spacing.xs,
-    zIndex: 1000,
     maxHeight: 200,
     ...Platform.select({
       ios: {
+        position: 'absolute' as any,
+        top: '100%' as any,
+        left: 0,
+        right: 0,
+        zIndex: 1000,
         shadowColor: '#000',
         shadowOffset: { width: 0, height: 2 },
         shadowOpacity: 0.1,
         shadowRadius: 4,
       },
       android: {
+        position: 'absolute' as any,
+        top: '100%' as any,
+        left: 0,
+        right: 0,
+        zIndex: 1000,
         elevation: 4,
       },
       web: {
