@@ -30,16 +30,16 @@ export default function RootLayout() {
   const content = (
     <>
       <Head>
-        <title>Stubbed - Track Your Sports Memories</title>
-        <meta name="description" content="Track every sports event you attend. Log your games, earn achievements, connect with fellow fans, and build your legacy as the ultimate sports supporter." />
+        <title>Stubbed - Live Sports, Logged In</title>
+        <meta name="description" content="Live sports, logged in. Track every sports event you attend, earn achievements, and connect with fellow fans." />
         <meta name="keywords" content="sports, events, tracking, games, achievements, fans, tickets, matches" />
-        <meta property="og:title" content="Stubbed - Track Your Sports Memories" />
-        <meta property="og:description" content="Track every sports event you attend. Log your games, earn achievements, and connect with fellow fans." />
+        <meta property="og:title" content="Stubbed - Live Sports, Logged In" />
+        <meta property="og:description" content="Live sports, logged in. Track every sports event you attend, earn achievements, and connect with fellow fans." />
         <meta property="og:type" content="website" />
         <meta property="og:site_name" content="Stubbed" />
         <meta name="twitter:card" content="summary_large_image" />
-        <meta name="twitter:title" content="Stubbed - Track Your Sports Memories" />
-        <meta name="twitter:description" content="Track every sports event you attend. Log your games, earn achievements, and connect with fellow fans." />
+        <meta name="twitter:title" content="Stubbed - Live Sports, Logged In" />
+        <meta name="twitter:description" content="Live sports, logged in. Track every sports event you attend, earn achievements, and connect with fellow fans." />
         <meta name="theme-color" content="#006747" />
         <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
       </Head>

@@ -18,8 +18,21 @@ import { useAuthStore } from '@/stores/authStore';
 import { useEventsStore } from '@/stores/eventsStore';
 import { useReviews } from '@/hooks/useReviews';
 import { colors, spacing, fontSize, fontWeight, borderRadius } from '@/constants/theme';
-import { getSportColor } from '@/constants/sports';
+import { getSportColor, SPORTS } from '@/constants/sports';
 import type { AttendedEventWithDetails } from '@/types';
+
+// Helper to get display name from sport code
+function getSportDisplayName(sportCode: string | null | undefined): string {
+  if (!sportCode) return 'Sport';
+  // Try to find in SPORTS constant
+  const sport = SPORTS.find(s => s.id.toLowerCase() === sportCode.toLowerCase() || s.name.toLowerCase() === sportCode.toLowerCase());
+  if (sport) return sport.name;
+  // Fallback: capitalize first letter of each word
+  return sportCode
+    .split(' ')
+    .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+    .join(' ');
+}
 
 export default function WriteReviewScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -147,7 +160,8 @@ export default function WriteReviewScreen() {
   }
 
   const event = attendance.event;
-  const sportColor = getSportColor(event.sport?.name?.toLowerCase() || event.sport_name?.toLowerCase() || '');
+  const sportName = getSportDisplayName(event.sport?.name || event.sport_name);
+  const sportColor = getSportColor(sportName.toLowerCase());
 
   return (
     <>
@@ -157,7 +171,7 @@ export default function WriteReviewScreen() {
         <Card style={styles.eventCard}>
           <View style={styles.eventHeader}>
             <Badge
-              label={event.sport?.name || event.sport_name || 'Sport'}
+              label={sportName}
               size="sm"
               color={sportColor}
             />

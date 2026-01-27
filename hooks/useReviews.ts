@@ -230,6 +230,64 @@ export function useReviews() {
     }
   }, [user?.id]);
 
+  // Get public reviews for an event
+  const getEventReviews = useCallback(async (eventId: string, limit = 10): Promise<ReviewWithDetails[]> => {
+    try {
+      const { data, error } = await supabase
+        .from('event_reviews')
+        .select(`
+          *,
+          profile:profiles!event_reviews_user_id_fkey(*),
+          attended_event:attended_events!event_reviews_attended_event_id_fkey(
+            *,
+            event:events(
+              *,
+              sport:sports(*),
+              home_team:teams!events_home_team_id_fkey(*),
+              away_team:teams!events_away_team_id_fkey(*),
+              venue:venues(*)
+            )
+          )
+        `)
+        .eq('attended_event.event_id', eventId)
+        .eq('is_public', true)
+        .order('created_at', { ascending: false })
+        .limit(limit);
+
+      if (error) throw error;
+
+      // Transform to ReviewWithDetails format
+      return (data || []).map((review: any) => {
+        const event = review.attended_event?.event;
+        return {
+          review_id: review.id,
+          attended_event_id: review.attended_event_id,
+          user_id: review.user_id,
+          review_text: review.review_text,
+          rating: review.rating,
+          atmosphere_rating: review.atmosphere_rating,
+          photo_urls: review.photo_urls,
+          is_watched: review.is_watched,
+          likes_count: review.likes_count || 0,
+          comments_count: review.comments_count || 0,
+          created_at: review.created_at,
+          username: review.profile?.username,
+          display_name: review.profile?.display_name,
+          avatar_url: review.profile?.avatar_url,
+          event_id: event?.id,
+          event_date: event?.event_date,
+          sport_name: event?.sport?.name || event?.sport_name,
+          home_team_name: event?.home_team?.name || event?.home_team_name,
+          away_team_name: event?.away_team?.name || event?.away_team_name,
+          venue_name: event?.venue?.name || event?.venue_name,
+        } as ReviewWithDetails;
+      });
+    } catch (err) {
+      console.error('[useReviews] Error fetching event reviews:', err);
+      return [];
+    }
+  }, []);
+
   // ============================================
   // Likes
   // ============================================
@@ -482,6 +540,7 @@ export function useReviews() {
     getReview,
     getUserReviews,
     getReviewForAttendedEvent,
+    getEventReviews,
 
     // Likes
     hasLikedReview,

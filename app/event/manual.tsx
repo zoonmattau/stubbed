@@ -161,6 +161,8 @@ export default function ManualEventScreen() {
   const [autoSetSupport, setAutoSetSupport] = useState(false); // Track if we auto-set
   const [timeAmPm, setTimeAmPm] = useState<'AM' | 'PM'>('PM');
   const [isAbandoned, setIsAbandoned] = useState(false);
+  const [shareReview, setShareReview] = useState(true);
+  const [isWatched, setIsWatched] = useState(false);
 
   // Cricket format state
   type CricketFormat = 'T10' | 'T20' | 'ODI' | 'TEST';
@@ -513,8 +515,8 @@ export default function ManualEventScreen() {
       }
 
       if (result.success) {
-        // Auto-publish review when ratings are set
-        if (result.attendedEventId && rating > 0) {
+        // Auto-publish review when ratings are set and share is enabled
+        if (result.attendedEventId && rating > 0 && shareReview) {
           try {
             await createReview({
               attended_event_id: result.attendedEventId,
@@ -523,7 +525,7 @@ export default function ManualEventScreen() {
               atmosphere_rating: atmosphereRating || null,
               review_text: data.notes || null,
               photo_urls: photoUrls.length > 0 ? photoUrls : null,
-              is_watched: false,
+              is_watched: isWatched,
               is_public: true,
             });
           } catch (reviewError) {
@@ -1345,6 +1347,48 @@ export default function ManualEventScreen() {
               />
             )}
           />
+
+          {/* Watched toggle */}
+          <TouchableOpacity
+            style={styles.toggleRow}
+            onPress={() => setIsWatched(!isWatched)}
+          >
+            <View style={styles.toggleInfo}>
+              <Ionicons
+                name={isWatched ? 'tv' : 'tv-outline'}
+                size={22}
+                color={isWatched ? colors.primary : colors.textMuted}
+              />
+              <View>
+                <Text style={styles.toggleLabel}>I watched this event</Text>
+                <Text style={styles.toggleDescription}>Didn't attend in person</Text>
+              </View>
+            </View>
+            <View style={[styles.checkbox, isWatched && styles.checkboxActive]}>
+              {isWatched && <Ionicons name="checkmark" size={16} color={colors.white} />}
+            </View>
+          </TouchableOpacity>
+
+          {/* Share review toggle */}
+          <TouchableOpacity
+            style={styles.toggleRow}
+            onPress={() => setShareReview(!shareReview)}
+          >
+            <View style={styles.toggleInfo}>
+              <Ionicons
+                name={shareReview ? 'globe' : 'globe-outline'}
+                size={22}
+                color={shareReview ? colors.primary : colors.textMuted}
+              />
+              <View>
+                <Text style={styles.toggleLabel}>Share as public review</Text>
+                <Text style={styles.toggleDescription}>Visible on the Explore feed</Text>
+              </View>
+            </View>
+            <View style={[styles.checkbox, shareReview && styles.checkboxActive]}>
+              {shareReview && <Ionicons name="checkmark" size={16} color={colors.white} />}
+            </View>
+          </TouchableOpacity>
         </View>
 
         {/* Photos */}
@@ -1910,5 +1954,44 @@ const styles = StyleSheet.create({
   },
   inningsInput: {
     flex: 1,
+  },
+  toggleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.md,
+    backgroundColor: colors.surfaceLight,
+    borderRadius: borderRadius.lg,
+    marginTop: spacing.md,
+  },
+  toggleInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    flex: 1,
+  },
+  toggleLabel: {
+    fontSize: fontSize.md,
+    fontWeight: fontWeight.medium,
+    color: colors.text,
+  },
+  toggleDescription: {
+    fontSize: fontSize.xs,
+    color: colors.textSecondary,
+    marginTop: 2,
+  },
+  checkbox: {
+    width: 24,
+    height: 24,
+    borderRadius: borderRadius.sm,
+    borderWidth: 2,
+    borderColor: colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  checkboxActive: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
   },
 });

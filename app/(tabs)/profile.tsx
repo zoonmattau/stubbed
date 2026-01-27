@@ -347,6 +347,11 @@ export default function ProfileScreen() {
               <Text style={styles.quickStatValue}>{followCounts.followers_count}</Text>
               <Text style={styles.quickStatLabel}>Followers</Text>
             </TouchableOpacity>
+            <TouchableOpacity style={styles.quickStatItem} onPress={() => router.push(`/followers/${user?.id}?tab=following`)}>
+              <Ionicons name="person-add" size={24} color={colors.secondary} />
+              <Text style={styles.quickStatValue}>{followCounts.following_count}</Text>
+              <Text style={styles.quickStatLabel}>Following</Text>
+            </TouchableOpacity>
           </View>
         )}
       </View>
@@ -852,13 +857,16 @@ const styles = StyleSheet.create({
   },
   quickStats: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     justifyContent: 'space-around',
     backgroundColor: colors.surface,
     borderRadius: borderRadius.lg,
     padding: spacing.lg,
+    gap: spacing.sm,
   },
   quickStatItem: {
     alignItems: 'center',
+    minWidth: 60,
   },
   quickStatValue: {
     fontSize: fontSize.xl,

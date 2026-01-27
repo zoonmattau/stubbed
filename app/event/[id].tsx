@@ -13,17 +13,18 @@ import {
 } from 'react-native';
 import { useLocalSearchParams, router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { Card, Badge, Button, StarRating } from '@/components/ui';
+import { Card, Badge, Button, StarRating, Avatar } from '@/components/ui';
 import { TaggedUsersList } from '@/components/social/TaggedUsersList';
 import { ConflictResolver } from '@/components/events/ConflictResolver';
 import { useAuthStore } from '@/stores/authStore';
 import { useEventsStore } from '@/stores/eventsStore';
 import { useTeamLogos } from '@/hooks/useTeamLogos';
+import { useReviews } from '@/hooks/useReviews';
 import { colors, spacing, fontSize, fontWeight, borderRadius } from '@/constants/theme';
 import { formatDate, formatTime } from '@/utils/dates';
 import { getSportColor, getSportById, SPORTS } from '@/constants/sports';
 import { parseTennisScore } from '@/utils/scores';
-import type { AttendedEventWithDetails } from '@/types';
+import type { AttendedEventWithDetails, ReviewWithDetails } from '@/types';
 
 // Helper to get display name from sport code
 function getSportDisplayName(sportCode: string | null | undefined): string {
@@ -40,9 +41,13 @@ export default function EventDetailScreen() {
   const { user } = useAuthStore();
   const { attendedEvents, updateAttendedEvent, deleteAttendedEvent, fetchAttendedEvents, isLoading } = useEventsStore();
   const { getTeamLogo } = useTeamLogos();
+  const { getReviewForAttendedEvent, getEventReviews } = useReviews();
 
   const [attendance, setAttendance] = useState<AttendedEventWithDetails | null>(null);
   const [hasFetched, setHasFetched] = useState(false);
+  const [hasExistingReview, setHasExistingReview] = useState(false);
+  const [checkingReview, setCheckingReview] = useState(true);
+  const [publicReviews, setPublicReviews] = useState<ReviewWithDetails[]>([]);
 
   const handleBack = () => {
     if (router.canGoBack()) {
@@ -64,6 +69,31 @@ export default function EventDetailScreen() {
     const found = attendedEvents.find((e) => e.event_id === id);
     setAttendance(found || null);
   }, [id, attendedEvents]);
+
+  // Check if user already has a review for this event
+  useEffect(() => {
+    const checkReview = async () => {
+      if (!attendance?.id) {
+        setCheckingReview(false);
+        return;
+      }
+      setCheckingReview(true);
+      const existingReview = await getReviewForAttendedEvent(attendance.id);
+      setHasExistingReview(!!existingReview);
+      setCheckingReview(false);
+    };
+    checkReview();
+  }, [attendance?.id, getReviewForAttendedEvent]);
+
+  // Fetch public reviews for this event
+  useEffect(() => {
+    const fetchReviews = async () => {
+      if (!id) return;
+      const reviews = await getEventReviews(id, 5);
+      setPublicReviews(reviews);
+    };
+    fetchReviews();
+  }, [id, getEventReviews]);
 
   // Show loading while fetching
   if (isLoading || (!attendance && !hasFetched && attendedEvents.length === 0)) {
@@ -640,17 +670,88 @@ export default function EventDetailScreen() {
         </View>
       )}
 
-      {/* Write Review Button */}
-      <View style={styles.reviewSection}>
-        <TouchableOpacity
-          style={styles.writeReviewButton}
-          onPress={() => router.push(`/event/review/${attendance.id}`)}
-        >
-          <Ionicons name="create-outline" size={24} color={colors.white} />
-          <Text style={styles.writeReviewText}>Write a Public Review</Text>
-        </TouchableOpacity>
-        <Text style={styles.reviewHint}>Share your experience with the community</Text>
-      </View>
+      {/* Write Review Button - only show if no existing review */}
+      {!checkingReview && !hasExistingReview && (
+        <View style={styles.reviewSection}>
+          <TouchableOpacity
+            style={styles.writeReviewButton}
+            onPress={() => router.push(`/event/review/${attendance.id}`)}
+          >
+            <Ionicons name="create-outline" size={24} color={colors.white} />
+            <Text style={styles.writeReviewText}>Write a Public Review</Text>
+          </TouchableOpacity>
+          <Text style={styles.reviewHint}>Share your experience with the community</Text>
+        </View>
+      )}
+
+      {/* Already reviewed indicator */}
+      {!checkingReview && hasExistingReview && (
+        <View style={styles.reviewSection}>
+          <View style={styles.reviewedBadge}>
+            <Ionicons name="checkmark-circle" size={24} color={colors.success} />
+            <Text style={styles.reviewedText}>Review Published</Text>
+          </View>
+          <Text style={styles.reviewHint}>Your review is visible on the Explore feed</Text>
+        </View>
+      )}
+
+      {/* Public Reviews Section */}
+      {publicReviews.length > 0 && (
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Community Reviews</Text>
+          <Card>
+            {publicReviews.map((review, index) => (
+              <View
+                key={review.review_id}
+                style={[
+                  styles.reviewItem,
+                  index < publicReviews.length - 1 && styles.reviewItemBorder,
+                ]}
+              >
+                <View style={styles.reviewHeader}>
+                  <Avatar
+                    source={review.avatar_url}
+                    name={review.display_name || review.username}
+                    size="sm"
+                  />
+                  <View style={styles.reviewAuthor}>
+                    <Text style={styles.reviewAuthorName}>
+                      {review.display_name || review.username || 'Anonymous'}
+                    </Text>
+                    <Text style={styles.reviewDate}>
+                      {new Date(review.created_at).toLocaleDateString('en-AU', {
+                        day: 'numeric',
+                        month: 'short',
+                        year: 'numeric',
+                      })}
+                      {review.is_watched && ' • Watched'}
+                    </Text>
+                  </View>
+                  <View style={styles.reviewRating}>
+                    <Ionicons name="star" size={14} color={colors.gold} />
+                    <Text style={styles.reviewRatingText}>{review.rating}</Text>
+                  </View>
+                </View>
+                {review.review_text && (
+                  <Text style={styles.reviewText} numberOfLines={3}>
+                    {review.review_text}
+                  </Text>
+                )}
+                <View style={styles.reviewStats}>
+                  <View style={styles.reviewStat}>
+                    <Ionicons name="heart" size={14} color={colors.textMuted} />
+                    <Text style={styles.reviewStatText}>{review.likes_count || 0}</Text>
+                  </View>
+                  <View style={styles.reviewStat}>
+                    <Ionicons name="chatbubble" size={14} color={colors.textMuted} />
+                    <Text style={styles.reviewStatText}>{review.comments_count || 0}</Text>
+                  </View>
+                </View>
+              </View>
+            ))}
+          </Card>
+        </View>
+      )}
 
       {/* Actions */}
       <View style={styles.actions}>
@@ -1065,5 +1166,75 @@ const styles = StyleSheet.create({
     fontSize: fontSize.sm,
     color: colors.textMuted,
     marginTop: spacing.sm,
+  },
+  reviewedBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.sm,
+    backgroundColor: `${colors.success}15`,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.xl,
+    borderRadius: borderRadius.lg,
+    width: '100%',
+  },
+  reviewedText: {
+    fontSize: fontSize.md,
+    fontWeight: fontWeight.semibold,
+    color: colors.success,
+  },
+  reviewItem: {
+    paddingVertical: spacing.md,
+  },
+  reviewItemBorder: {
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  reviewHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginBottom: spacing.sm,
+  },
+  reviewAuthor: {
+    flex: 1,
+  },
+  reviewAuthorName: {
+    fontSize: fontSize.sm,
+    fontWeight: fontWeight.medium,
+    color: colors.text,
+  },
+  reviewDate: {
+    fontSize: fontSize.xs,
+    color: colors.textMuted,
+  },
+  reviewRating: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+  },
+  reviewRatingText: {
+    fontSize: fontSize.sm,
+    fontWeight: fontWeight.medium,
+    color: colors.gold,
+  },
+  reviewText: {
+    fontSize: fontSize.sm,
+    color: colors.textSecondary,
+    lineHeight: 20,
+    marginBottom: spacing.sm,
+  },
+  reviewStats: {
+    flexDirection: 'row',
+    gap: spacing.lg,
+  },
+  reviewStat: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+  },
+  reviewStatText: {
+    fontSize: fontSize.xs,
+    color: colors.textMuted,
   },
 });
