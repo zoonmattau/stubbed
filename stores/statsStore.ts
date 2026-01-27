@@ -438,6 +438,32 @@ export const useStatsStore = create<StatsState>((set, get) => ({
         }
       }
 
+      // Calculate total XP (mirrors usePoints logic)
+      let activityPoints = totalEvents * 10; // ATTEND_EVENT = 10
+      // Discovery bonuses: 5 per unique team, 5 per unique sport, 5 per unique venue
+      activityPoints += uniqueTeams.size * 5;
+      activityPoints += uniqueSports.size * 5;
+      activityPoints += uniqueVenues.size * 5;
+      // Win bonuses
+      let winPoints = 0;
+      attendedEvents.forEach((ae: any) => {
+        if (ae.result === 'win' && ae.supported_team && ae.supported_team !== 'neutral') {
+          winPoints += 5; // TEAM_WIN = 5
+        }
+      });
+      activityPoints += winPoints;
+
+      // Achievement points (from all unlocked achievements after grants/revokes)
+      const { data: finalAchievements } = await supabase
+        .from('user_achievements')
+        .select('achievement:achievements(points)')
+        .eq('user_id', userId);
+      const achievementPoints = (finalAchievements || []).reduce(
+        (sum: number, ua: any) => sum + (ua.achievement?.points || 0), 0
+      );
+
+      const totalPoints = activityPoints + achievementPoints;
+
       // Update user_stats
       const { error: statsError } = await supabase
         .from('user_stats')
@@ -447,6 +473,7 @@ export const useStatsStore = create<StatsState>((set, get) => ({
           total_sports: uniqueSports.size,
           total_teams: uniqueTeams.size,
           total_venues: uniqueVenues.size,
+          total_points: totalPoints,
           updated_at: new Date().toISOString(),
         }, { onConflict: 'user_id' });
 

@@ -17,8 +17,10 @@ import { useFollows } from '@/hooks/useFollows';
 import { useReviews } from '@/hooks/useReviews';
 import { Avatar, Card } from '@/components/ui';
 import { FollowButton, ReviewCard } from '@/components/explore';
+import { EventCard } from '@/components/events';
 import { colors, spacing, fontSize, fontWeight, borderRadius } from '@/constants/theme';
-import type { Profile, ReviewWithDetails, FollowCounts, UserStats } from '@/types';
+import { getCurrentLevel } from '@/constants/levels';
+import type { Profile, ReviewWithDetails, FollowCounts, UserStats, AttendedEventWithDetails } from '@/types';
 
 type TabType = 'reviews' | 'events';
 
@@ -30,11 +32,13 @@ export default function PublicProfileScreen() {
 
   const [profile, setProfile] = useState<Profile | null>(null);
   const [userStats, setUserStats] = useState<UserStats | null>(null);
-  const [privacySettings, setPrivacySettings] = useState<{ show_events: boolean; show_stats: boolean } | null>(null);
+  const [userXp, setUserXp] = useState(0);
+  const [privacySettings, setPrivacySettings] = useState<{ show_events: boolean; show_stats: boolean }>({ show_events: true, show_stats: true });
   const [followCounts, setFollowCounts] = useState<FollowCounts>({ followers_count: 0, following_count: 0 });
   const [isFollowing, setIsFollowing] = useState(false);
   const [reviews, setReviews] = useState<ReviewWithDetails[]>([]);
-  const [activeTab, setActiveTab] = useState<TabType>('reviews');
+  const [events, setEvents] = useState<AttendedEventWithDetails[]>([]);
+  const [activeTab, setActiveTab] = useState<TabType>('events');
   const [isLoading, setIsLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -58,44 +62,32 @@ export default function PublicProfileScreen() {
     }
   }, [userId]);
 
-  // Fetch user stats
+  // Fetch user stats + privacy via RPC (bypasses RLS)
   const fetchStats = useCallback(async () => {
     if (!userId) return;
 
     try {
-      const { data, error } = await supabase
-        .from('user_stats')
-        .select('*')
-        .eq('user_id', userId)
-        .single();
+      const { data, error } = await supabase.rpc('get_user_public_stats', {
+        p_user_id: userId,
+      });
 
-      if (!error && data) {
-        setUserStats(data as UserStats);
+      if (!error && data && data.length > 0) {
+        const row = data[0];
+        setUserStats({
+          user_id: userId,
+          total_events: row.total_events || 0,
+          total_sports: row.total_sports || 0,
+          total_teams: 0,
+          total_venues: 0,
+        } as UserStats);
+        setUserXp(row.total_points || 0);
+        setPrivacySettings({
+          show_events: row.show_events ?? true,
+          show_stats: row.show_stats ?? true,
+        });
       }
     } catch (err) {
       console.error('[PublicProfile] Error fetching stats:', err);
-    }
-  }, [userId]);
-
-  // Fetch privacy settings
-  const fetchPrivacy = useCallback(async () => {
-    if (!userId) return;
-
-    try {
-      const { data, error } = await supabase
-        .from('user_settings')
-        .select('show_events, show_stats')
-        .eq('user_id', userId)
-        .maybeSingle();
-
-      if (!error && data) {
-        setPrivacySettings(data);
-      } else {
-        // Default: public
-        setPrivacySettings({ show_events: true, show_stats: true });
-      }
-    } catch (err) {
-      console.error('[PublicProfile] Error fetching privacy:', err);
     }
   }, [userId]);
 
@@ -119,6 +111,34 @@ export default function PublicProfileScreen() {
     setReviews(userReviews);
   }, [userId]);
 
+  // Fetch user events
+  const fetchEvents = useCallback(async () => {
+    if (!userId) return;
+
+    try {
+      const { data, error } = await supabase
+        .from('attended_events')
+        .select(`
+          *,
+          event:events(
+            *,
+            sport:sports(*),
+            home_team:teams!events_home_team_id_fkey(*),
+            away_team:teams!events_away_team_id_fkey(*),
+            venue:venues(*)
+          )
+        `)
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false });
+
+      if (!error && data) {
+        setEvents(data as AttendedEventWithDetails[]);
+      }
+    } catch (err) {
+      console.error('[PublicProfile] Error fetching events:', err);
+    }
+  }, [userId]);
+
   // Initial load
   useEffect(() => {
     const loadData = async () => {
@@ -126,9 +146,9 @@ export default function PublicProfileScreen() {
       await Promise.all([
         fetchProfile(),
         fetchStats(),
-        fetchPrivacy(),
         fetchFollowData(),
         fetchReviews(),
+        fetchEvents(),
       ]);
       setIsLoading(false);
     };
@@ -141,9 +161,9 @@ export default function PublicProfileScreen() {
     await Promise.all([
       fetchProfile(),
       fetchStats(),
-      fetchPrivacy(),
       fetchFollowData(),
       fetchReviews(),
+      fetchEvents(),
     ]);
     setRefreshing(false);
   };
@@ -206,6 +226,20 @@ export default function PublicProfileScreen() {
             <Text style={styles.username}>@{profile.username}</Text>
           </View>
 
+          {/* Level Badge */}
+          {userXp > 0 && (() => {
+            const level = getCurrentLevel(userXp);
+            return (
+              <View style={styles.levelRow}>
+                <View style={[styles.levelBadge, { backgroundColor: level.color }]}>
+                  <Ionicons name={level.icon as any} size={14} color="#fff" />
+                  <Text style={styles.levelBadgeText}>{level.name}</Text>
+                </View>
+                <Text style={styles.xpText}>{userXp.toLocaleString()} XP</Text>
+              </View>
+            );
+          })()}
+
           {profile.bio && (
             <Text style={styles.bio}>{profile.bio}</Text>
           )}
@@ -242,7 +276,7 @@ export default function PublicProfileScreen() {
           </TouchableOpacity>
 
           <View style={styles.statItem}>
-            {!isOwnProfile && privacySettings && !privacySettings.show_events ? (
+            {!isOwnProfile && !privacySettings.show_events ? (
               <Ionicons name="lock-closed" size={20} color={colors.textMuted} />
             ) : (
               <Text style={styles.statValue}>{userStats?.total_events || 0}</Text>
@@ -251,7 +285,7 @@ export default function PublicProfileScreen() {
           </View>
 
           <View style={styles.statItem}>
-            {!isOwnProfile && privacySettings && !privacySettings.show_stats ? (
+            {!isOwnProfile && !privacySettings.show_stats ? (
               <Ionicons name="lock-closed" size={20} color={colors.textMuted} />
             ) : (
               <Text style={styles.statValue}>{userStats?.total_sports || 0}</Text>
@@ -262,20 +296,6 @@ export default function PublicProfileScreen() {
 
         {/* Tab Buttons */}
         <View style={styles.tabContainer}>
-          <TouchableOpacity
-            style={[styles.tab, activeTab === 'reviews' && styles.tabActive]}
-            onPress={() => setActiveTab('reviews')}
-          >
-            <Ionicons
-              name="document-text"
-              size={20}
-              color={activeTab === 'reviews' ? colors.primary : colors.textMuted}
-            />
-            <Text style={[styles.tabText, activeTab === 'reviews' && styles.tabTextActive]}>
-              Reviews
-            </Text>
-          </TouchableOpacity>
-
           <TouchableOpacity
             style={[styles.tab, activeTab === 'events' && styles.tabActive]}
             onPress={() => setActiveTab('events')}
@@ -289,10 +309,53 @@ export default function PublicProfileScreen() {
               Events
             </Text>
           </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.tab, activeTab === 'reviews' && styles.tabActive]}
+            onPress={() => setActiveTab('reviews')}
+          >
+            <Ionicons
+              name="document-text"
+              size={20}
+              color={activeTab === 'reviews' ? colors.primary : colors.textMuted}
+            />
+            <Text style={[styles.tabText, activeTab === 'reviews' && styles.tabTextActive]}>
+              Reviews
+            </Text>
+          </TouchableOpacity>
         </View>
 
         {/* Content */}
         <View style={styles.content}>
+          {activeTab === 'events' && (
+            <>
+              {!isOwnProfile && !privacySettings.show_events ? (
+                <View style={styles.emptyContainer}>
+                  <Ionicons name="lock-closed-outline" size={48} color={colors.textMuted} />
+                  <Text style={styles.emptyText}>Events are private</Text>
+                  <Text style={styles.emptySubtext}>
+                    This user's event history is not public
+                  </Text>
+                </View>
+              ) : events.length === 0 ? (
+                <View style={styles.emptyContainer}>
+                  <Ionicons name="calendar-outline" size={48} color={colors.textMuted} />
+                  <Text style={styles.emptyText}>No events yet</Text>
+                </View>
+              ) : (
+                events.map((attended) => (
+                  <View key={attended.id} style={styles.eventCardWrapper}>
+                    <EventCard
+                      event={attended.event!}
+                      attendance={attended}
+                      compact
+                    />
+                  </View>
+                ))
+              )}
+            </>
+          )}
+
           {activeTab === 'reviews' && (
             <>
               {reviews.length === 0 ? (
@@ -306,28 +369,6 @@ export default function PublicProfileScreen() {
                 ))
               )}
             </>
-          )}
-
-          {activeTab === 'events' && (
-            <View style={styles.emptyContainer}>
-              {privacySettings && !privacySettings.show_events ? (
-                <>
-                  <Ionicons name="lock-closed-outline" size={48} color={colors.textMuted} />
-                  <Text style={styles.emptyText}>Events are private</Text>
-                  <Text style={styles.emptySubtext}>
-                    This user's event history is not public
-                  </Text>
-                </>
-              ) : (
-                <>
-                  <Ionicons name="calendar-outline" size={48} color={colors.textMuted} />
-                  <Text style={styles.emptyText}>No public events</Text>
-                  <Text style={styles.emptySubtext}>
-                    Event details are not shared publicly
-                  </Text>
-                </>
-              )}
-            </View>
           )}
         </View>
       </ScrollView>
@@ -376,6 +417,30 @@ const styles = StyleSheet.create({
     fontSize: fontSize.md,
     color: colors.textMuted,
     marginTop: 2,
+  },
+  levelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginTop: spacing.sm,
+  },
+  levelBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingVertical: 4,
+    paddingHorizontal: spacing.sm,
+    borderRadius: borderRadius.full,
+  },
+  levelBadgeText: {
+    fontSize: fontSize.xs,
+    fontWeight: fontWeight.semibold,
+    color: '#fff',
+  },
+  xpText: {
+    fontSize: fontSize.sm,
+    fontWeight: fontWeight.medium,
+    color: colors.textSecondary,
   },
   bio: {
     fontSize: fontSize.md,
@@ -438,6 +503,9 @@ const styles = StyleSheet.create({
   },
   content: {
     padding: spacing.lg,
+  },
+  eventCardWrapper: {
+    marginBottom: spacing.md,
   },
   emptyContainer: {
     alignItems: 'center',

@@ -89,64 +89,25 @@ export default function ExploreScreen() {
   const fetchLeaderboard = async () => {
     setLeaderboardLoading(true);
     try {
-      // Get profiles with stats
-      const { data: profiles, error: profilesError } = await supabase
-        .from('profiles')
-        .select('id, username, display_name, avatar_url, total_points');
+      const { data, error } = await supabase.rpc('get_leaderboard', { p_limit: 50 });
 
-      if (profilesError) throw profilesError;
+      if (error) {
+        console.error('[Explore] Leaderboard RPC error:', error);
+        throw error;
+      }
 
-      // Get event counts per user
-      const { data: eventCounts, error: eventsError } = await supabase
-        .from('attended_events')
-        .select('user_id');
-
-      if (eventsError) throw eventsError;
-
-      // Get follower counts per user
-      const { data: followerCounts, error: followersError } = await supabase
-        .from('follows')
-        .select('following_id');
-
-      if (followersError) throw followersError;
-
-      // Get review counts per user
-      const { data: reviewCounts, error: reviewsError } = await supabase
-        .from('event_reviews')
-        .select('user_id')
-        .eq('is_public', true);
-
-      if (reviewsError) throw reviewsError;
-
-      // Aggregate counts
-      const eventsByUser: Record<string, number> = {};
-      (eventCounts || []).forEach((e: any) => {
-        eventsByUser[e.user_id] = (eventsByUser[e.user_id] || 0) + 1;
-      });
-
-      const followersByUser: Record<string, number> = {};
-      (followerCounts || []).forEach((f: any) => {
-        followersByUser[f.following_id] = (followersByUser[f.following_id] || 0) + 1;
-      });
-
-      const reviewsByUser: Record<string, number> = {};
-      (reviewCounts || []).forEach((r: any) => {
-        reviewsByUser[r.user_id] = (reviewsByUser[r.user_id] || 0) + 1;
-      });
-
-      // Build leaderboard entries
-      const entries: LeaderboardEntry[] = (profiles || []).map((p: any) => ({
-        user_id: p.id,
-        username: p.username,
-        display_name: p.display_name,
-        avatar_url: p.avatar_url,
-        total_events: eventsByUser[p.id] || 0,
-        total_points: p.total_points || 0,
-        followers_count: followersByUser[p.id] || 0,
-        reviews_count: reviewsByUser[p.id] || 0,
+      const entries: LeaderboardEntry[] = (data || []).map((row: any) => ({
+        user_id: row.user_id,
+        username: row.username,
+        display_name: row.display_name,
+        avatar_url: row.avatar_url,
+        total_events: row.total_events || 0,
+        total_points: row.total_xp || 0,
+        followers_count: row.followers_count || 0,
+        reviews_count: row.reviews_count || 0,
       }));
 
-      // Sort
+      // Re-sort by selected field
       entries.sort((a, b) => {
         switch (sortField) {
           case 'events': return b.total_events - a.total_events;
@@ -157,8 +118,7 @@ export default function ExploreScreen() {
         }
       });
 
-      // Top 50
-      setLeaderboard(entries.slice(0, 50));
+      setLeaderboard(entries);
     } catch (err) {
       console.error('[Explore] Leaderboard fetch error:', err);
     } finally {
