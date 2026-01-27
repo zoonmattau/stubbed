@@ -71,6 +71,14 @@ export default function RootLayout() {
         <Stack.Screen name="followers" options={{ headerShown: false }} />
         <Stack.Screen name="sports" options={{ headerShown: false }} />
         <Stack.Screen name="tennis" options={{ headerShown: false }} />
+        <Stack.Screen
+          name="invitations"
+          options={{
+            headerShown: true,
+            title: 'Event Invitations',
+            presentation: 'modal',
+          }}
+        />
       </Stack>
     </>
   );

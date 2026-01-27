@@ -183,20 +183,28 @@ export function EventCard({ event, attendance, onPress, compact = false, mini = 
             </View>
 
             <View style={styles.miniFooter}>
-              {attendance?.rating ? (
-                <View style={styles.miniRating}>
-                  {[1, 2, 3, 4, 5].map((star) => (
-                    <Ionicons
-                      key={star}
-                      name={star <= Math.floor(attendance.rating!) ? 'star' : 'star-outline'}
-                      size={14}
-                      color={colors.gold}
-                    />
-                  ))}
-                </View>
-              ) : (
-                <View />
-              )}
+              <View style={styles.miniFooterLeft}>
+                {attendance?.rating ? (
+                  <View style={styles.miniRating}>
+                    {[1, 2, 3, 4, 5].map((star) => (
+                      <Ionicons
+                        key={star}
+                        name={star <= Math.floor(attendance.rating!) ? 'star' : 'star-outline'}
+                        size={14}
+                        color={colors.gold}
+                      />
+                    ))}
+                  </View>
+                ) : null}
+                {attendance?.went_with_user_ids && attendance.went_with_user_ids.length > 0 && (
+                  <View style={styles.miniWentWith}>
+                    <Ionicons name="people" size={12} color={colors.primary} />
+                    <Text style={styles.miniWentWithText}>
+                      +{attendance.went_with_user_ids.length}
+                    </Text>
+                  </View>
+                )}
+              </View>
               {venueName ? (
                 <View style={styles.miniVenue}>
                   <Ionicons name="location" size={12} color={colors.textSecondary} />
@@ -327,26 +335,34 @@ export function EventCard({ event, attendance, onPress, compact = false, mini = 
             </View>
           </View>
 
-          {/* Bottom row - Rating on left, Venue on right */}
+          {/* Bottom row - Rating + companions on left, Venue on right */}
           <View style={styles.miniFooter}>
-            {attendance?.rating ? (
-              <View style={styles.miniRating}>
-                {[1, 2, 3, 4, 5].map((star) => {
-                  const fullStar = star <= Math.floor(attendance.rating!);
-                  const halfStar = !fullStar && star === Math.ceil(attendance.rating!) && attendance.rating! % 1 !== 0;
-                  return (
-                    <Ionicons
-                      key={star}
-                      name={fullStar ? 'star' : halfStar ? 'star-half' : 'star-outline'}
-                      size={14}
-                      color={colors.gold}
-                    />
-                  );
-                })}
-              </View>
-            ) : (
-              <View />
-            )}
+            <View style={styles.miniFooterLeft}>
+              {attendance?.rating ? (
+                <View style={styles.miniRating}>
+                  {[1, 2, 3, 4, 5].map((star) => {
+                    const fullStar = star <= Math.floor(attendance.rating!);
+                    const halfStar = !fullStar && star === Math.ceil(attendance.rating!) && attendance.rating! % 1 !== 0;
+                    return (
+                      <Ionicons
+                        key={star}
+                        name={fullStar ? 'star' : halfStar ? 'star-half' : 'star-outline'}
+                        size={14}
+                        color={colors.gold}
+                      />
+                    );
+                  })}
+                </View>
+              ) : null}
+              {attendance?.went_with_user_ids && attendance.went_with_user_ids.length > 0 && (
+                <View style={styles.miniWentWith}>
+                  <Ionicons name="people" size={12} color={colors.primary} />
+                  <Text style={styles.miniWentWithText}>
+                    +{attendance.went_with_user_ids.length}
+                  </Text>
+                </View>
+              )}
+            </View>
             {venueName ? (
               <View style={styles.miniVenue}>
                 <Ionicons name="location" size={12} color={colors.textSecondary} />
@@ -824,6 +840,21 @@ const styles = StyleSheet.create({
     paddingTop: spacing.sm,
     borderTopWidth: 1,
     borderTopColor: colors.border,
+  },
+  miniFooterLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  miniWentWith: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+  },
+  miniWentWithText: {
+    fontSize: fontSize.xs,
+    color: colors.primary,
+    fontWeight: fontWeight.medium,
   },
   miniVenue: {
     flexDirection: 'row',

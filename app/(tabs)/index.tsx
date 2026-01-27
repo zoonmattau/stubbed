@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo } from 'react';
+import React, { useEffect, useLayoutEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -11,7 +11,7 @@ import {
   Platform,
   Image,
 } from 'react-native';
-import { router } from 'expo-router';
+import { router, useNavigation } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Card, Avatar, Footer } from '@/components/ui';
@@ -36,7 +36,27 @@ export default function HomeScreen() {
     declineInvitation,
   } = useEventInvitations();
 
+  const navigation = useNavigation();
   const [refreshing, setRefreshing] = React.useState(false);
+
+  // Add bell icon to header for invitations
+  useLayoutEffect(() => {
+    navigation.setOptions({
+      headerRight: () => (
+        <TouchableOpacity
+          onPress={() => router.push('/invitations')}
+          style={styles.headerBell}
+        >
+          <Ionicons name="notifications-outline" size={24} color={colors.text} />
+          {pendingCount > 0 && (
+            <View style={styles.headerBellBadge}>
+              <Text style={styles.headerBellBadgeText}>{pendingCount}</Text>
+            </View>
+          )}
+        </TouchableOpacity>
+      ),
+    });
+  }, [pendingCount, navigation]);
 
   useEffect(() => {
     if (user?.id) {
@@ -622,6 +642,27 @@ export default function HomeScreen() {
 }
 
 const styles = StyleSheet.create({
+  headerBell: {
+    marginRight: spacing.md,
+    position: 'relative',
+  },
+  headerBellBadge: {
+    position: 'absolute',
+    top: -4,
+    right: -6,
+    backgroundColor: colors.error,
+    borderRadius: 10,
+    minWidth: 18,
+    height: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 4,
+  },
+  headerBellBadgeText: {
+    color: colors.white,
+    fontSize: 10,
+    fontWeight: fontWeight.bold,
+  },
   container: {
     flex: 1,
     backgroundColor: colors.background,

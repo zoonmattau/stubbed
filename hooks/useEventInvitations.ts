@@ -61,45 +61,19 @@ export function useEventInvitations() {
       if (!user?.id) return { success: false, error: 'Not authenticated' };
 
       try {
-        // Get the invitation details first
-        const invitation = pendingInvitations.find((inv) => inv.id === invitationId);
-        if (!invitation) {
-          return { success: false, error: 'Invitation not found' };
-        }
+        // Use server-side RPC to handle acceptance
+        // This bypasses RLS for reading the source event and properly
+        // populates went_with_user_ids with the tagger and their companions
+        // @ts-expect-error - RPC type inference issue with Supabase
+        const { data, error: rpcError } = await supabase.rpc('accept_tag_invitation', {
+          p_invitation_id: invitationId,
+        });
 
-        // Update invitation status
-        const { error: updateError } = await supabase
-          .from('event_tag_invitations')
-          // @ts-expect-error - Supabase type inference issue with update params
-          .update({
-            status: 'accepted',
-            responded_at: new Date().toISOString(),
-          })
-          .eq('id', invitationId);
+        if (rpcError) throw rpcError;
 
-        if (updateError) throw updateError;
-
-        // Copy the event to the accepting user's attended_events
-        // with their own entry (they can add their own notes/rating later)
-        const attendedEvent = invitation.attended_event;
-        if (attendedEvent) {
-          const { error: copyError } = await supabase.from('attended_events')
-            // @ts-expect-error - Supabase type inference issue with insert params
-            .insert({
-              user_id: user.id,
-              event_id: attendedEvent.event_id,
-              section: attendedEvent.section,
-              seat_info: attendedEvent.seat_info,
-              // Don't copy personal fields like rating, notes, ticket_price
-              // Let user fill those in themselves
-            });
-
-          if (copyError) {
-            // If duplicate, that's fine - user already has this event
-            if (!copyError.message.includes('duplicate')) {
-              console.error('Error copying event:', copyError);
-            }
-          }
+        const result = data as { success: boolean; error?: string; attended_event_id?: string };
+        if (!result.success) {
+          return { success: false, error: result.error || 'Failed to accept invitation' };
         }
 
         await fetchPendingInvitations();
@@ -108,7 +82,7 @@ export function useEventInvitations() {
         return { success: false, error: (err as Error).message };
       }
     },
-    [user?.id, pendingInvitations, fetchPendingInvitations]
+    [user?.id, fetchPendingInvitations]
   );
 
   const declineInvitation = useCallback(
