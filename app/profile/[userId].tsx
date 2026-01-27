@@ -242,19 +242,19 @@ export default function PublicProfileScreen() {
           </TouchableOpacity>
 
           <View style={styles.statItem}>
-            {isOwnProfile ? (
-              <Text style={styles.statValue}>{userStats?.total_events || 0}</Text>
-            ) : (
+            {!isOwnProfile && privacySettings && !privacySettings.show_events ? (
               <Ionicons name="lock-closed" size={20} color={colors.textMuted} />
+            ) : (
+              <Text style={styles.statValue}>{userStats?.total_events || 0}</Text>
             )}
             <Text style={styles.statLabel}>Events</Text>
           </View>
 
           <View style={styles.statItem}>
-            {isOwnProfile ? (
-              <Text style={styles.statValue}>{userStats?.total_sports || 0}</Text>
-            ) : (
+            {!isOwnProfile && privacySettings && !privacySettings.show_stats ? (
               <Ionicons name="lock-closed" size={20} color={colors.textMuted} />
+            ) : (
+              <Text style={styles.statValue}>{userStats?.total_sports || 0}</Text>
             )}
             <Text style={styles.statLabel}>Sports</Text>
           </View>
@@ -310,11 +310,23 @@ export default function PublicProfileScreen() {
 
           {activeTab === 'events' && (
             <View style={styles.emptyContainer}>
-              <Ionicons name="lock-closed-outline" size={48} color={colors.textMuted} />
-              <Text style={styles.emptyText}>Events are private</Text>
-              <Text style={styles.emptySubtext}>
-                This user's event history is not public
-              </Text>
+              {privacySettings && !privacySettings.show_events ? (
+                <>
+                  <Ionicons name="lock-closed-outline" size={48} color={colors.textMuted} />
+                  <Text style={styles.emptyText}>Events are private</Text>
+                  <Text style={styles.emptySubtext}>
+                    This user's event history is not public
+                  </Text>
+                </>
+              ) : (
+                <>
+                  <Ionicons name="calendar-outline" size={48} color={colors.textMuted} />
+                  <Text style={styles.emptyText}>No public events</Text>
+                  <Text style={styles.emptySubtext}>
+                    Event details are not shared publicly
+                  </Text>
+                </>
+              )}
             </View>
           )}
         </View>
