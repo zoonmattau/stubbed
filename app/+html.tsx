@@ -9,10 +9,8 @@ export default function Root({ children }: PropsWithChildren) {
         <meta httpEquiv="X-UA-Compatible" content="IE=edge" />
         <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
 
-        {/* Favicon - ticket stub with stylized S */}
-        <link rel="icon" type="image/svg+xml" href="/assets/favicon.svg" />
-        <link rel="icon" type="image/png" href="/assets/favicon.png" />
-        <link rel="apple-touch-icon" href="/assets/icon.png" />
+        {/* Favicon */}
+        <link rel="icon" type="image/png" href="/favicon.png" />
 
         {/*
           Disable body scrolling on web. This makes ScrollView components work closer to how they do on native.
