@@ -207,6 +207,48 @@ export const SPORTS: SportDefinition[] = [
     competitions: ['Super Netball', 'Diamonds', 'ANZ Premiership'],
     scoreFormat: 'points',
   },
+  {
+    id: 'baseball',
+    name: 'Baseball',
+    icon: 'baseball-outline',
+    color: colors.sportBaseball,
+    competitions: ['MLB', 'NPB', 'KBO', 'World Series', 'College World Series'],
+    scoreFormat: 'points',
+  },
+  {
+    id: 'ice_hockey',
+    name: 'Ice Hockey',
+    icon: 'snow',
+    color: colors.sportIceHockey,
+    competitions: ['NHL', 'KHL', 'SHL', 'Stanley Cup', 'IIHF World Championship'],
+    scoreFormat: 'goals',
+  },
+  {
+    id: 'american_football',
+    name: 'American Football',
+    icon: 'american-football',
+    color: colors.sportAmericanFootball,
+    competitions: ['NFL', 'Super Bowl', 'College Football', 'XFL'],
+    scoreFormat: 'points',
+  },
+  {
+    id: 'cycling',
+    name: 'Cycling',
+    icon: 'bicycle',
+    color: colors.sportCycling,
+    competitions: [
+      'Tour de France', 'Giro d\'Italia', 'Vuelta a Espana',
+      'UCI Road World Championships', 'Paris-Roubaix', 'Milan-San Remo',
+      'Tour Down Under', 'Cadel Evans Great Ocean Road Race',
+      'UCI Track World Championships', 'Six Day Series',
+      'UCI Mountain Bike World Cup', 'Cape Epic',
+      'UCI BMX World Championships', 'BMX Supercross',
+      'UCI Cyclocross World Championships', 'Superprestige',
+      'Olympics - Road', 'Olympics - Track', 'Olympics - MTB', 'Olympics - BMX',
+      'Commonwealth Games',
+    ],
+    scoreFormat: 'position',
+  },
 ];
 
 export const AUSTRALIAN_STATES = [

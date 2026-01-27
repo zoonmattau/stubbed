@@ -199,6 +199,26 @@ export default function HomeScreen() {
   const nextLevel = getNextLevel(currentLevel);
   const progressToNext = getLevelProgress(userPoints, currentLevel, nextLevel);
 
+  // Compute readable points text color based on level card background
+  const pointsTextColor = useMemo(() => {
+    const getLuminance = (hex: string) => {
+      const c = hex.replace('#', '');
+      const r = parseInt(c.substring(0, 2), 16) / 255;
+      const g = parseInt(c.substring(2, 4), 16) / 255;
+      const b = parseInt(c.substring(4, 6), 16) / 255;
+      const lin = (v: number) =>
+        v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
+      return 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
+    };
+    const bgL = getLuminance(currentLevel.color);
+    const greenL = getLuminance(colors.success);
+    const contrast = (l1: number, l2: number) =>
+      (Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05);
+    const greenContrast = contrast(greenL, bgL);
+    // Use green only if it has at least 3:1 contrast ratio (WCAG minimum)
+    return greenContrast >= 3 ? colors.success : colors.white;
+  }, [currentLevel.color]);
+
   return (
     <ScrollView
       style={styles.container}
@@ -304,7 +324,7 @@ export default function HomeScreen() {
             );
           })}
           {pendingCount > 3 && (
-            <TouchableOpacity style={styles.viewAllNotifications}>
+            <TouchableOpacity style={styles.viewAllNotifications} onPress={() => router.push('/invitations')}>
               <Text style={styles.viewAllNotificationsText}>
                 View all {pendingCount} invitations
               </Text>
@@ -440,10 +460,9 @@ export default function HomeScreen() {
                         <Text style={styles.recentPointText} numberOfLines={1}>
                           {homeTeam} vs {awayTeam}
                         </Text>
-                        <Text style={[
-                          styles.recentPointValue,
-                          currentLevel.color === '#10B981' && styles.recentPointValueDark
-                        ]}>+{eventPoints}</Text>
+                        <Text style={[styles.recentPointValue, { color: pointsTextColor }]}>
+                          +{eventPoints}
+                        </Text>
                       </View>
                     );
                   })}
@@ -929,10 +948,6 @@ const styles = StyleSheet.create({
   recentPointValue: {
     fontSize: fontSize.xs,
     fontWeight: fontWeight.semibold,
-    color: colors.success,
-  },
-  recentPointValueDark: {
-    color: '#065F46', // Dark green for contrast on green backgrounds
   },
 
   // Notifications Section

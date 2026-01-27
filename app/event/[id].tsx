@@ -398,7 +398,12 @@ export default function EventDetailScreen() {
           </TouchableOpacity>
 
           <View style={styles.scoreColumn}>
-            {hasScore ? (
+            {attendance.is_abandoned ? (
+              <View style={styles.abandonedContainer}>
+                <Ionicons name="cloud-offline-outline" size={28} color={colors.textMuted} />
+                <Text style={styles.abandonedText}>Abandoned</Text>
+              </View>
+            ) : hasScore ? (
               <>
                 {isTennis && tennisResult ? (
                   /* Tennis score display - show sets */
@@ -969,6 +974,15 @@ const styles = StyleSheet.create({
   },
   vs: {
     fontSize: fontSize.xl,
+    fontWeight: fontWeight.semibold,
+    color: colors.textMuted,
+  },
+  abandonedContainer: {
+    alignItems: 'center',
+    gap: spacing.xs,
+  },
+  abandonedText: {
+    fontSize: fontSize.md,
     fontWeight: fontWeight.semibold,
     color: colors.textMuted,
   },

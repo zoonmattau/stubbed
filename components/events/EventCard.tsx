@@ -4,8 +4,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { Card, Badge } from '@/components/ui';
 import { colors, spacing, fontSize, fontWeight, borderRadius } from '@/constants/theme';
 import { formatDate, formatTime } from '@/utils/dates';
-import { getSportColor, SPORTS } from '@/constants/sports';
-import { parseTennisScore } from '@/utils/scores';
+import { getSportColor, SPORTS, isRacingSport } from '@/constants/sports';
+import { parseTennisScore, TennisScoreResult } from '@/utils/scores';
 import { useTeamLogos } from '@/hooks/useTeamLogos';
 import type { EventWithDetails, AttendedEventWithDetails } from '@/types';
 
@@ -42,6 +42,9 @@ export function EventCard({ event, attendance, onPress, compact = false, mini = 
   // Get logos - try FK first, then lookup by name
   const homeTeamLogo = event.home_team?.logo_url || getTeamLogo(homeTeamName);
   const awayTeamLogo = event.away_team?.logo_url || getTeamLogo(awayTeamName);
+
+  const sportId = event.sport?.name?.toLowerCase() || event.sport_name?.toLowerCase() || '';
+  const isRacing = isRacingSport(sportId) || isRacingSport(event.sport?.id || '');
 
   // Mini version - fun card style with team logos and gradient
   if (mini) {
@@ -102,6 +105,8 @@ export function EventCard({ event, attendance, onPress, compact = false, mini = 
       isDraw = tennisResult.winner === 'draw';
       margin = Math.abs(tennisResult.player1Sets - tennisResult.player2Sets);
       winnerName = homeWon ? homeTeamShort : awayTeamShort;
+    } else if (isRacing) {
+      hasScore = event.home_score !== null;
     } else {
       hasScore = event.home_score !== null && event.away_score !== null;
       homeWon = hasScore && homeScoreNum > awayScoreNum;
@@ -142,6 +147,69 @@ export function EventCard({ event, attendance, onPress, compact = false, mini = 
       }
       return '';
     };
+
+    // Racing mini card - event-focused layout
+    if (isRacing) {
+      return (
+        <Card onPress={onPress} style={styles.miniContainer}>
+          <View style={styles.miniContent}>
+            <View style={styles.miniHeader}>
+              <View style={styles.miniHeaderLeft}>
+                <Badge label={sportName} size="sm" color={sportColor} />
+                {event.competition && (
+                  <Text style={styles.miniCompetition} numberOfLines={1}>{event.competition}</Text>
+                )}
+              </View>
+              <Text style={styles.miniDate}>{formatDate(event.event_date)}</Text>
+            </View>
+
+            <View style={styles.racingEventContent}>
+              <View style={[styles.racingIconContainer, { backgroundColor: `${sportColor}20` }]}>
+                <Ionicons name="flag" size={24} color={sportColor} />
+              </View>
+              <View style={styles.racingEventDetails}>
+                <Text style={styles.racingEventName} numberOfLines={1}>{homeTeamName}</Text>
+                {awayTeamName && awayTeamName !== 'Away Team' && (
+                  <Text style={styles.racingSelection} numberOfLines={1}>
+                    Selection: {awayTeamName}
+                  </Text>
+                )}
+                {event.home_score && (
+                  <Text style={[styles.racingResult, { color: sportColor }]}>
+                    Result: {event.home_score}
+                  </Text>
+                )}
+              </View>
+            </View>
+
+            <View style={styles.miniFooter}>
+              {attendance?.rating ? (
+                <View style={styles.miniRating}>
+                  {[1, 2, 3, 4, 5].map((star) => (
+                    <Ionicons
+                      key={star}
+                      name={star <= Math.floor(attendance.rating!) ? 'star' : 'star-outline'}
+                      size={14}
+                      color={colors.gold}
+                    />
+                  ))}
+                </View>
+              ) : (
+                <View />
+              )}
+              {venueName ? (
+                <View style={styles.miniVenue}>
+                  <Ionicons name="location" size={12} color={colors.textSecondary} />
+                  <Text style={styles.miniVenueText} numberOfLines={1}>{venueName}</Text>
+                </View>
+              ) : (
+                <View />
+              )}
+            </View>
+          </View>
+        </Card>
+      );
+    }
 
     return (
       <Card onPress={onPress} style={styles.miniContainer}>
@@ -227,8 +295,8 @@ export function EventCard({ event, attendance, onPress, compact = false, mini = 
                   ) : (
                     <View style={styles.miniMarginContainer}>
                       <Text style={styles.miniMarginText}>
-                        {winnerName} won{isTennis
-                          ? ` ${margin} set${margin !== 1 ? 's' : ''} to ${(tennisResult?.winner === 'home' ? tennisResult?.player2Sets : tennisResult?.player1Sets) || 0}`
+                        {winnerName} won{isTennis && tennisResult
+                          ? ` ${tennisResult.winner === 'home' ? tennisResult.player1Sets : tennisResult.player2Sets}-${tennisResult.winner === 'home' ? tennisResult.player2Sets : tennisResult.player1Sets}`
                           : isCricket
                           ? ` by ${getCricketResultText()}`
                           : ` by ${margin}`}
@@ -346,6 +414,8 @@ export function EventCard({ event, attendance, onPress, compact = false, mini = 
     isDrawRegular = tennisResultRegular.winner === 'draw';
     marginRegular = Math.abs(tennisResultRegular.player1Sets - tennisResultRegular.player2Sets);
     winnerNameRegular = homeWonRegular ? homeTeamShort : awayTeamShort;
+  } else if (isRacing) {
+    hasScoreRegular = event.home_score !== null;
   } else {
     hasScoreRegular = event.home_score !== null && event.away_score !== null;
     homeWonRegular = hasScoreRegular && homeScoreNumRegular > awayScoreNumRegular;
@@ -368,6 +438,84 @@ export function EventCard({ event, attendance, onPress, compact = false, mini = 
     }
     return '';
   };
+
+  // Racing regular card - event-focused layout
+  if (isRacing) {
+    return (
+      <Card onPress={onPress} style={styles.container}>
+        <View style={[styles.sportIndicator, { backgroundColor: sportColor }]} />
+        <View style={styles.content}>
+          <View style={styles.header}>
+            <View style={styles.headerLeft}>
+              <Badge label={sportName} size="sm" color={sportColor} />
+              {event.competition && (
+                <Text style={styles.competition}>{event.competition}</Text>
+              )}
+            </View>
+            <Text style={styles.headerDate}>{formatDate(event.event_date)}</Text>
+          </View>
+
+          <View style={styles.racingEventContent}>
+            <View style={[styles.racingIconContainer, { backgroundColor: `${sportColor}20` }]}>
+              <Ionicons name="flag" size={28} color={sportColor} />
+            </View>
+            <View style={styles.racingEventDetails}>
+              <Text style={styles.racingEventNameLarge} numberOfLines={2}>{homeTeamName}</Text>
+              {awayTeamName && awayTeamName !== 'Away Team' && (
+                <Text style={styles.racingSelection} numberOfLines={1}>
+                  Selection: {awayTeamName}
+                </Text>
+              )}
+              {event.home_score && (
+                <View style={styles.racingResultBadge}>
+                  <Text style={[styles.racingResultBadgeText, { color: sportColor }]}>
+                    {event.home_score}
+                  </Text>
+                </View>
+              )}
+            </View>
+          </View>
+
+          {!compact && (event.event_time || venueName) && (
+            <View style={styles.details}>
+              {event.event_time && (
+                <View style={styles.detailItem}>
+                  <Ionicons name="time-outline" size={14} color={colors.textSecondary} />
+                  <Text style={styles.detailText}>{formatTime(event.event_time)}</Text>
+                </View>
+              )}
+              {venueName && (
+                <View style={styles.detailItem}>
+                  <Ionicons name="location-outline" size={14} color={colors.textSecondary} />
+                  <Text style={styles.detailText} numberOfLines={1}>{venueName}</Text>
+                </View>
+              )}
+            </View>
+          )}
+
+          {attendance && (
+            <View style={styles.attendanceInfo}>
+              {attendance.rating && (
+                <View style={styles.rating}>
+                  {[1, 2, 3, 4, 5].map((star) => (
+                    <Ionicons
+                      key={star}
+                      name={star <= attendance.rating! ? 'star' : 'star-outline'}
+                      size={14}
+                      color={colors.gold}
+                    />
+                  ))}
+                </View>
+              )}
+              {attendance.is_favorite && (
+                <Ionicons name="heart" size={16} color={colors.error} />
+              )}
+            </View>
+          )}
+        </View>
+      </Card>
+    );
+  }
 
   return (
     <Card onPress={onPress} style={styles.container}>
@@ -824,5 +972,50 @@ const styles = StyleSheet.create({
   rating: {
     flexDirection: 'row',
     gap: 2,
+  },
+  // Racing event styles
+  racingEventContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    marginBottom: spacing.sm,
+  },
+  racingIconContainer: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  racingEventDetails: {
+    flex: 1,
+    gap: 2,
+  },
+  racingEventName: {
+    fontSize: fontSize.md,
+    fontWeight: fontWeight.semibold,
+    color: colors.text,
+  },
+  racingEventNameLarge: {
+    fontSize: fontSize.lg,
+    fontWeight: fontWeight.bold,
+    color: colors.text,
+  },
+  racingSelection: {
+    fontSize: fontSize.sm,
+    color: colors.textSecondary,
+  },
+  racingResult: {
+    fontSize: fontSize.sm,
+    fontWeight: fontWeight.semibold,
+    marginTop: 2,
+  },
+  racingResultBadge: {
+    alignSelf: 'flex-start',
+    marginTop: spacing.xs,
+  },
+  racingResultBadgeText: {
+    fontSize: fontSize.md,
+    fontWeight: fontWeight.bold,
   },
 });

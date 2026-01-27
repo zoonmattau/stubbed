@@ -170,7 +170,7 @@ export function useFriends() {
 
         // Create friendship request
         const { error: createError } = await supabase.from('friendships')
-          // @ts-ignore - Supabase type inference issue with insert params
+          // @ts-expect-error - Supabase type inference issue with insert params
           .insert({
             requester_id: user.id,
             addressee_id: target.id,
@@ -193,7 +193,7 @@ export function useFriends() {
       try {
         const { error: updateError } = await supabase
           .from('friendships')
-          // @ts-ignore - Supabase type inference issue with update params
+          // @ts-expect-error - Supabase type inference issue with update params
           .update({ status: 'accepted', updated_at: new Date().toISOString() })
           .eq('id', friendshipId);
 
@@ -213,7 +213,7 @@ export function useFriends() {
       try {
         const { error: updateError } = await supabase
           .from('friendships')
-          // @ts-ignore - Supabase type inference issue with update params
+          // @ts-expect-error - Supabase type inference issue with update params
           .update({ status: 'declined', updated_at: new Date().toISOString() })
           .eq('id', friendshipId);
 

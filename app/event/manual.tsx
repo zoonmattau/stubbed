@@ -28,6 +28,7 @@ import { useEventInvitations } from '@/hooks/useEventInvitations';
 import { useReviews } from '@/hooks/useReviews';
 import { colors, spacing, fontSize, fontWeight, borderRadius } from '@/constants/theme';
 import { SPORTS, isIndividualSport, isRacingSport, SportDefinition } from '@/constants/sports';
+import { parseTennisScore } from '@/utils/scores';
 import { pickImage, uploadEventPhoto } from '@/lib/storage';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
@@ -43,9 +44,9 @@ const SPORT_TO_LOCAL: Record<string, string> = {
   'rugby': 'rugby',
   'soccer': 'soccer',
   'basketball': 'basketball',
-  'football': 'basketball', // American football
+  'football': 'american_football',
   'baseball': 'baseball',
-  'hockey': 'basketball', // Ice hockey fallback
+  'hockey': 'ice_hockey',
   'tennis': 'tennis',
   'cricket': 'cricket',
   // SportsDB sport names (title case)
@@ -60,10 +61,11 @@ const SPORT_TO_LOCAL: Record<string, string> = {
   'Football': 'soccer',
   'Basketball': 'basketball',
   'nba': 'basketball',
-  'Baseball': 'basketball',
-  'mlb': 'basketball',
-  'Ice Hockey': 'basketball',
-  'nhl': 'basketball',
+  'Baseball': 'baseball',
+  'mlb': 'baseball',
+  'Ice Hockey': 'ice_hockey',
+  'nhl': 'ice_hockey',
+  'American Football': 'american_football',
   'Tennis': 'tennis',
   'Cricket': 'cricket',
   'Motorsport': 'motorsport',
@@ -83,6 +85,9 @@ const SPORT_TO_LOCAL: Record<string, string> = {
   'champions_league': 'soccer',
   'mls': 'soccer',
   'aleague': 'soccer',
+  'nfl': 'american_football',
+  'Cycling': 'cycling',
+  'cycling': 'cycling',
 };
 
 // Helper to get local sport ID from any sport string
@@ -121,8 +126,14 @@ const eventSchema = z.object({
   event_time: z.string().optional(),
   competition: z.string().optional(),
   round: z.string().optional(),
-  home_score: z.string().optional(),
-  away_score: z.string().optional(),
+  home_score: z.string().optional().refine(
+    (val) => !val || val.includes('/') || val.includes(',') || val.includes('-') || !isNaN(Number(val)),
+    { message: 'Score must be a number' }
+  ),
+  away_score: z.string().optional().refine(
+    (val) => !val || val.includes('/') || val.includes(',') || val.includes('-') || !isNaN(Number(val)),
+    { message: 'Score must be a number' }
+  ),
   section: z.string().optional(),
   seat_info: z.string().optional(),
   ticket_price: z.string().optional(),
@@ -499,6 +510,22 @@ export default function ManualEventScreen() {
       // Check if match was abandoned/washed out
       if (isAbandoned) {
         userResult = 'no_result';
+      } else if (selectedSport === 'tennis' && data.home_score) {
+        // Tennis: parse set scores to determine winner
+        const tennisResult = parseTennisScore(data.home_score);
+        if (tennisResult && tennisResult.winner) {
+          if (tennisResult.winner === 'draw') {
+            isDraw = true;
+            userResult = supportedTeam && supportedTeam !== 'neutral' ? 'draw' : null;
+          } else if (supportedTeam && supportedTeam !== 'neutral') {
+            const homeWon = tennisResult.winner === 'home';
+            if (supportedTeam === 'home') {
+              userResult = homeWon ? 'win' : 'loss';
+            } else {
+              userResult = homeWon ? 'loss' : 'win';
+            }
+          }
+        }
       } else if (data.home_score && data.away_score) {
         const homeNum = parseInt(data.home_score, 10);
         const awayNum = parseInt(data.away_score, 10);
@@ -1106,6 +1133,11 @@ export default function ManualEventScreen() {
               />
               <Text style={styles.helperText}>Leave blank if you don't know the result</Text>
             </>
+          ) : isAbandoned ? (
+            <View style={styles.abandonedScoreNotice}>
+              <Ionicons name="cloud-offline-outline" size={24} color={colors.textMuted} />
+              <Text style={styles.abandonedScoreText}>Scores disabled for abandoned matches</Text>
+            </View>
           ) : selectedSport === 'tennis' ? (
             <>
               <Controller
@@ -1202,7 +1234,7 @@ export default function ManualEventScreen() {
                       value={value}
                       onChangeText={onChange}
                       onBlur={onBlur}
-                      keyboardType="default"
+                      keyboardType="number-pad"
                     />
                   )}
                 />
@@ -1218,7 +1250,7 @@ export default function ManualEventScreen() {
                       value={value}
                       onChangeText={onChange}
                       onBlur={onBlur}
-                      keyboardType="default"
+                      keyboardType="number-pad"
                     />
                   )}
                 />
@@ -1893,6 +1925,23 @@ const styles = StyleSheet.create({
     fontSize: fontSize.xs,
     color: colors.textSecondary,
     marginTop: 2,
+  },
+  abandonedScoreNotice: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.sm,
+    paddingVertical: spacing.lg,
+    backgroundColor: `${colors.textMuted}10`,
+    borderRadius: borderRadius.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderStyle: 'dashed',
+  },
+  abandonedScoreText: {
+    fontSize: fontSize.sm,
+    color: colors.textMuted,
+    fontWeight: fontWeight.medium,
   },
   dateLabel: {
     fontSize: fontSize.sm,

@@ -70,7 +70,7 @@ export function useEventInvitations() {
         // Update invitation status
         const { error: updateError } = await supabase
           .from('event_tag_invitations')
-          // @ts-ignore - Supabase type inference issue with update params
+          // @ts-expect-error - Supabase type inference issue with update params
           .update({
             status: 'accepted',
             responded_at: new Date().toISOString(),
@@ -84,7 +84,7 @@ export function useEventInvitations() {
         const attendedEvent = invitation.attended_event;
         if (attendedEvent) {
           const { error: copyError } = await supabase.from('attended_events')
-            // @ts-ignore - Supabase type inference issue with insert params
+            // @ts-expect-error - Supabase type inference issue with insert params
             .insert({
               user_id: user.id,
               event_id: attendedEvent.event_id,
@@ -118,7 +118,7 @@ export function useEventInvitations() {
       try {
         const { error: updateError } = await supabase
           .from('event_tag_invitations')
-          // @ts-ignore - Supabase type inference issue with update params
+          // @ts-expect-error - Supabase type inference issue with update params
           .update({
             status: 'declined',
             responded_at: new Date().toISOString(),

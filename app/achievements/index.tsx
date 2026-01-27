@@ -82,57 +82,48 @@ export default function AchievementsScreen() {
     };
   }, [attendedEvents]);
 
-  // Calculate progress for an achievement
-  const getAchievementProgress = (achievement: AchievementWithStatus): number => {
+  // Calculate progress for an achievement (returns undefined for non-trackable types)
+  const getAchievementProgress = (achievement: AchievementWithStatus): number | undefined => {
     if (achievement.unlocked) return 100;
 
-    const req = achievement.requirementValue || {};
+    const req = (achievement.requirement_value || {}) as Record<string, unknown>;
 
-    // Count-based achievements
-    if (achievement.requirementType === 'count') {
+    // Count-based achievements - trackable
+    if (achievement.requirement_type === 'count') {
       // Total events
       if ('count' in req) {
         const target = req.count as number;
-        return Math.min(100, (userStats.totalEvents / target) * 100);
+        return Math.min(99, Math.round((userStats.totalEvents / target) * 100));
       }
       // Sports diversity
       if ('sports' in req) {
         const target = req.sports as number;
-        return Math.min(100, (userStats.uniqueSports / target) * 100);
+        return Math.min(99, Math.round((userStats.uniqueSports / target) * 100));
       }
       // Venues diversity
       if ('venues' in req) {
         const target = req.venues as number;
-        return Math.min(100, (userStats.uniqueVenues / target) * 100);
+        return Math.min(99, Math.round((userStats.uniqueVenues / target) * 100));
       }
       // Teams diversity
       if ('teams' in req) {
         const target = req.teams as number;
-        return Math.min(100, (userStats.uniqueTeams / target) * 100);
+        return Math.min(99, Math.round((userStats.uniqueTeams / target) * 100));
       }
       // Same team loyalty
       if ('sameTeam' in req) {
         const target = req.sameTeam as number;
-        return Math.min(100, (userStats.maxSameTeam / target) * 100);
+        return Math.min(99, Math.round((userStats.maxSameTeam / target) * 100));
       }
       // Same venue loyalty
       if ('sameVenue' in req) {
         const target = req.sameVenue as number;
-        return Math.min(100, (userStats.maxSameVenue / target) * 100);
+        return Math.min(99, Math.round((userStats.maxSameVenue / target) * 100));
       }
     }
 
-    // Streak achievements - show 0 for now (complex to calculate)
-    if (achievement.requirementType === 'streak') {
-      return 0;
-    }
-
-    // Specific achievements - show 0 (require specific conditions)
-    if (achievement.requirementType === 'specific') {
-      return 0;
-    }
-
-    return 0;
+    // Streak and specific achievements can't be incrementally tracked
+    return undefined;
   };
 
   const [filter, setFilter] = useState<CategoryFilter>('all');

@@ -13,6 +13,8 @@ import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Card, Avatar, Badge, Button } from '@/components/ui';
 import { useEventInvitations } from '@/hooks/useEventInvitations';
+import { useAuthStore } from '@/stores/authStore';
+import { useEventsStore } from '@/stores/eventsStore';
 import { colors, spacing, fontSize, fontWeight, borderRadius } from '@/constants/theme';
 import { formatDate } from '@/utils/dates';
 import { getSportColor } from '@/constants/sports';
@@ -35,9 +37,16 @@ export default function InvitationsScreen() {
     }
   };
 
+  const { user } = useAuthStore();
+  const { fetchAttendedEvents } = useEventsStore();
+
   const handleAccept = async (invitation: EventTagInvitationWithDetails) => {
     const result = await acceptInvitation(invitation.id);
     if (result.success) {
+      // Refresh events so the accepted event shows up immediately
+      if (user?.id) {
+        fetchAttendedEvents(user.id);
+      }
       Alert.alert('Accepted', 'Event has been added to your history!');
     } else {
       Alert.alert('Error', result.error || 'Failed to accept invitation');

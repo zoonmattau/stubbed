@@ -59,6 +59,10 @@ export const colors = {
   sportGolf: '#059669',
   sportMMA: '#b91c1c',
   sportNetball: '#c026d3',
+  sportBaseball: '#1e40af',
+  sportIceHockey: '#0284c7',
+  sportAmericanFootball: '#4f46e5',
+  sportCycling: '#f59e0b',
   sportDefault: '#006747',
 
   // Utility

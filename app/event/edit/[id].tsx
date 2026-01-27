@@ -658,9 +658,9 @@ export default function EditEventScreen() {
               onSubmitEditing={addPerson}
               returnKeyType="done"
             />
-            <TouchableOpacity style={styles.addButton} onPress={addPerson}>
+            <Pressable style={styles.addButton} onPress={addPerson}>
               <Ionicons name="add" size={24} color={colors.white} />
-            </TouchableOpacity>
+            </Pressable>
           </View>
         </Card>
 
@@ -905,29 +905,22 @@ const styles = StyleSheet.create({
     zIndex: 20,
   },
   venueSuggestionsDropdown: {
-    position: 'absolute',
-    top: '100%',
-    left: 0,
-    right: 0,
     backgroundColor: colors.surface,
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: borderRadius.lg,
     marginTop: spacing.xs,
-    zIndex: 100,
     maxHeight: 200,
     ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.1,
-        shadowRadius: 4,
-      },
-      android: {
-        elevation: 4,
-      },
       web: {
         boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
+      },
+      default: {
+        position: 'absolute' as any,
+        top: '100%' as any,
+        left: 0,
+        right: 0,
+        zIndex: 100,
       },
     }),
   },
@@ -985,17 +978,24 @@ const styles = StyleSheet.create({
     color: colors.text,
   },
   dropdownList: {
-    position: 'absolute',
-    top: '100%',
-    left: 0,
-    right: 0,
     maxHeight: 200,
     backgroundColor: colors.surface,
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: borderRadius.lg,
     marginTop: spacing.xs,
-    zIndex: 100,
+    ...Platform.select({
+      web: {
+        boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+      },
+      default: {
+        position: 'absolute' as any,
+        top: '100%' as any,
+        left: 0,
+        right: 0,
+        zIndex: 1000,
+      },
+    }),
   },
   dropdownItem: {
     paddingVertical: spacing.sm,
