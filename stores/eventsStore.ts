@@ -12,6 +12,17 @@ import type {
   EventConsensus,
 } from '@/types';
 
+// Helper to parse score value for comparison (handles cricket scores like "103/6")
+const parseScoreValue = (score: string | null | undefined): number | null => {
+  if (!score) return null;
+  // For cricket scores like "103/6", take the runs (before /)
+  const cricketMatch = score.match(/^(\d+)\/\d+/);
+  if (cricketMatch) return parseInt(cricketMatch[1], 10);
+  // For simple numeric scores
+  const num = parseInt(score, 10);
+  return isNaN(num) ? null : num;
+};
+
 interface EventsState {
   attendedEvents: AttendedEventWithDetails[];
   sports: Sport[];
@@ -80,7 +91,34 @@ export const useEventsStore = create<EventsState>((set, get) => ({
 
       if (error) throw error;
 
-      set({ attendedEvents: (data as AttendedEventWithDetails[]) || [] });
+      // Calculate result (win/loss/draw) based on supported_team and scores
+      const eventsWithResult = (data || []).map((attended: any) => {
+        const event = attended.event;
+        if (!event || !attended.supported_team || attended.supported_team === 'neutral') {
+          return { ...attended, result: null };
+        }
+
+        const homeScore = parseScoreValue(event.home_score);
+        const awayScore = parseScoreValue(event.away_score);
+
+        if (homeScore === null || awayScore === null) {
+          return { ...attended, result: null };
+        }
+
+        let result: 'win' | 'loss' | 'draw' | null = null;
+
+        if (homeScore === awayScore) {
+          result = 'draw';
+        } else if (attended.supported_team === 'home') {
+          result = homeScore > awayScore ? 'win' : 'loss';
+        } else if (attended.supported_team === 'away') {
+          result = awayScore > homeScore ? 'win' : 'loss';
+        }
+
+        return { ...attended, result };
+      });
+
+      set({ attendedEvents: eventsWithResult as AttendedEventWithDetails[] });
     } catch (error) {
       set({ error: (error as Error).message });
     } finally {
@@ -508,9 +546,9 @@ export const useEventsStore = create<EventsState>((set, get) => ({
       await supabase.rpc('apply_event_consensus', { p_event_id: eventId });
 
       // Refresh the attended events to get updated data
-      const { user } = await supabase.auth.getUser();
-      if (user?.user?.id) {
-        await get().fetchAttendedEvents(user.user.id);
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user?.id) {
+        await get().fetchAttendedEvents(user.id);
       }
 
       return { success: true };
