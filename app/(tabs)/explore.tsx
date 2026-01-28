@@ -19,6 +19,7 @@ import { supabase } from '@/lib/supabase';
 import { colors, spacing, fontSize, fontWeight, borderRadius } from '@/constants/theme';
 import { getSportIcon, getSportColor } from '@/constants/sports';
 import { parseLocalDate } from '@/utils/dates';
+import { parseTennisScore } from '@/utils/scores';
 import type { ReviewWithDetails } from '@/types';
 
 type SortField = 'events' | 'xp' | 'followers' | 'reviews';
@@ -47,6 +48,7 @@ export default function ExploreScreen() {
     isLoadingFollowing,
     hasMoreTrending,
     hasMoreFollowing,
+    error,
     setFeedType,
     setSportFilter,
     fetchTrendingEvents,
@@ -67,20 +69,21 @@ export default function ExploreScreen() {
   const isLoading = feedType === 'trending' ? isLoadingTrending : isLoadingFollowing;
   const hasMore = feedType === 'trending' ? hasMoreTrending : hasMoreFollowing;
 
-  // Initial fetch
+  // Initial fetch - also retry on error
   useFocusEffect(
     useCallback(() => {
       fetchSports();
       if (feedType === 'trending') {
-        if (trendingEvents.length === 0) {
+        // Fetch if no data or if there was an error
+        if (trendingEvents.length === 0 || error) {
           fetchTrendingEvents(true);
         }
       } else if (feedType === 'following' && user?.id) {
-        if (followingReviews.length === 0) {
+        if (followingReviews.length === 0 || error) {
           fetchFollowingFeed(user.id, true);
         }
       }
-    }, [feedType, user?.id])
+    }, [feedType, user?.id, error])
   );
 
   // Fetch leaderboard when tab or sort changes
@@ -207,13 +210,27 @@ export default function ExploreScreen() {
     const homeName = item.home_team_name?.split(' ').pop() || 'Home'; // Last word of team name
     const awayName = item.away_team_name?.split(' ').pop() || 'Away';
 
-    // Tennis: different format
+    // Tennis: scores stored in home_score field as "6-4, 6-3, 7-6"
     if (sport === 'tennis') {
-      // For tennis, just show the scores
-      if (homeScore && awayScore) {
-        return `${homeName}: ${homeScore} | ${awayName}: ${awayScore}`;
+      // Tennis stores the full match score in home_score field
+      const tennisResult = parseTennisScore(homeScore);
+      if (tennisResult && tennisResult.sets.length > 0) {
+        const setScores = tennisResult.sets.map(s => `${s.player1}-${s.player2}`).join(', ');
+        const p1Sets = tennisResult.player1Sets;
+        const p2Sets = tennisResult.player2Sets;
+
+        if (tennisResult.winner === 'home') {
+          return `${homeName} won ${p1Sets}-${p2Sets} (${setScores})`;
+        } else if (tennisResult.winner === 'away') {
+          return `${awayName} won ${p2Sets}-${p1Sets} (${setScores})`;
+        }
+        return `${homeName} vs ${awayName}: ${setScores}`;
       }
-      return homeScore || awayScore;
+      // Fallback if parsing fails
+      if (homeScore) {
+        return `${homeName} vs ${awayName}: ${homeScore}`;
+      }
+      return null;
     }
 
     const homeVal = parseScoreValue(homeScore);
@@ -399,6 +416,33 @@ export default function ExploreScreen() {
 
   // Render empty state
   const renderEmptyState = () => {
+    // Show error state with retry button
+    if (error && !isLoading) {
+      return (
+        <View style={styles.emptyContainer}>
+          <Ionicons name="alert-circle-outline" size={64} color={colors.error} />
+          <Text style={styles.emptyTitle}>Failed to Load</Text>
+          <Text style={styles.emptySubtitle}>
+            {error}
+          </Text>
+          <TouchableOpacity
+            style={styles.discoverButton}
+            onPress={() => {
+              if (feedType === 'trending') {
+                fetchTrendingEvents(true);
+              } else if (feedType === 'following' && user?.id) {
+                fetchFollowingFeed(user.id, true);
+              } else if (feedType === 'leaderboard') {
+                fetchLeaderboard();
+              }
+            }}
+          >
+            <Text style={styles.discoverButtonText}>Try Again</Text>
+          </TouchableOpacity>
+        </View>
+      );
+    }
+
     if (feedType === 'leaderboard') {
       if (leaderboardLoading) return null;
       return (

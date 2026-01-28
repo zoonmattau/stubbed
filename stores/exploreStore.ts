@@ -139,12 +139,15 @@ export const useExploreStore = create<ExploreStore>((set, get) => ({
         trendingOffset: offset + events.length,
         hasMoreTrending: hasMore,
         isLoadingTrending: false,
+        error: null,
       });
     } catch (error: any) {
       console.error('[ExploreStore] Error fetching trending events:', error);
       set({
-        error: error.message,
+        error: error.message || 'Failed to load trending events',
         isLoadingTrending: false,
+        // Reset offset on error so retry works correctly
+        trendingOffset: reset ? 0 : trendingOffset,
       });
     }
   },
