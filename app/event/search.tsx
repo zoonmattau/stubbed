@@ -16,6 +16,7 @@ import { router, useNavigation } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Card, Badge } from '@/components/ui';
 import { colors, spacing, fontSize, fontWeight, borderRadius } from '@/constants/theme';
+import { parseLocalDate } from '@/utils/dates';
 import {
   fetchESPNEvents,
   type ESPNSportKey,
@@ -318,7 +319,7 @@ export default function SearchEventsScreen() {
   };
 
   const formatEventDate = (dateString: string) => {
-    const date = new Date(dateString);
+    const date = parseLocalDate(dateString);
     const now = new Date();
     const diffDays = Math.ceil((date.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
     if (diffDays === 0) return 'Today';
@@ -328,7 +329,7 @@ export default function SearchEventsScreen() {
   };
 
   const formatEventTime = (dateString: string) => {
-    const date = new Date(dateString);
+    const date = parseLocalDate(dateString);
     if (isNaN(date.getTime())) return '';
     return date.toLocaleTimeString('en-AU', { hour: 'numeric', minute: '2-digit' });
   };

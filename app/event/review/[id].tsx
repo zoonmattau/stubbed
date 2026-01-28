@@ -19,6 +19,7 @@ import { useEventsStore } from '@/stores/eventsStore';
 import { useReviews } from '@/hooks/useReviews';
 import { colors, spacing, fontSize, fontWeight, borderRadius } from '@/constants/theme';
 import { getSportColor, SPORTS } from '@/constants/sports';
+import { parseLocalDate } from '@/utils/dates';
 import type { AttendedEventWithDetails } from '@/types';
 
 // Helper to get display name from sport code
@@ -184,7 +185,7 @@ export default function WriteReviewScreen() {
             {event.away_team?.name || event.away_team_name || 'Away'}
           </Text>
           <Text style={styles.matchDetails}>
-            {new Date(event.event_date).toLocaleDateString('en-AU', {
+            {parseLocalDate(event.event_date).toLocaleDateString('en-AU', {
               weekday: 'long',
               day: 'numeric',
               month: 'long',

@@ -16,6 +16,7 @@ import { useAuthStore } from '@/stores/authStore';
 import { useEventsStore } from '@/stores/eventsStore';
 import { useReviews } from '@/hooks/useReviews';
 import { colors, spacing, fontSize, fontWeight, borderRadius } from '@/constants/theme';
+import { parseLocalDate } from '@/utils/dates';
 import type { AttendedEventWithDetails } from '@/types';
 
 type SupportedTeam = 'home' | 'away' | 'neutral' | null;
@@ -131,7 +132,7 @@ export default function EditEventScreen() {
       setVenueName(found.event?.venue?.name || found.event?.venue_name || '');
       // Date/Time
       if (found.event?.event_date) {
-        const eventDate = new Date(found.event.event_date);
+        const eventDate = parseLocalDate(found.event.event_date);
         setSelectedDay(eventDate.getDate().toString());
         setSelectedMonth((eventDate.getMonth() + 1).toString());
         setSelectedYear(eventDate.getFullYear().toString());
@@ -336,7 +337,7 @@ export default function EditEventScreen() {
             {event.home_team?.name || event.home_team_name || 'Home'} vs {event.away_team?.name || event.away_team_name || 'Away'}
           </Text>
           <Text style={styles.matchDate}>
-            {new Date(event.event_date).toLocaleDateString()}
+            {parseLocalDate(event.event_date).toLocaleDateString('en-AU')}
           </Text>
         </Card>
 

@@ -9,6 +9,7 @@ import {
   Image,
   ActivityIndicator,
   Alert,
+  Modal,
 } from 'react-native';
 import { Stack, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -23,6 +24,7 @@ import {
   SportsDBLeagueKey,
 } from '@/lib/thesportsdb';
 import { colors, spacing, fontSize, fontWeight, borderRadius } from '@/constants/theme';
+import { parseLocalDate } from '@/utils/dates';
 import { useEventsStore } from '@/stores/eventsStore';
 import { useAuthStore } from '@/stores/authStore';
 import { useIsMounted } from '@/hooks/useSafeAsync';
@@ -56,13 +58,6 @@ const SPORT_CONFIGS: Record<string, SportConfig> = {
     color: '#8b5cf6',
     leagues: ['nrl_sdb'],
     sportName: 'NRL',
-  },
-  aleague: {
-    title: 'A-League',
-    icon: 'football',
-    color: '#a855f7',
-    leagues: ['aleague_sdb'],
-    sportName: 'A-League',
   },
   netball: {
     title: 'Netball',
@@ -110,7 +105,23 @@ const SPORT_CONFIGS: Record<string, SportConfig> = {
     title: 'Soccer',
     icon: 'football',
     color: '#16a34a',
-    leagues: ['aleague_sdb', 'europa_league', 'conference_league', 'fa_cup', 'copa_del_rey', 'dfb_pokal', 'coppa_italia', 'coupe_de_france', 'efl_cup', 'copa_libertadores', 'copa_sudamericana', 'copa_america', 'world_cup', 'nations_league'],
+    // Organized: A-League first (for Australian users), then top European leagues, then cups/international
+    leagues: [
+      'aleague_sdb',        // A-League (Australia)
+      'premier_league',     // England
+      'la_liga',            // Spain
+      'serie_a',            // Italy
+      'bundesliga',         // Germany
+      'ligue_1',            // France
+      'champions_league',   // European Cup
+      'europa_league',      // European Cup
+      'mls',                // USA
+      'fa_cup',             // English Cup
+      'copa_del_rey',       // Spanish Cup
+      'world_cup',          // International
+      'copa_america',       // International
+      'nations_league',     // International
+    ],
     sportName: 'Soccer',
   },
   hockey: {
@@ -130,6 +141,7 @@ export default function SportScreen() {
 
   const [activeTab, setActiveTab] = useState<TabType>('upcoming');
   const [selectedLeague, setSelectedLeague] = useState<SportsDBLeagueKey>(config.leagues[0]);
+  const [showLeagueModal, setShowLeagueModal] = useState(false);
   const [upcomingEvents, setUpcomingEvents] = useState<SportsDBSearchResult[]>([]);
   const [pastEvents, setPastEvents] = useState<SportsDBSearchResult[]>([]);
   const [standings, setStandings] = useState<StandingResult[]>([]);
@@ -199,7 +211,7 @@ export default function SportScreen() {
     loadData();
   };
 
-  const handleAddToEvents = async (event: SportsDBSearchResult) => {
+  const handleAddToEvents = async (event: SportsDBSearchResult, confirmedFuture = false) => {
     if (!user) {
       Alert.alert('Sign In Required', 'Please sign in to add events to your tracker.');
       return;
@@ -215,16 +227,34 @@ export default function SportScreen() {
       return;
     }
 
+    // Check if event is in the future (after today)
+    const eventDate = parseLocalDate(event.date);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    eventDate.setHours(0, 0, 0, 0);
+
+    if (eventDate > today && !confirmedFuture) {
+      Alert.alert(
+        'Future Event',
+        'This event hasn\'t happened yet. Are you sure you want to add it to your attendance history?',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Add Anyway', onPress: () => handleAddToEvents(event, true) },
+        ]
+      );
+      return;
+    }
+
     setAddingEventIds(prev => new Set(prev).add(event.id));
 
     try {
-      const eventDate = new Date(event.date).toISOString().split('T')[0];
+      const eventDateStr = parseLocalDate(event.date).toISOString().split('T')[0];
 
       const result = await addAttendedEvent(
         user.id,
         {
           sport_id: sportRecord.id,
-          event_date: eventDate,
+          event_date: eventDateStr,
           home_team_name: event.homeTeam.name,
           away_team_name: event.awayTeam.name,
           venue_name: event.venue?.name || event.league,
@@ -254,79 +284,97 @@ export default function SportScreen() {
     }
   };
 
-  const renderLeagueTabs = () => {
-    // Don't show tabs if there's only one league
+  const renderLeagueSelector = () => {
+    // Don't show selector if there's only one league
     if (config.leagues.length <= 1) return null;
 
+    const currentLeague = SPORTSDB_LEAGUES[selectedLeague];
+
     return (
-    <ScrollView
-      horizontal
-      showsHorizontalScrollIndicator={false}
-      style={styles.leagueTabsContainer}
-      contentContainerStyle={styles.leagueTabs}
+      <TouchableOpacity
+        style={styles.leagueSelectorButton}
+        onPress={() => setShowLeagueModal(true)}
+        activeOpacity={0.7}
+      >
+        <Text style={styles.leagueSelectorText}>{currentLeague.name}</Text>
+        <Ionicons name="chevron-down" size={16} color={colors.primary} />
+      </TouchableOpacity>
+    );
+  };
+
+  const renderLeagueModal = () => (
+    <Modal
+      visible={showLeagueModal}
+      animationType="slide"
+      transparent={true}
+      onRequestClose={() => setShowLeagueModal(false)}
     >
-      {config.leagues.map((leagueKey) => {
-        const league = SPORTSDB_LEAGUES[leagueKey];
+      <View style={styles.modalOverlay}>
+        <View style={styles.modalContent}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>Select League</Text>
+            <TouchableOpacity onPress={() => setShowLeagueModal(false)}>
+              <Ionicons name="close" size={24} color={colors.text} />
+            </TouchableOpacity>
+          </View>
+          <ScrollView style={styles.modalList}>
+            {config.leagues.map((leagueKey) => {
+              const league = SPORTSDB_LEAGUES[leagueKey];
+              const isSelected = selectedLeague === leagueKey;
+              return (
+                <TouchableOpacity
+                  key={leagueKey}
+                  style={[styles.leagueOption, isSelected && styles.leagueOptionSelected]}
+                  onPress={() => {
+                    setSelectedLeague(leagueKey);
+                    setShowLeagueModal(false);
+                  }}
+                >
+                  <Text style={[styles.leagueOptionText, isSelected && styles.leagueOptionTextSelected]}>
+                    {league.name}
+                  </Text>
+                  {isSelected && (
+                    <Ionicons name="checkmark" size={20} color={colors.primary} />
+                  )}
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+        </View>
+      </View>
+    </Modal>
+  );
+
+  const renderTypeTabs = () => (
+    <View style={styles.typeTabsContainer}>
+      {(['upcoming', 'results', 'ladder'] as TabType[]).map((tab) => {
+        const icons: Record<TabType, string> = {
+          upcoming: 'calendar-outline',
+          results: 'checkmark-circle-outline',
+          ladder: 'podium-outline',
+        };
+        const labels: Record<TabType, string> = {
+          upcoming: 'Upcoming',
+          results: 'Results',
+          ladder: 'Ladder',
+        };
         return (
           <TouchableOpacity
-            key={leagueKey}
-            style={[styles.leagueTab, selectedLeague === leagueKey && styles.leagueTabActive]}
-            onPress={() => setSelectedLeague(leagueKey)}
+            key={tab}
+            style={[styles.typeTab, activeTab === tab && styles.typeTabActive]}
+            onPress={() => setActiveTab(tab)}
           >
-            <Text style={[
-              styles.leagueTabText,
-              selectedLeague === leagueKey && styles.leagueTabTextActive
-            ]}>
-              {league.name}
+            <Ionicons
+              name={icons[tab] as any}
+              size={12}
+              color={activeTab === tab ? colors.white : colors.textSecondary}
+            />
+            <Text style={[styles.typeTabText, activeTab === tab && styles.typeTabTextActive]}>
+              {labels[tab]}
             </Text>
           </TouchableOpacity>
         );
       })}
-    </ScrollView>
-  );
-  };
-
-  const renderTypeTabs = () => (
-    <View style={styles.typeTabsContainer}>
-      <TouchableOpacity
-        style={[styles.typeTab, activeTab === 'upcoming' && styles.typeTabActive]}
-        onPress={() => setActiveTab('upcoming')}
-      >
-        <Ionicons
-          name="calendar-outline"
-          size={14}
-          color={activeTab === 'upcoming' ? colors.white : colors.textSecondary}
-        />
-        <Text style={[styles.typeTabText, activeTab === 'upcoming' && styles.typeTabTextActive]}>
-          Upcoming
-        </Text>
-      </TouchableOpacity>
-      <TouchableOpacity
-        style={[styles.typeTab, activeTab === 'results' && styles.typeTabActive]}
-        onPress={() => setActiveTab('results')}
-      >
-        <Ionicons
-          name="checkmark-circle-outline"
-          size={14}
-          color={activeTab === 'results' ? colors.white : colors.textSecondary}
-        />
-        <Text style={[styles.typeTabText, activeTab === 'results' && styles.typeTabTextActive]}>
-          Results
-        </Text>
-      </TouchableOpacity>
-      <TouchableOpacity
-        style={[styles.typeTab, activeTab === 'ladder' && styles.typeTabActive]}
-        onPress={() => setActiveTab('ladder')}
-      >
-        <Ionicons
-          name="podium-outline"
-          size={14}
-          color={activeTab === 'ladder' ? colors.white : colors.textSecondary}
-        />
-        <Text style={[styles.typeTabText, activeTab === 'ladder' && styles.typeTabTextActive]}>
-          Ladder
-        </Text>
-      </TouchableOpacity>
     </View>
   );
 
@@ -401,7 +449,7 @@ export default function SportScreen() {
 
   const renderEventCard = (event: SportsDBSearchResult) => {
     const isAdding = addingEventIds.has(event.id);
-    const eventDate = new Date(event.date);
+    const eventDate = parseLocalDate(event.date);
     const isCompleted = event.status === 'completed';
     const roundDisplay = formatRound(event.round);
 
@@ -479,50 +527,52 @@ export default function SportScreen() {
         )}
 
         <View style={styles.eventFooter}>
-          <View style={styles.dateContainer}>
-            <Ionicons name="calendar-outline" size={12} color={colors.textMuted} />
-            <Text style={styles.dateText}>
-              {eventDate.toLocaleDateString('en-AU', {
-                weekday: 'short',
-                day: 'numeric',
-                month: 'short',
-              })}
-            </Text>
-          </View>
-          {eventDate.getHours() !== 0 && (
-            <View style={styles.timeContainer}>
-              <Ionicons name="time-outline" size={12} color={colors.textMuted} />
+          <View style={styles.footerInfo}>
+            <View style={styles.dateContainer}>
+              <Ionicons name="calendar-outline" size={12} color={colors.textMuted} />
               <Text style={styles.dateText}>
-                {eventDate.toLocaleTimeString('en-AU', {
-                  hour: '2-digit',
-                  minute: '2-digit',
+                {eventDate.toLocaleDateString('en-AU', {
+                  weekday: 'short',
+                  day: 'numeric',
+                  month: 'short',
                 })}
               </Text>
             </View>
-          )}
-          {event.venue && (
-            <View style={styles.venueContainer}>
-              <Ionicons name="location-outline" size={12} color={colors.textMuted} />
-              <Text style={styles.venueText} numberOfLines={1}>{event.venue.name}</Text>
-            </View>
-          )}
-        </View>
+            {eventDate.getHours() !== 0 && (
+              <View style={styles.timeContainer}>
+                <Ionicons name="time-outline" size={12} color={colors.textMuted} />
+                <Text style={styles.dateText}>
+                  {eventDate.toLocaleTimeString('en-AU', {
+                    hour: '2-digit',
+                    minute: '2-digit',
+                  })}
+                </Text>
+              </View>
+            )}
+            {event.venue && (
+              <View style={styles.venueContainer}>
+                <Ionicons name="location-outline" size={12} color={colors.textMuted} />
+                <Text style={styles.venueText} numberOfLines={1}>{event.venue.name}</Text>
+              </View>
+            )}
+          </View>
 
-        <TouchableOpacity
-          style={[styles.addButton, isAdding && styles.addButtonDisabled]}
-          onPress={() => handleAddToEvents(event)}
-          disabled={isAdding}
-          activeOpacity={0.7}
-        >
-          {isAdding ? (
-            <ActivityIndicator size="small" color={colors.white} />
-          ) : (
-            <>
-              <Ionicons name="add" size={14} color={colors.white} />
-              <Text style={styles.addButtonText}>Add</Text>
-            </>
-          )}
-        </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.addButton, isAdding && styles.addButtonDisabled]}
+            onPress={() => handleAddToEvents(event)}
+            disabled={isAdding}
+            activeOpacity={0.7}
+          >
+            {isAdding ? (
+              <ActivityIndicator size="small" color={colors.white} />
+            ) : (
+              <>
+                <Ionicons name="add" size={14} color={colors.white} />
+                <Text style={styles.addButtonText}>Add</Text>
+              </>
+            )}
+          </TouchableOpacity>
+        </View>
       </Card>
     );
   };
@@ -578,13 +628,14 @@ export default function SportScreen() {
       <Stack.Screen
         options={{
           title: config.title,
-          headerStyle: { backgroundColor: colors.background },
-          headerTintColor: colors.text,
         }}
       />
       <View style={styles.container}>
-        {renderLeagueTabs()}
-        {renderTypeTabs()}
+        <View style={styles.controlsRow}>
+          {renderLeagueSelector()}
+          {renderTypeTabs()}
+        </View>
+        {renderLeagueModal()}
 
         <ScrollView
           style={styles.content}
@@ -613,61 +664,108 @@ const styles = StyleSheet.create({
     padding: spacing.lg,
     paddingBottom: spacing['3xl'],
   },
-  leagueTabsContainer: {
+  controlsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
     backgroundColor: colors.surface,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
-  },
-  leagueTabs: {
-    flexDirection: 'row',
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
     gap: spacing.sm,
   },
-  leagueTab: {
+  leagueSelectorButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.primary + '15',
     paddingVertical: spacing.xs,
-    paddingHorizontal: spacing.md,
-    borderRadius: borderRadius.full,
-    backgroundColor: colors.surfaceLight,
+    paddingHorizontal: spacing.sm,
+    borderRadius: borderRadius.md,
+    borderWidth: 1,
+    borderColor: colors.primary + '30',
+    gap: spacing.xs,
   },
-  leagueTabActive: {
-    backgroundColor: colors.primary,
-  },
-  leagueTabText: {
+  leagueSelectorText: {
     fontSize: fontSize.xs,
-    fontWeight: fontWeight.medium,
-    color: colors.textSecondary,
-  },
-  leagueTabTextActive: {
-    color: colors.white,
+    fontWeight: fontWeight.semibold,
+    color: colors.primary,
+    maxWidth: 120,
   },
   typeTabsContainer: {
     flexDirection: 'row',
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    gap: spacing.sm,
-    backgroundColor: colors.background,
+    flex: 1,
+    justifyContent: 'flex-end',
+    gap: spacing.xs,
   },
   typeTab: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: spacing.xs,
-    paddingHorizontal: spacing.md,
+    paddingVertical: 4,
+    paddingHorizontal: spacing.sm,
     borderRadius: borderRadius.full,
     backgroundColor: colors.surfaceLight,
-    gap: 4,
+    gap: 2,
   },
   typeTabActive: {
     backgroundColor: colors.primary,
   },
   typeTabText: {
-    fontSize: fontSize.xs,
+    fontSize: 10,
     fontWeight: fontWeight.medium,
     color: colors.textSecondary,
   },
   typeTabTextActive: {
     color: colors.white,
+  },
+  // Modal styles
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-end',
+  },
+  modalContent: {
+    backgroundColor: colors.background,
+    borderTopLeftRadius: borderRadius.xl,
+    borderTopRightRadius: borderRadius.xl,
+    maxHeight: '70%',
+    paddingBottom: spacing.xl,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: spacing.lg,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  modalTitle: {
+    fontSize: fontSize.lg,
+    fontWeight: fontWeight.bold,
+    color: colors.text,
+  },
+  modalList: {
+    paddingHorizontal: spacing.md,
+  },
+  leagueOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  leagueOptionSelected: {
+    backgroundColor: colors.primary + '10',
+  },
+  leagueOptionText: {
+    fontSize: fontSize.md,
+    color: colors.text,
+  },
+  leagueOptionTextSelected: {
+    fontWeight: fontWeight.semibold,
+    color: colors.primary,
   },
   loadingContainer: {
     alignItems: 'center',
@@ -784,11 +882,18 @@ const styles = StyleSheet.create({
   eventFooter: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.sm,
+    justifyContent: 'space-between',
     marginTop: spacing.sm,
     paddingTop: spacing.xs,
     borderTopWidth: 1,
     borderTopColor: colors.border,
+  },
+  footerInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    flex: 1,
+    flexWrap: 'wrap',
   },
   dateContainer: {
     flexDirection: 'row',
@@ -809,6 +914,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 2,
     flex: 1,
+    minWidth: 60,
   },
   venueText: {
     fontSize: 10,
@@ -816,18 +922,14 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   addButton: {
-    position: 'absolute',
-    bottom: spacing.sm,
-    right: spacing.sm,
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: colors.primary,
-    paddingVertical: spacing.xs,
+    paddingVertical: 4,
     paddingHorizontal: spacing.sm,
     borderRadius: borderRadius.full,
-    gap: 4,
-    borderWidth: 1,
-    borderColor: colors.primary + '30',
+    gap: 2,
+    marginLeft: spacing.sm,
   },
   addButtonDisabled: {
     opacity: 0.5,

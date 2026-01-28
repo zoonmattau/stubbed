@@ -20,7 +20,7 @@ import { InteractiveBarChart, BarChartItem, DonutChart, DonutSegment } from '@/c
 import { useAuthStore } from '@/stores/authStore';
 import { useEventsStore } from '@/stores/eventsStore';
 import { colors, spacing, fontSize, fontWeight, borderRadius } from '@/constants/theme';
-import { sortByDate } from '@/utils/dates';
+import { sortByDate, parseLocalDate } from '@/utils/dates';
 import { getSportColor } from '@/constants/sports';
 import { useIsMounted } from '@/hooks/useSafeAsync';
 import type { AttendedEventWithDetails } from '@/types';
@@ -37,10 +37,9 @@ interface SportCategory {
   route: string;
 }
 
-// Sorted alphabetically
+// Sorted alphabetically - A-League is inside Soccer, not separate
 const LIVE_SPORTS: SportCategory[] = [
   { id: 'afl', name: 'AFL', icon: 'football', color: '#3b82f6', route: '/sports/afl' },
-  { id: 'aleague', name: 'A-League', icon: 'football', color: '#a855f7', route: '/sports/aleague' },
   { id: 'basketball', name: 'Basketball', icon: 'basketball', color: '#f97316', route: '/sports/basketball' },
   { id: 'cricket', name: 'Cricket', icon: 'baseball', color: '#22c55e', route: '/sports/cricket' },
   { id: 'golf', name: 'Golf', icon: 'golf', color: '#10b981', route: '/sports/golf' },
@@ -49,7 +48,7 @@ const LIVE_SPORTS: SportCategory[] = [
   { id: 'netball', name: 'Netball', icon: 'people', color: '#ec4899', route: '/sports/netball' },
   { id: 'nrl', name: 'NRL', icon: 'football-outline', color: '#8b5cf6', route: '/sports/nrl' },
   { id: 'rugby', name: 'Rugby Union', icon: 'american-football', color: '#f59e0b', route: '/sports/rugby' },
-  { id: 'soccer', name: 'Soccer Cups', icon: 'football', color: '#16a34a', route: '/sports/soccer' },
+  { id: 'soccer', name: 'Soccer', icon: 'football', color: '#16a34a', route: '/sports/soccer' },
   { id: 'tennis', name: 'Tennis', icon: 'tennisball', color: '#84cc16', route: '/tennis' },
   { id: 'combat', name: 'UFC & Boxing', icon: 'fitness', color: '#f97316', route: '/sports/combat' },
 ];
@@ -224,7 +223,7 @@ export default function EventsScreen() {
     attendedEvents.forEach((attended) => {
       const event = attended.event;
       if (!event?.event_date) return;
-      const date = new Date(event.event_date);
+      const date = parseLocalDate(event.event_date);
       const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
       if (!monthCounts[monthKey]) {
         monthCounts[monthKey] = 0;
@@ -255,7 +254,7 @@ export default function EventsScreen() {
     return attendedEvents.filter((attended) => {
       const event = attended.event;
       if (!event?.event_date) return false;
-      const date = new Date(event.event_date);
+      const date = parseLocalDate(event.event_date);
       const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
       return key === monthKey;
     });
@@ -961,7 +960,7 @@ export default function EventsScreen() {
                       <Text style={styles.statsModalEventScore}>{event.home_score} - {event.away_score}</Text>
                     )}
                     <Text style={styles.statsModalEventDate}>
-                      {new Date(event.event_date).toLocaleDateString('en-AU', {
+                      {parseLocalDate(event.event_date).toLocaleDateString('en-AU', {
                         day: 'numeric',
                         month: 'short',
                         year: 'numeric',

@@ -12,6 +12,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Card } from '@/components/ui';
 import { useEventsStore } from '@/stores/eventsStore';
 import { colors, spacing, fontSize, fontWeight, borderRadius } from '@/constants/theme';
+import { parseLocalDate } from '@/utils/dates';
 
 const { width: screenWidth } = Dimensions.get('window');
 
@@ -357,7 +358,7 @@ export default function MapStatsScreen() {
                     {event.venue}
                   </Text>
                   <Text style={styles.eventDate}>
-                    {new Date(event.date).toLocaleDateString('en-AU', {
+                    {parseLocalDate(event.date).toLocaleDateString('en-AU', {
                       day: 'numeric',
                       month: 'short',
                       year: 'numeric',

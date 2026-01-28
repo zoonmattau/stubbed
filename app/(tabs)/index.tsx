@@ -23,6 +23,7 @@ import { usePoints, POINTS } from '@/hooks/usePoints';
 import { useEventInvitations } from '@/hooks/useEventInvitations';
 import { colors, spacing, fontSize, fontWeight, borderRadius } from '@/constants/theme';
 import { LEVELS, getCurrentLevel, getNextLevel, getLevelProgress } from '@/constants/levels';
+import { parseLocalDate } from '@/utils/dates';
 
 export default function HomeScreen() {
   const { user, profile } = useAuthStore();
@@ -129,8 +130,8 @@ export default function HomeScreen() {
 
     // Sort by date to calculate discovery bonuses correctly
     const sortedEvents = [...attendedEvents].sort((a, b) => {
-      const dateA = new Date(a.event?.event_date || a.created_at);
-      const dateB = new Date(b.event?.event_date || b.created_at);
+      const dateA = parseLocalDate(a.event?.event_date || a.created_at);
+      const dateB = parseLocalDate(b.event?.event_date || b.created_at);
       return dateA.getTime() - dateB.getTime();
     });
 

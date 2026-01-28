@@ -10,7 +10,7 @@ import {
   ActivityIndicator,
   Alert,
 } from 'react-native';
-import { Stack } from 'expo-router';
+import { Stack, router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Card } from '@/components/ui';
 import {
@@ -25,8 +25,8 @@ import {
   CATEGORY_LABELS,
 } from '@/lib/apitennis';
 import { colors, spacing, fontSize, fontWeight, borderRadius } from '@/constants/theme';
-import { useEventsStore } from '@/stores/eventsStore';
 import { useAuthStore } from '@/stores/authStore';
+import { parseLocalDate } from '@/utils/dates';
 
 type TabType = 'live' | 'upcoming' | 'atp' | 'wta';
 
@@ -42,15 +42,8 @@ export default function TennisScreen() {
 
   // Collapsible state: { "tournamentName": true/false, "tournamentName:category": true/false }
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({});
-  const [addingMatchIds, setAddingMatchIds] = useState<Set<string>>(new Set());
 
-  const { addAttendedEvent, sports, fetchSports } = useEventsStore();
   const { user } = useAuthStore();
-
-  // Fetch sports to find Tennis sport ID
-  useEffect(() => {
-    fetchSports();
-  }, [fetchSports]);
 
   const handleAddToEvents = async (match: TennisMatchResult) => {
     if (!user) {
@@ -58,48 +51,35 @@ export default function TennisScreen() {
       return;
     }
 
-    // Find tennis sport
-    const tennisSport = sports.find(s => s.name.toLowerCase() === 'tennis');
-    if (!tennisSport) {
-      Alert.alert('Error', 'Tennis sport not found. Please try again later.');
-      return;
-    }
+    // Build the full set score string from setScores array (e.g., "6-4, 6-3, 7-5")
+    const fullScoreString = match.setScores.length > 0
+      ? match.setScores.map(set => {
+          let scoreStr = `${set.player1}-${set.player2}`;
+          // Add tiebreak notation if present
+          if (set.player1Tiebreak || set.player2Tiebreak) {
+            scoreStr += `(${set.player1Tiebreak || set.player2Tiebreak})`;
+          }
+          return scoreStr;
+        }).join(', ')
+      : '';
 
-    setAddingMatchIds(prev => new Set(prev).add(match.id));
-
-    try {
-      const result = await addAttendedEvent(
-        user.id,
-        {
-          sport_id: tennisSport.id,
-          event_date: match.date,
-          home_team_name: match.player1.name,
-          away_team_name: match.player2.name,
-          venue_name: match.tournament.name,
-          home_score: match.status === 'completed' ? match.score.split('-')[0]?.trim() : undefined,
-          away_score: match.status === 'completed' ? match.score.split('-')[1]?.trim() : undefined,
-          competition: match.tournament.name,
-          round: match.tournament.round,
-        },
-        {
-          notes: `${CATEGORY_LABELS[match.category] || match.eventType}`,
-        }
-      );
-
-      if (result.success) {
-        Alert.alert('Added!', 'Match added to your events.');
-      } else {
-        Alert.alert('Error', result.error || 'Failed to add event.');
-      }
-    } catch (error) {
-      Alert.alert('Error', 'Failed to add event. Please try again.');
-    } finally {
-      setAddingMatchIds(prev => {
-        const next = new Set(prev);
-        next.delete(match.id);
-        return next;
-      });
-    }
+    // Navigate to manual form with prefilled data so user can review/edit
+    router.push({
+      pathname: '/event/manual',
+      params: {
+        espnEvent: JSON.stringify({
+          sport: 'tennis',
+          league: match.tournament.name,
+          date: `${match.date}T${match.time || '12:00'}`,
+          status: match.status,
+          homeTeam: { name: match.player1.name, logo: match.player1.logo },
+          awayTeam: { name: match.player2.name, logo: match.player2.logo },
+          homeScore: fullScoreString,
+          awayScore: '', // Tennis uses single score field
+          venue: { name: match.tournament.name },
+        }),
+      },
+    });
   };
 
   const toggleTournament = (tournament: string) => {
@@ -246,8 +226,6 @@ export default function TennisScreen() {
   );
 
   const renderMatchCard = (match: TennisMatchResult, showTournament = true, showAddButton = false) => {
-    const isAdding = addingMatchIds.has(match.id);
-
     return (
     <Card key={match.id} style={styles.matchCard}>
       <View style={styles.matchHeader}>
@@ -371,7 +349,7 @@ export default function TennisScreen() {
         <View style={styles.matchFooter}>
           <Ionicons name="time-outline" size={14} color={colors.textMuted} />
           <Text style={styles.matchTime}>
-            {new Date(match.date + 'T' + match.time).toLocaleString('en-AU', {
+            {parseLocalDate(match.date + 'T' + match.time).toLocaleString('en-AU', {
               weekday: 'short',
               month: 'short',
               day: 'numeric',
@@ -389,21 +367,16 @@ export default function TennisScreen() {
       )}
 
       {showAddButton && (
-        <TouchableOpacity
-          style={[styles.addButton, isAdding && styles.addButtonDisabled]}
-          onPress={() => handleAddToEvents(match)}
-          disabled={isAdding}
-          activeOpacity={0.7}
-        >
-          {isAdding ? (
-            <ActivityIndicator size="small" color={colors.primary} />
-          ) : (
-            <>
-              <Ionicons name="add" size={14} color={colors.primary} />
-              <Text style={styles.addButtonText}>Add</Text>
-            </>
-          )}
-        </TouchableOpacity>
+        <View style={styles.addButtonFooter}>
+          <TouchableOpacity
+            style={styles.addButton}
+            onPress={() => handleAddToEvents(match)}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="add" size={16} color={colors.primary} />
+            <Text style={styles.addButtonText}>Add to My Events</Text>
+          </TouchableOpacity>
+        </View>
       )}
     </Card>
   );
@@ -628,8 +601,6 @@ export default function TennisScreen() {
       <Stack.Screen
         options={{
           title: 'Tennis',
-          headerStyle: { backgroundColor: colors.background },
-          headerTintColor: colors.text,
         }}
       />
       <View style={styles.container}>
@@ -980,25 +951,26 @@ const styles = StyleSheet.create({
     fontWeight: fontWeight.semibold,
     color: colors.primary,
   },
+  addButtonFooter: {
+    marginTop: spacing.md,
+    paddingTop: spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
   addButton: {
-    position: 'absolute',
-    bottom: spacing.sm,
-    right: spacing.sm,
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
     backgroundColor: colors.primary + '15',
-    paddingVertical: 4,
-    paddingHorizontal: spacing.sm,
-    borderRadius: borderRadius.full,
-    gap: 2,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    borderRadius: borderRadius.md,
+    gap: spacing.xs,
     borderWidth: 1,
     borderColor: colors.primary + '30',
   },
-  addButtonDisabled: {
-    opacity: 0.5,
-  },
   addButtonText: {
-    fontSize: fontSize.xs,
+    fontSize: fontSize.sm,
     fontWeight: fontWeight.semibold,
     color: colors.primary,
   },

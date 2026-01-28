@@ -5,6 +5,7 @@ import { Card, Badge } from '@/components/ui';
 import { ProgressBar } from '@/components/stats';
 import { colors, spacing, fontSize, fontWeight, borderRadius } from '@/constants/theme';
 import { getRarityColor } from '@/constants/achievements';
+import { parseLocalDate } from '@/utils/dates';
 import type { AchievementWithStatus } from '@/types';
 
 interface AchievementCardProps {
@@ -94,7 +95,7 @@ export function AchievementCard({
             {isUnlocked && achievement.unlocked_at && (
               <Text style={styles.unlockedDate}>
                 Unlocked{' '}
-                {new Date(achievement.unlocked_at).toLocaleDateString('en-AU', {
+                {parseLocalDate(achievement.unlocked_at).toLocaleDateString('en-AU', {
                   day: 'numeric',
                   month: 'short',
                   year: 'numeric',

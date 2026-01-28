@@ -20,6 +20,7 @@ import { useStatsStore } from '@/stores/statsStore';
 import { useEventsStore } from '@/stores/eventsStore';
 import { colors, spacing, fontSize, fontWeight, borderRadius } from '@/constants/theme';
 import { getSportColor } from '@/constants/sports';
+import { parseLocalDate } from '@/utils/dates';
 import type { AttendedEventWithDetails } from '@/types';
 
 const { width } = Dimensions.get('window');
@@ -231,7 +232,7 @@ export default function StatsScreen() {
     return attendedEvents.filter((attended) => {
       const event = attended.event;
       if (!event?.event_date) return false;
-      const date = new Date(event.event_date);
+      const date = parseLocalDate(event.event_date);
       const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
       return key === monthKey;
     });
@@ -381,7 +382,7 @@ export default function StatsScreen() {
       const event = attended.event;
       if (!event?.event_date) return;
 
-      const date = new Date(event.event_date);
+      const date = parseLocalDate(event.event_date);
       const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
       const monthLabel = date.toLocaleDateString('en-AU', { month: 'short', year: 'numeric' });
 
@@ -744,7 +745,7 @@ export default function StatsScreen() {
                         <Text style={styles.modalEventScore}>{event.home_score} - {event.away_score}</Text>
                       )}
                       <Text style={styles.modalEventDate}>
-                        {new Date(event.event_date).toLocaleDateString('en-AU', {
+                        {parseLocalDate(event.event_date).toLocaleDateString('en-AU', {
                           day: 'numeric',
                           month: 'short',
                           year: 'numeric',

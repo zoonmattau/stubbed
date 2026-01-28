@@ -132,6 +132,8 @@ export const useStatsStore = create<StatsState>((set, get) => ({
 
   fetchAchievements: async (userId) => {
     try {
+      console.log('[Stats] fetchAchievements: Loading achievements for user:', userId);
+
       // Fetch user's unlocked achievements
       const { data: unlockedData, error } = await supabase
         .from('user_achievements')
@@ -148,6 +150,9 @@ export const useStatsStore = create<StatsState>((set, get) => ({
       // Type assertion for Supabase join query result
       const typedData = (unlockedData || []) as any[];
       const unlockedIds = new Set(typedData.map((ua) => ua.achievement_id));
+
+      console.log('[Stats] fetchAchievements: Found', typedData.length, 'unlocked achievements');
+      console.log('[Stats] fetchAchievements: Unlocked codes:', typedData.map(ua => ua.achievement?.code).filter(Boolean));
 
       // Map all achievements with unlock status
       const allAchievements: AchievementWithStatus[] = ACHIEVEMENTS.map((achievement) => {
@@ -171,6 +176,11 @@ export const useStatsStore = create<StatsState>((set, get) => ({
         };
       });
 
+      const unlockedCount = allAchievements.filter(a => a.unlocked).length;
+      console.log('[Stats] fetchAchievements: Setting state with', unlockedCount, 'unlocked out of', allAchievements.length);
+      console.log('[Stats] fetchAchievements: team_loyal_2 unlocked?', allAchievements.find(a => a.code === 'team_loyal_2')?.unlocked);
+      console.log('[Stats] fetchAchievements: home_ground_2 unlocked?', allAchievements.find(a => a.code === 'home_ground_2')?.unlocked);
+
       set({
         achievements: allAchievements,
         unlockedAchievements: (unlockedData as UserAchievement[]) || [],
@@ -186,6 +196,7 @@ export const useStatsStore = create<StatsState>((set, get) => ({
 
   recalculateAchievements: async (userId) => {
     try {
+      console.log('[Stats] ========================================');
       console.log('[Stats] Recalculating achievements for user:', userId);
 
       // Fetch current user stats from the database
@@ -229,25 +240,25 @@ export const useStatsStore = create<StatsState>((set, get) => ({
           uniqueSports.add(`name:${event.sport_name.toLowerCase()}`);
         }
 
-        // Count venues - use venue_id or venue_name
-        const venueKey = event.venue_id || (event.venue_name ? `name:${event.venue_name.toLowerCase()}` : null);
-        if (venueKey) {
-          uniqueVenues.add(venueKey);
-          venueCounts[venueKey] = (venueCounts[venueKey] || 0) + 1;
+        // Count venues - always use display name for consistency
+        const venueName = (event.venue?.name || event.venue_name || '').toLowerCase();
+        if (venueName) {
+          uniqueVenues.add(venueName);
+          venueCounts[venueName] = (venueCounts[venueName] || 0) + 1;
         }
 
-        // Count home team - use home_team_id or home_team_name
-        const homeTeamKey = event.home_team_id || (event.home_team_name ? `name:${event.home_team_name.toLowerCase()}` : null);
-        if (homeTeamKey) {
-          uniqueTeams.add(homeTeamKey);
-          teamCounts[homeTeamKey] = (teamCounts[homeTeamKey] || 0) + 1;
+        // Count home team - always use display name for consistency
+        const homeTeamName = (event.home_team?.name || event.home_team_name || '').toLowerCase();
+        if (homeTeamName) {
+          uniqueTeams.add(homeTeamName);
+          teamCounts[homeTeamName] = (teamCounts[homeTeamName] || 0) + 1;
         }
 
-        // Count away team - use away_team_id or away_team_name
-        const awayTeamKey = event.away_team_id || (event.away_team_name ? `name:${event.away_team_name.toLowerCase()}` : null);
-        if (awayTeamKey) {
-          uniqueTeams.add(awayTeamKey);
-          teamCounts[awayTeamKey] = (teamCounts[awayTeamKey] || 0) + 1;
+        // Count away team - always use display name for consistency
+        const awayTeamName = (event.away_team?.name || event.away_team_name || '').toLowerCase();
+        if (awayTeamName) {
+          uniqueTeams.add(awayTeamName);
+          teamCounts[awayTeamName] = (teamCounts[awayTeamName] || 0) + 1;
         }
       });
 
@@ -257,6 +268,17 @@ export const useStatsStore = create<StatsState>((set, get) => ({
       const maxSameVenue = Object.values(venueCounts).length > 0
         ? Math.max(...Object.values(venueCounts))
         : 0;
+
+      console.log('[Stats] Achievement evaluation counts:', {
+        totalEvents,
+        uniqueTeams: uniqueTeams.size,
+        uniqueVenues: uniqueVenues.size,
+        uniqueSports: uniqueSports.size,
+        maxSameTeam,
+        maxSameVenue,
+        teamsList: Array.from(uniqueTeams),
+        venuesList: Array.from(uniqueVenues),
+      });
 
       // Fetch user's current unlocked achievements
       const { data: unlockedData, error: unlockedError } = await supabase
@@ -270,6 +292,10 @@ export const useStatsStore = create<StatsState>((set, get) => ({
       }
 
       const currentUnlocked = unlockedData || [];
+      console.log('[Stats] Current unlocked user_achievements:', currentUnlocked.length, 'records');
+      console.log('[Stats] Unlocked with valid achievement join:', currentUnlocked.filter(ua => ua.achievement).map(ua => ua.achievement?.code));
+      console.log('[Stats] Orphaned (no achievement join):', currentUnlocked.filter(ua => !ua.achievement).length, 'records');
+
       const achievementsToRevoke: string[] = [];
 
       // Define supported requirement keys
@@ -348,6 +374,17 @@ export const useStatsStore = create<StatsState>((set, get) => ({
           const req = achievement.requirementValue;
           const reqKeys = Object.keys(req);
 
+          // Debug log for loyalty achievements
+          if (req.sameTeam !== undefined || req.sameVenue !== undefined) {
+            console.log(`[Stats] Checking ${achievement.code}:`, {
+              requirement: req,
+              maxSameTeam,
+              maxSameVenue,
+              wouldQualify: (req.sameTeam === undefined || maxSameTeam >= (req.sameTeam as number)) &&
+                           (req.sameVenue === undefined || maxSameVenue >= (req.sameVenue as number))
+            });
+          }
+
           // Skip achievements with unsupported requirements (e.g., finalsGames, grandFinals)
           const hasUnsupportedReq = reqKeys.some(key => !supportedRequirements.includes(key));
           if (hasUnsupportedReq) continue;
@@ -378,47 +415,116 @@ export const useStatsStore = create<StatsState>((set, get) => ({
             achievementsToGrant.push(achievement.code);
           }
         }
-        // Note: 'specific' and 'streak' types require more complex checking - skip for now
+
+        // Check specific achievements
+        if (achievement.requirementType === 'specific') {
+          const req = achievement.requirementValue;
+          let qualifies = false;
+
+          for (const ae of attendedEvents) {
+            const event = (ae as any).event;
+            if (!event) continue;
+
+            // Check competition name (Australian Open, Ashes, State of Origin, World Cup, Olympics)
+            if (req.competition !== undefined) {
+              const competition = (event.competition || '').toLowerCase();
+              const targetComp = (req.competition as string).toLowerCase();
+              if (competition.includes(targetComp) || targetComp.includes(competition)) {
+                qualifies = true;
+                break;
+              }
+            }
+
+            // Check time of day (evening = after 6pm)
+            if (req.timeOfDay === 'evening') {
+              const eventTime = event.event_time;
+              if (eventTime) {
+                const hour = parseInt(eventTime.split(':')[0], 10);
+                if (hour >= 18) {
+                  qualifies = true;
+                  break;
+                }
+              }
+            }
+
+            // Check round (Finals, Grand Final, Championship)
+            if (req.round !== undefined) {
+              const round = (event.round || '').toLowerCase();
+              const targetRound = (req.round as string).toLowerCase();
+              if (round.includes(targetRound) || round.includes('final') && targetRound.includes('final')) {
+                qualifies = true;
+                break;
+              }
+            }
+
+            // Check specific events (boxing_day_test, super_bowl)
+            if (req.event !== undefined) {
+              const eventName = (event.event_name || event.competition || '').toLowerCase();
+              const venueName = (event.venue?.name || event.venue_name || '').toLowerCase();
+              const eventDate = event.event_date || '';
+              const targetEvent = (req.event as string).toLowerCase();
+
+              // Boxing Day Test: MCG venue + December 26
+              if (targetEvent === 'boxing_day_test') {
+                if (venueName.includes('mcg') || venueName.includes('melbourne cricket ground')) {
+                  const date = new Date(eventDate);
+                  if (date.getMonth() === 11 && date.getDate() === 26) { // December 26
+                    qualifies = true;
+                    break;
+                  }
+                }
+              }
+
+              // Super Bowl
+              if (targetEvent === 'super_bowl' && eventName.includes('super bowl')) {
+                qualifies = true;
+                break;
+              }
+            }
+
+            // Check match type (derby, international)
+            if (req.matchType !== undefined) {
+              const matchType = (req.matchType as string).toLowerCase();
+
+              if (matchType === 'international') {
+                // Check if competition suggests international (World Cup, Test, International)
+                const competition = (event.competition || '').toLowerCase();
+                if (competition.includes('international') ||
+                    competition.includes('world cup') ||
+                    competition.includes('test') ||
+                    competition.includes('nations')) {
+                  qualifies = true;
+                  break;
+                }
+              }
+
+              // Derby detection would need team rivalry data - skip for now
+            }
+          }
+
+          if (qualifies) {
+            achievementsToGrant.push(achievement.code);
+          }
+        }
       }
 
       // Grant new achievements
       if (achievementsToGrant.length > 0) {
-        console.log('[Stats] Granting new achievements:', achievementsToGrant);
+        console.log('[Stats] Achievements to grant:', achievementsToGrant);
 
-        // First, ensure all achievements exist in the database (upsert from constants)
-        const achievementDefs = achievementsToGrant.map(code => {
-          const def = ACHIEVEMENTS.find(a => a.code === code)!;
-          return {
-            code: def.code,
-            name: def.name,
-            description: def.description,
-            icon: def.icon,
-            category: def.category,
-            requirement_type: def.requirementType,
-            requirement_value: def.requirementValue,
-            points: def.points,
-            rarity: def.rarity,
-          };
-        });
-
-        // Upsert achievements to ensure they exist
-        const { error: upsertError } = await supabase
-          .from('achievements')
-          .upsert(achievementDefs, { onConflict: 'code' });
-
-        if (upsertError) {
-          console.error('[Stats] Error upserting achievements:', upsertError);
-        }
-
-        // Now get achievement IDs from the database
+        // Get achievement IDs from the database (achievements are pre-populated via migration)
         const { data: achievementRecords, error: fetchError } = await supabase
           .from('achievements')
           .select('id, code')
           .in('code', achievementsToGrant);
 
+        console.log('[Stats] Achievement records from DB:', achievementRecords);
+
         if (fetchError) {
           console.error('[Stats] Error fetching achievement records:', fetchError);
         } else if (achievementRecords && achievementRecords.length > 0) {
+          console.log('[Stats] Achievement records found:', achievementRecords);
+
           // Insert user_achievements records
           const userAchievements = achievementRecords.map(a => ({
             user_id: userId,
@@ -426,16 +532,28 @@ export const useStatsStore = create<StatsState>((set, get) => ({
             unlocked_at: new Date().toISOString(),
           }));
 
-          const { error: insertError } = await supabase
+          console.log('[Stats] Inserting user achievements:', userAchievements);
+
+          // Use upsert to handle duplicates gracefully (in case of partial grants from previous runs)
+          const { data: insertData, error: insertError } = await supabase
             .from('user_achievements')
-            .insert(userAchievements);
+            .upsert(userAchievements, {
+              onConflict: 'user_id,achievement_id',
+              ignoreDuplicates: true
+            })
+            .select();
 
           if (insertError) {
             console.error('[Stats] Error granting achievements:', insertError);
           } else {
-            console.log('[Stats] Successfully granted', achievementRecords.length, 'achievements');
+            console.log('[Stats] Successfully granted achievements:', insertData);
           }
+        } else {
+          console.warn('[Stats] No achievement records found for codes:', achievementsToGrant,
+            '- Run migration 021_populate_achievements.sql to populate achievement definitions');
         }
+      } else {
+        console.log('[Stats] No new achievements to grant');
       }
 
       // Calculate total XP (mirrors usePoints logic)

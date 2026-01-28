@@ -349,6 +349,7 @@ export default function PublicProfileScreen() {
                       event={attended.event!}
                       attendance={attended}
                       compact
+                      onPress={() => router.push(`/event/${attended.event_id}`)}
                     />
                   </View>
                 ))

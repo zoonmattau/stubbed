@@ -10,6 +10,7 @@ import {
   Platform,
   Share,
   Linking,
+  ActivityIndicator,
 } from 'react-native';
 import { useLocalSearchParams, router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -20,11 +21,12 @@ import { useAuthStore } from '@/stores/authStore';
 import { useEventsStore } from '@/stores/eventsStore';
 import { useTeamLogos } from '@/hooks/useTeamLogos';
 import { useReviews } from '@/hooks/useReviews';
+import { supabase } from '@/lib/supabase';
 import { colors, spacing, fontSize, fontWeight, borderRadius } from '@/constants/theme';
-import { formatDate, formatTime } from '@/utils/dates';
+import { formatDate, formatTime, parseLocalDate } from '@/utils/dates';
 import { getSportColor, getSportById, SPORTS } from '@/constants/sports';
 import { parseTennisScore } from '@/utils/scores';
-import type { AttendedEventWithDetails, ReviewWithDetails } from '@/types';
+import type { AttendedEventWithDetails, ReviewWithDetails, Event } from '@/types';
 
 // Helper to get display name from sport code
 function getSportDisplayName(sportCode: string | null | undefined): string {
@@ -39,15 +41,40 @@ function getSportDisplayName(sportCode: string | null | undefined): string {
 export default function EventDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { user } = useAuthStore();
-  const { attendedEvents, updateAttendedEvent, deleteAttendedEvent, fetchAttendedEvents, isLoading } = useEventsStore();
+  const { attendedEvents, updateAttendedEvent, deleteAttendedEvent, fetchAttendedEvents, addAttendedEvent, isLoading } = useEventsStore();
   const { getTeamLogo } = useTeamLogos();
   const { getReviewForAttendedEvent, getEventReviews } = useReviews();
 
   const [attendance, setAttendance] = useState<AttendedEventWithDetails | null>(null);
+  const [publicEvent, setPublicEvent] = useState<Event | null>(null);
   const [hasFetched, setHasFetched] = useState(false);
   const [hasExistingReview, setHasExistingReview] = useState(false);
   const [checkingReview, setCheckingReview] = useState(true);
   const [publicReviews, setPublicReviews] = useState<ReviewWithDetails[]>([]);
+  const [isAddingAttendance, setIsAddingAttendance] = useState(false);
+  const [fetchingPublicEvent, setFetchingPublicEvent] = useState(false);
+
+  // Public event stats
+  const [eventStats, setEventStats] = useState<{
+    attendeeCount: number;
+    avgRating: number | null;
+    avgAtmosphere: number | null;
+  }>({ attendeeCount: 0, avgRating: null, avgAtmosphere: null });
+  const [attendees, setAttendees] = useState<Array<{
+    user_id: string;
+    username: string;
+    display_name: string | null;
+    avatar_url: string | null;
+  }>>([]);
+  const [attendeePhotos, setAttendeePhotos] = useState<string[]>([]);
+
+  // Went with profiles (for own events)
+  const [wentWithProfiles, setWentWithProfiles] = useState<Array<{
+    user_id: string;
+    username: string;
+    display_name: string | null;
+    avatar_url: string | null;
+  }>>([]);
 
   const handleBack = () => {
     if (router.canGoBack()) {
@@ -68,7 +95,171 @@ export default function EventDetailScreen() {
   useEffect(() => {
     const found = attendedEvents.find((e) => e.event_id === id);
     setAttendance(found || null);
+
+    // If not in user's events, fetch public event data
+    if (!found && id && !fetchingPublicEvent) {
+      setFetchingPublicEvent(true);
+      fetchPublicEvent();
+    }
   }, [id, attendedEvents]);
+
+  // Fetch public event data (for viewing others' events)
+  const fetchPublicEvent = async () => {
+    if (!id) return;
+    try {
+      const { data, error } = await supabase
+        .from('events')
+        .select(`
+          *,
+          sport:sports(*),
+          home_team:teams!events_home_team_id_fkey(*),
+          away_team:teams!events_away_team_id_fkey(*),
+          venue:venues(*)
+        `)
+        .eq('id', id)
+        .single();
+
+      if (error) throw error;
+      setPublicEvent(data);
+    } catch (err) {
+      console.error('Error fetching public event:', err);
+    } finally {
+      setFetchingPublicEvent(false);
+    }
+  };
+
+  // Fetch event stats for public events
+  const fetchEventStats = async () => {
+    if (!id) return;
+    try {
+      // Get attendees with their profiles
+      const { data: attendeesData, error: attendeesError } = await supabase
+        .from('attended_events')
+        .select(`
+          user_id,
+          rating,
+          atmosphere_rating,
+          photo_urls,
+          profiles:user_id(username, display_name, avatar_url)
+        `)
+        .eq('event_id', id)
+        .limit(20);
+
+      if (!attendeesError && attendeesData) {
+        // Calculate stats
+        const ratings = attendeesData.filter(a => a.rating).map(a => a.rating as number);
+        const atmospheres = attendeesData.filter(a => a.atmosphere_rating).map(a => a.atmosphere_rating as number);
+
+        setEventStats({
+          attendeeCount: attendeesData.length,
+          avgRating: ratings.length > 0 ? ratings.reduce((a, b) => a + b, 0) / ratings.length : null,
+          avgAtmosphere: atmospheres.length > 0 ? atmospheres.reduce((a, b) => a + b, 0) / atmospheres.length : null,
+        });
+
+        // Get unique attendees with profiles (exclude current user)
+        const uniqueAttendees = attendeesData
+          .filter(a => a.profiles && a.user_id !== user?.id)
+          .map(a => ({
+            user_id: a.user_id,
+            username: (a.profiles as any).username,
+            display_name: (a.profiles as any).display_name,
+            avatar_url: (a.profiles as any).avatar_url,
+          }))
+          .slice(0, 10);
+        setAttendees(uniqueAttendees);
+
+        // Collect all photos
+        const allPhotos = attendeesData
+          .filter(a => a.photo_urls && a.photo_urls.length > 0)
+          .flatMap(a => a.photo_urls as string[])
+          .slice(0, 6);
+        setAttendeePhotos(allPhotos);
+      }
+    } catch (err) {
+      console.error('Error fetching event stats:', err);
+    }
+  };
+
+  // Fetch stats for all events (social feature)
+  useEffect(() => {
+    if (id) {
+      fetchEventStats();
+    }
+  }, [id, user?.id]);
+
+  // Fetch went with profiles for own events
+  useEffect(() => {
+    const fetchWentWithProfiles = async () => {
+      if (!attendance?.went_with_user_ids || attendance.went_with_user_ids.length === 0) {
+        setWentWithProfiles([]);
+        return;
+      }
+
+      try {
+        const { data, error } = await supabase
+          .from('profiles')
+          .select('id, username, display_name, avatar_url')
+          .in('id', attendance.went_with_user_ids);
+
+        if (!error && data) {
+          setWentWithProfiles(data.map(p => ({
+            user_id: p.id,
+            username: p.username,
+            display_name: p.display_name,
+            avatar_url: p.avatar_url,
+          })));
+        }
+      } catch (err) {
+        console.error('Error fetching went with profiles:', err);
+      }
+    };
+
+    if (attendance) {
+      fetchWentWithProfiles();
+    }
+  }, [attendance?.went_with_user_ids]);
+
+  // Handle "I Was There" - add event to user's attendance
+  const handleIWasThere = async () => {
+    if (!user || !publicEvent) return;
+
+    setIsAddingAttendance(true);
+    try {
+      const result = await addAttendedEvent(
+        user.id,
+        {
+          id: publicEvent.id,  // Use 'id' not 'event_id' - store checks for this
+          sport_id: publicEvent.sport_id,
+          event_date: publicEvent.event_date,
+          home_team_name: publicEvent.home_team?.name || publicEvent.home_team_name,
+          away_team_name: publicEvent.away_team?.name || publicEvent.away_team_name,
+          venue_name: publicEvent.venue?.name || publicEvent.venue_name,
+          home_score: publicEvent.home_score || undefined,
+          away_score: publicEvent.away_score || undefined,
+          competition: publicEvent.competition || undefined,
+        },
+        {}
+      );
+
+      if (result.success && result.attendedEventId) {
+        // Refresh attended events to get the new attendance
+        await fetchAttendedEvents(user.id);
+        // Navigate to edit page so user can add their details
+        router.push(`/event/edit/${result.attendedEventId}`);
+      } else {
+        throw new Error(result.error || 'Failed to add event');
+      }
+    } catch (err: any) {
+      const message = err.message || 'Failed to add event';
+      if (Platform.OS === 'web') {
+        window.alert(message);
+      } else {
+        Alert.alert('Error', message);
+      }
+    } finally {
+      setIsAddingAttendance(false);
+    }
+  };
 
   // Check if user already has a review for this event
   useEffect(() => {
@@ -96,17 +287,22 @@ export default function EventDetailScreen() {
   }, [id, getEventReviews]);
 
   // Show loading while fetching
-  if (isLoading || (!attendance && !hasFetched && attendedEvents.length === 0)) {
+  if (isLoading || fetchingPublicEvent || (!attendance && !publicEvent && !hasFetched && attendedEvents.length === 0)) {
     return (
       <View style={styles.container}>
         <View style={styles.notFound}>
+          <ActivityIndicator size="large" color={colors.primary} />
           <Text style={styles.notFoundText}>Loading...</Text>
         </View>
       </View>
     );
   }
 
-  if (!attendance || !attendance.event) {
+  // Check if this is the user's own event or a public event
+  const isOwnEvent = !!attendance;
+  const event = attendance?.event || publicEvent;
+
+  if (!event) {
     return (
       <View style={styles.container}>
         <View style={styles.notFound}>
@@ -117,8 +313,6 @@ export default function EventDetailScreen() {
       </View>
     );
   }
-
-  const event = attendance.event;
 
   // Use text fields as fallback for manually entered events
   const homeTeamName = event.home_team?.name || event.home_team_name || 'Home Team';
@@ -347,19 +541,158 @@ export default function EventDetailScreen() {
         </View>
       </View>
 
-      {/* Conflict Resolution Banner (if there are data conflicts) */}
-      <View style={{ paddingHorizontal: spacing.lg, marginTop: spacing.md }}>
-        <ConflictResolver
-          eventId={attendance.event_id}
-          attendanceId={attendance.id}
-          onResolved={() => {
-            // Refresh data after conflict resolution
-            if (user?.id) {
-              fetchAttendedEvents(user.id);
-            }
-          }}
-        />
-      </View>
+      {/* Conflict Resolution Banner (if there are data conflicts) - only for own events */}
+      {isOwnEvent && attendance && (
+        <View style={{ paddingHorizontal: spacing.lg, marginTop: spacing.md }}>
+          <ConflictResolver
+            eventId={attendance.event_id}
+            attendanceId={attendance.id}
+            onResolved={() => {
+              // Refresh data after conflict resolution
+              if (user?.id) {
+                fetchAttendedEvents(user.id);
+              }
+            }}
+          />
+        </View>
+      )}
+
+      {/* "I Was There" Button - for public events the user hasn't added yet */}
+      {!isOwnEvent && user && (
+        <View style={styles.iWasThereSection}>
+          <TouchableOpacity
+            style={styles.iWasThereButton}
+            onPress={handleIWasThere}
+            disabled={isAddingAttendance}
+          >
+            {isAddingAttendance ? (
+              <ActivityIndicator size="small" color={colors.white} />
+            ) : (
+              <>
+                <Ionicons name="hand-left" size={24} color={colors.white} />
+                <Text style={styles.iWasThereText}>I Was There Too!</Text>
+              </>
+            )}
+          </TouchableOpacity>
+          <Text style={styles.iWasThereHint}>Add this event to your attendance history</Text>
+        </View>
+      )}
+
+      {/* Community Stats - show for all events */}
+      {eventStats.attendeeCount > 0 && (
+        <Card style={styles.publicStatsCard}>
+          <View style={styles.publicStatsRow}>
+            <View style={styles.publicStatItem}>
+              <Ionicons name="people" size={24} color={colors.primary} />
+              <Text style={styles.publicStatValue}>{eventStats.attendeeCount}</Text>
+              <Text style={styles.publicStatLabel}>Attended</Text>
+            </View>
+            {eventStats.avgRating && (
+              <View style={styles.publicStatItem}>
+                <Ionicons name="star" size={24} color={colors.gold} />
+                <Text style={styles.publicStatValue}>{eventStats.avgRating.toFixed(1)}</Text>
+                <Text style={styles.publicStatLabel}>Avg Rating</Text>
+              </View>
+            )}
+            {eventStats.avgAtmosphere && (
+              <View style={styles.publicStatItem}>
+                <Ionicons name="flame" size={24} color={colors.secondary} />
+                <Text style={styles.publicStatValue}>{eventStats.avgAtmosphere.toFixed(1)}</Text>
+                <Text style={styles.publicStatLabel}>Atmosphere</Text>
+              </View>
+            )}
+          </View>
+        </Card>
+      )}
+
+      {/* Who Was There - all attendees (community) */}
+      {attendees.length > 0 && (
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Also Attended</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+            <View style={styles.attendeesRow}>
+              {attendees.map((attendee) => (
+                <TouchableOpacity
+                  key={attendee.user_id}
+                  style={styles.attendeeItem}
+                  onPress={() => router.push(`/profile/${attendee.user_id}`)}
+                >
+                  <Avatar
+                    uri={attendee.avatar_url || undefined}
+                    name={attendee.display_name || attendee.username}
+                    size={50}
+                  />
+                  <Text style={styles.attendeeName} numberOfLines={1}>
+                    {attendee.display_name || attendee.username}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+              {eventStats.attendeeCount > attendees.length && (
+                <View style={styles.moreAttendeesItem}>
+                  <View style={styles.moreAttendeesCircle}>
+                    <Text style={styles.moreAttendeesText}>
+                      +{eventStats.attendeeCount - attendees.length}
+                    </Text>
+                  </View>
+                  <Text style={styles.attendeeName}>more</Text>
+                </View>
+              )}
+            </View>
+          </ScrollView>
+        </View>
+      )}
+
+      {/* Fan Photos - photos from all attendees */}
+      {attendeePhotos.length > 0 && (
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Fan Photos</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+            <View style={styles.fanPhotosRow}>
+              {attendeePhotos.map((url, index) => (
+                <Image key={index} source={{ uri: url }} style={styles.fanPhoto} />
+              ))}
+            </View>
+          </ScrollView>
+        </View>
+      )}
+
+      {/* My Group - people you went with (own events only) */}
+      {isOwnEvent && (wentWithProfiles.length > 0 || (attendance?.went_with && attendance.went_with.length > 0)) && (
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>My Group</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+            <View style={styles.attendeesRow}>
+              {wentWithProfiles.map((profile) => (
+                <TouchableOpacity
+                  key={profile.user_id}
+                  style={styles.attendeeItem}
+                  onPress={() => router.push(`/profile/${profile.user_id}`)}
+                >
+                  <Avatar
+                    uri={profile.avatar_url || undefined}
+                    name={profile.display_name || profile.username}
+                    size={50}
+                  />
+                  <Text style={styles.attendeeName} numberOfLines={1}>
+                    {profile.display_name || profile.username}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+              {/* Show text-only names (non-users) */}
+              {attendance?.went_with?.map((name, index) => (
+                <View key={`text-${index}`} style={styles.attendeeItem}>
+                  <View style={styles.textOnlyAvatar}>
+                    <Text style={styles.textOnlyAvatarText}>{name[0]?.toUpperCase()}</Text>
+                  </View>
+                  <Text style={styles.attendeeName} numberOfLines={1}>
+                    {name}
+                  </Text>
+                </View>
+              ))}
+            </View>
+          </ScrollView>
+        </View>
+      )}
 
       {/* Teams & Score */}
       <Card style={styles.matchCard}>
@@ -398,7 +731,7 @@ export default function EventDetailScreen() {
           </TouchableOpacity>
 
           <View style={styles.scoreColumn}>
-            {attendance.is_abandoned ? (
+            {attendance?.is_abandoned ? (
               <View style={styles.abandonedContainer}>
                 <Ionicons name="cloud-offline-outline" size={28} color={colors.textMuted} />
                 <Text style={styles.abandonedText}>Abandoned</Text>
@@ -488,10 +821,10 @@ export default function EventDetailScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* Quick user data summary */}
+        {/* Quick user data summary - only for own events, or just venue for public */}
         <View style={styles.matchFooter}>
-          {/* Supported Team */}
-          {attendance.supported_team && (
+          {/* Supported Team - own events only */}
+          {isOwnEvent && attendance?.supported_team && (
             <View style={styles.matchFooterItem}>
               <Ionicons
                 name={attendance.result === 'win' ? 'trophy' : attendance.result === 'loss' ? 'sad' : 'remove'}
@@ -513,16 +846,16 @@ export default function EventDetailScreen() {
             </View>
           )}
 
-          {/* Rating */}
-          {attendance.rating && (
+          {/* Rating - own events only */}
+          {isOwnEvent && attendance?.rating && (
             <View style={styles.matchFooterItem}>
               <StarRating rating={attendance.rating} size={16} readonly />
             </View>
           )}
 
-          {/* Went With */}
-          {((attendance.went_with && attendance.went_with.length > 0) ||
-            (attendance.went_with_user_ids && attendance.went_with_user_ids.length > 0)) && (
+          {/* Went With - own events only */}
+          {isOwnEvent && ((attendance?.went_with && attendance.went_with.length > 0) ||
+            (attendance?.went_with_user_ids && attendance.went_with_user_ids.length > 0)) && (
             <View style={styles.matchFooterItem}>
               <Ionicons name="people" size={16} color={colors.textSecondary} />
               <Text style={styles.matchFooterText}>
@@ -531,7 +864,7 @@ export default function EventDetailScreen() {
             </View>
           )}
 
-          {/* Venue/Stadium */}
+          {/* Venue/Stadium - always show */}
           {venueName && (
             <View style={styles.matchFooterItem}>
               <Ionicons name="location" size={16} color={colors.textSecondary} />
@@ -570,7 +903,8 @@ export default function EventDetailScreen() {
         )}
       </Card>
 
-      {/* Your Experience */}
+      {/* Your Experience - only for own events */}
+      {isOwnEvent && attendance && (
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Your Experience</Text>
         <Card>
@@ -660,9 +994,10 @@ export default function EventDetailScreen() {
           )}
         </Card>
       </View>
+      )}
 
-      {/* Photos */}
-      {attendance.photo_urls && attendance.photo_urls.length > 0 && (
+      {/* Photos - only for own events */}
+      {isOwnEvent && attendance && attendance.photo_urls && attendance.photo_urls.length > 0 && (
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Photos</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false}>
@@ -675,8 +1010,8 @@ export default function EventDetailScreen() {
         </View>
       )}
 
-      {/* Write Review Button - only show if no existing review */}
-      {!checkingReview && !hasExistingReview && (
+      {/* Write Review Button - only show if no existing review and own event */}
+      {isOwnEvent && attendance && !checkingReview && !hasExistingReview && (
         <View style={styles.reviewSection}>
           <TouchableOpacity
             style={styles.writeReviewButton}
@@ -689,8 +1024,8 @@ export default function EventDetailScreen() {
         </View>
       )}
 
-      {/* Already reviewed indicator */}
-      {!checkingReview && hasExistingReview && (
+      {/* Already reviewed indicator - only for own events */}
+      {isOwnEvent && !checkingReview && hasExistingReview && (
         <View style={styles.reviewSection}>
           <View style={styles.reviewedBadge}>
             <Ionicons name="checkmark-circle" size={24} color={colors.success} />
@@ -724,7 +1059,7 @@ export default function EventDetailScreen() {
                       {review.display_name || review.username || 'Anonymous'}
                     </Text>
                     <Text style={styles.reviewDate}>
-                      {new Date(review.created_at).toLocaleDateString('en-AU', {
+                      {parseLocalDate(review.created_at).toLocaleDateString('en-AU', {
                         day: 'numeric',
                         month: 'short',
                         year: 'numeric',
@@ -758,7 +1093,8 @@ export default function EventDetailScreen() {
         </View>
       )}
 
-      {/* Actions */}
+      {/* Actions - only for own events */}
+      {isOwnEvent && attendance && (
       <View style={styles.actions}>
         <TouchableOpacity
           style={[styles.actionButton, attendance.is_favorite && styles.actionButtonActive]}
@@ -794,8 +1130,10 @@ export default function EventDetailScreen() {
           <Text style={[styles.actionButtonText, { color: colors.error }]}>Delete</Text>
         </TouchableOpacity>
       </View>
+      )}
 
-      {/* Social Share */}
+      {/* Social Share - only for own events */}
+      {isOwnEvent && (
       <View style={styles.socialShare}>
         <Text style={styles.socialShareTitle}>Share on Social Media</Text>
         <View style={styles.socialButtons}>
@@ -815,6 +1153,7 @@ export default function EventDetailScreen() {
           </TouchableOpacity>
         </View>
       </View>
+      )}
     </ScrollView>
   );
 }
@@ -1250,5 +1589,112 @@ const styles = StyleSheet.create({
   reviewStatText: {
     fontSize: fontSize.xs,
     color: colors.textMuted,
+  },
+  iWasThereSection: {
+    padding: spacing.lg,
+    paddingBottom: spacing['2xl'],
+    alignItems: 'center',
+  },
+  iWasThereButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.sm,
+    backgroundColor: colors.secondary,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.xl,
+    borderRadius: borderRadius.lg,
+    width: '100%',
+  },
+  iWasThereText: {
+    fontSize: fontSize.md,
+    fontWeight: fontWeight.semibold,
+    color: colors.white,
+  },
+  iWasThereHint: {
+    fontSize: fontSize.sm,
+    color: colors.textMuted,
+    marginTop: spacing.sm,
+  },
+  // Public event stats
+  publicStatsCard: {
+    marginHorizontal: spacing.lg,
+    marginBottom: spacing.lg,
+  },
+  publicStatsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    alignItems: 'center',
+  },
+  publicStatItem: {
+    alignItems: 'center',
+    gap: spacing.xs,
+  },
+  publicStatValue: {
+    fontSize: fontSize['2xl'],
+    fontWeight: fontWeight.bold,
+    color: colors.text,
+  },
+  publicStatLabel: {
+    fontSize: fontSize.xs,
+    color: colors.textMuted,
+  },
+  // Attendees
+  attendeesRow: {
+    flexDirection: 'row',
+    paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.xl,
+    gap: spacing.md,
+  },
+  attendeeItem: {
+    alignItems: 'center',
+    width: 70,
+  },
+  attendeeName: {
+    fontSize: fontSize.xs,
+    color: colors.textSecondary,
+    marginTop: spacing.xs,
+    textAlign: 'center',
+  },
+  moreAttendeesItem: {
+    alignItems: 'center',
+    width: 70,
+  },
+  moreAttendeesCircle: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    backgroundColor: colors.surfaceLighter,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  moreAttendeesText: {
+    fontSize: fontSize.sm,
+    fontWeight: fontWeight.semibold,
+    color: colors.textSecondary,
+  },
+  textOnlyAvatar: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    backgroundColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  textOnlyAvatarText: {
+    fontSize: fontSize.lg,
+    fontWeight: fontWeight.bold,
+    color: colors.white,
+  },
+  // Fan photos
+  fanPhotosRow: {
+    flexDirection: 'row',
+    paddingHorizontal: spacing.lg,
+    gap: spacing.md,
+  },
+  fanPhoto: {
+    width: 120,
+    height: 120,
+    borderRadius: borderRadius.lg,
   },
 });

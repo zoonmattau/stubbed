@@ -1,5 +1,29 @@
+/**
+ * Parse a date string as local time to avoid timezone offset issues.
+ * new Date("2024-01-15") parses as UTC midnight, which can shift the date
+ * by a day depending on the user's timezone. This function ensures dates
+ * are always interpreted in the user's local timezone.
+ */
+export function parseLocalDate(dateString: string): Date {
+  if (!dateString) return new Date();
+
+  // If it's a full ISO timestamp with time, parse normally
+  if (dateString.includes('T') || dateString.includes(' ')) {
+    return new Date(dateString);
+  }
+
+  // For date-only strings (YYYY-MM-DD), parse as local time
+  const [year, month, day] = dateString.split('-').map(Number);
+  if (year && month && day) {
+    return new Date(year, month - 1, day); // month is 0-indexed
+  }
+
+  // Fallback for other formats
+  return new Date(dateString);
+}
+
 export function formatDate(dateString: string): string {
-  const date = new Date(dateString);
+  const date = parseLocalDate(dateString);
   return date.toLocaleDateString('en-AU', {
     day: 'numeric',
     month: 'short',
@@ -23,7 +47,7 @@ export function formatDateTime(dateString: string, timeString: string | null): s
 }
 
 export function getRelativeTime(dateString: string): string {
-  const date = new Date(dateString);
+  const date = parseLocalDate(dateString);
   const now = new Date();
   const diffMs = now.getTime() - date.getTime();
   const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
@@ -37,7 +61,7 @@ export function getRelativeTime(dateString: string): string {
 }
 
 export function formatRelativeTime(dateString: string): string {
-  const date = new Date(dateString);
+  const date = parseLocalDate(dateString);
   const now = new Date();
   const diffMs = now.getTime() - date.getTime();
   const diffSeconds = Math.floor(diffMs / 1000);
@@ -55,7 +79,7 @@ export function formatRelativeTime(dateString: string): string {
 }
 
 export function isToday(dateString: string): boolean {
-  const date = new Date(dateString);
+  const date = parseLocalDate(dateString);
   const today = new Date();
   return (
     date.getDate() === today.getDate() &&
@@ -65,22 +89,19 @@ export function isToday(dateString: string): boolean {
 }
 
 export function isFutureDate(dateString: string): boolean {
-  // Parse as local date to avoid timezone offset issues
-  // new Date("2024-01-15") parses as UTC midnight, causing issues
-  const [year, month, day] = dateString.split('-').map(Number);
-  const date = new Date(year, month - 1, day); // month is 0-indexed
+  const date = parseLocalDate(dateString);
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   return date > today;
 }
 
 export function getMonthYear(dateString: string): string {
-  const date = new Date(dateString);
+  const date = parseLocalDate(dateString);
   return date.toLocaleDateString('en-AU', { month: 'long', year: 'numeric' });
 }
 
 export function getYear(dateString: string): number {
-  return new Date(dateString).getFullYear();
+  return parseLocalDate(dateString).getFullYear();
 }
 
 export function getCurrentSeason(): string {
@@ -93,7 +114,7 @@ export function getCurrentSeason(): string {
 }
 
 export function getDayOfWeek(dateString: string): string {
-  const date = new Date(dateString);
+  const date = parseLocalDate(dateString);
   return date.toLocaleDateString('en-AU', { weekday: 'long' });
 }
 
@@ -102,8 +123,19 @@ export function sortByDate<T extends { event_date?: string; created_at?: string 
   ascending = false
 ): T[] {
   return [...items].sort((a, b) => {
-    const dateA = new Date(a.event_date || a.created_at || 0);
-    const dateB = new Date(b.event_date || b.created_at || 0);
+    const dateA = parseLocalDate(a.event_date || a.created_at || '');
+    const dateB = parseLocalDate(b.event_date || b.created_at || '');
     return ascending ? dateA.getTime() - dateB.getTime() : dateB.getTime() - dateA.getTime();
   });
+}
+
+/**
+ * Format a date for display with custom options, ensuring local timezone.
+ */
+export function formatDateCustom(
+  dateString: string,
+  options: Intl.DateTimeFormatOptions
+): string {
+  const date = parseLocalDate(dateString);
+  return date.toLocaleDateString('en-AU', options);
 }

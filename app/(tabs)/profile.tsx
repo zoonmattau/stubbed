@@ -25,6 +25,7 @@ import { useTeamLogos } from '@/hooks/useTeamLogos';
 import { useFollows } from '@/hooks/useFollows';
 import { colors, spacing, fontSize, fontWeight, borderRadius } from '@/constants/theme';
 import { LEVELS, getCurrentLevel, getNextLevel, getLevelProgress } from '@/constants/levels';
+import { parseLocalDate } from '@/utils/dates';
 
 export default function ProfileScreen() {
   const { user, profile, signOut } = useAuthStore();
@@ -190,8 +191,8 @@ export default function ProfileScreen() {
 
     // Sort by date to calculate discovery bonuses correctly
     const sortedEvents = [...attendedEvents].sort((a, b) => {
-      const dateA = new Date(a.event?.event_date || a.created_at);
-      const dateB = new Date(b.event?.event_date || b.created_at);
+      const dateA = parseLocalDate(a.event?.event_date || a.created_at);
+      const dateB = parseLocalDate(b.event?.event_date || b.created_at);
       return dateA.getTime() - dateB.getTime();
     });
 
@@ -453,7 +454,7 @@ export default function ProfileScreen() {
                     // Try FK logo first, then lookup by team name
                     const homeTeamLogo = event.home_team?.logo_url || getTeamLogo(homeTeam);
                     const awayTeamLogo = event.away_team?.logo_url || getTeamLogo(awayTeam);
-                    const eventDate = new Date(event.event_date || attended.created_at);
+                    const eventDate = parseLocalDate(event.event_date || attended.created_at);
                     // Get base points from calculation, add achievements if this is the most recent event
                     const basePoints = pointsPerEvent[attended.id] || POINTS.ATTEND_EVENT;
                     const isFirstEvent = index === 0;
@@ -534,8 +535,8 @@ export default function ProfileScreen() {
 
                     // Sort by date (oldest first) to track discovery order
                     const sortedEvents = [...attendedEvents].sort((a, b) =>
-                      new Date(a.event?.event_date || a.created_at).getTime() -
-                      new Date(b.event?.event_date || b.created_at).getTime()
+                      parseLocalDate(a.event?.event_date || a.created_at).getTime() -
+                      parseLocalDate(b.event?.event_date || b.created_at).getTime()
                     );
 
                     sortedEvents.forEach(attended => {
@@ -544,7 +545,7 @@ export default function ProfileScreen() {
 
                       const homeTeam = event.home_team?.name || event.home_team_name;
                       const awayTeam = event.away_team?.name || event.away_team_name;
-                      const eventDate = new Date(event.event_date || attended.created_at);
+                      const eventDate = parseLocalDate(event.event_date || attended.created_at);
 
                       if (homeTeam && !seenTeams.has(homeTeam.toLowerCase())) {
                         seenTeams.add(homeTeam.toLowerCase());

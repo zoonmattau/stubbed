@@ -7,6 +7,7 @@ import { FriendCard } from '@/components/social';
 import { colors, spacing, fontSize, fontWeight, borderRadius } from '@/constants/theme';
 import { getCurrentLevel } from '@/constants/levels';
 import { useFriends } from '@/hooks/useFriends';
+import { parseLocalDate } from '@/utils/dates';
 import type { FriendWithProfile, Profile } from '@/types';
 
 interface UserWithStats extends Profile {
@@ -44,7 +45,7 @@ export default function FriendRequestsScreen() {
 
   // Helper to format relative time
   const getRelativeTime = (dateString: string) => {
-    const date = new Date(dateString);
+    const date = parseLocalDate(dateString);
     const now = new Date();
     const diffMs = now.getTime() - date.getTime();
     const diffMins = Math.floor(diffMs / 60000);
@@ -57,7 +58,7 @@ export default function FriendRequestsScreen() {
     if (diffDays === 1) return 'Yesterday';
     if (diffDays < 7) return `${diffDays}d ago`;
     if (diffDays < 30) return `${Math.floor(diffDays / 7)}w ago`;
-    return date.toLocaleDateString();
+    return date.toLocaleDateString('en-AU');
   };
 
   // Debounced search

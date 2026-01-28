@@ -13,6 +13,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Card } from '@/components/ui';
 import { useEventsStore } from '@/stores/eventsStore';
 import { colors, spacing, fontSize, fontWeight, borderRadius } from '@/constants/theme';
+import { parseLocalDate } from '@/utils/dates';
 import type { AttendedEventWithDetails } from '@/types';
 
 interface VenueStats {
@@ -77,10 +78,10 @@ export default function VenuesStatsScreen() {
         stats[venueName].teams.push(awayTeam);
       }
 
-      if (new Date(eventDate) < new Date(stats[venueName].firstVisit)) {
+      if (parseLocalDate(eventDate) < parseLocalDate(stats[venueName].firstVisit)) {
         stats[venueName].firstVisit = eventDate;
       }
-      if (new Date(eventDate) > new Date(stats[venueName].lastVisit)) {
+      if (parseLocalDate(eventDate) > parseLocalDate(stats[venueName].lastVisit)) {
         stats[venueName].lastVisit = eventDate;
       }
 
@@ -99,7 +100,7 @@ export default function VenuesStatsScreen() {
   const venueEvents = useMemo(() => {
     if (!selectedVenue) return [];
     return attendedEvents.filter(e => selectedVenue.eventIds.includes(e.id))
-      .sort((a, b) => new Date(b.event?.event_date || 0).getTime() - new Date(a.event?.event_date || 0).getTime());
+      .sort((a, b) => parseLocalDate(b.event?.event_date || '').getTime() - parseLocalDate(a.event?.event_date || '').getTime());
   }, [selectedVenue, attendedEvents]);
 
   const handleVenuePress = (venue: VenueStats) => {
@@ -113,7 +114,7 @@ export default function VenuesStatsScreen() {
   };
 
   const formatDate = (dateStr: string) => {
-    const date = new Date(dateStr);
+    const date = parseLocalDate(dateStr);
     return date.toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' });
   };
 

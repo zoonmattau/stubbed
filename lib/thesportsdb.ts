@@ -166,7 +166,7 @@ export const SPORTSDB_LEAGUES = {
   // Australian Sports
   afl_sdb: { id: '4456', name: 'AFL', sport: 'Australian Football' },
   nrl_sdb: { id: '4421', name: 'NRL', sport: 'Rugby League' },
-  aleague_sdb: { id: '4429', name: 'A-League', sport: 'Soccer' },
+  aleague_sdb: { id: '4356', name: 'A-League', sport: 'Soccer' },
   super_netball: { id: '4540', name: 'Super Netball', sport: 'Netball' },
 
   // Tennis (verified IDs)
@@ -195,16 +195,26 @@ export const SPORTSDB_LEAGUES = {
   six_nations: { id: '4714', name: 'Six Nations', sport: 'Rugby Union' },
   rugby_championship: { id: '4986', name: 'Rugby Championship', sport: 'Rugby Union' },
 
-  // European Soccer (additional)
+  // Major European Domestic Leagues
+  premier_league: { id: '4328', name: 'Premier League', sport: 'Soccer' },
+  la_liga: { id: '4335', name: 'La Liga', sport: 'Soccer' },
+  serie_a: { id: '4332', name: 'Serie A', sport: 'Soccer' },
+  bundesliga: { id: '4331', name: 'Bundesliga', sport: 'Soccer' },
+  ligue_1: { id: '4334', name: 'Ligue 1', sport: 'Soccer' },
+
+  // Other European Domestic Leagues
   eredivisie: { id: '4395', name: 'Eredivisie', sport: 'Soccer' },
   primeira_liga: { id: '4396', name: 'Primeira Liga', sport: 'Soccer' },
   scottish_premiership: { id: '4398', name: 'Scottish Premiership', sport: 'Soccer' },
 
-  // South American Soccer
+  // Americas Domestic Leagues
+  mls: { id: '4346', name: 'MLS', sport: 'Soccer' },
   brasileirao: { id: '4351', name: 'Brasileirão', sport: 'Soccer' },
   liga_argentina: { id: '4406', name: 'Liga Argentina', sport: 'Soccer' },
+  liga_mx: { id: '4350', name: 'Liga MX', sport: 'Soccer' },
 
-  // European Soccer (complementary to ESPN)
+  // European Cup Competitions
+  champions_league: { id: '4480', name: 'Champions League', sport: 'Soccer' },
   europa_league: { id: '4481', name: 'Europa League', sport: 'Soccer' },
   conference_league: { id: '5163', name: 'Conference League', sport: 'Soccer' },
   fa_cup: { id: '4482', name: 'FA Cup', sport: 'Soccer' },
@@ -238,7 +248,7 @@ export const SPORTSDB_LEAGUES = {
   // More Basketball
   wnba_sdb: { id: '4431', name: 'WNBA', sport: 'Basketball' },
   euroleague: { id: '4485', name: 'EuroLeague', sport: 'Basketball' },
-  nbl: { id: '4422', name: 'NBL Australia', sport: 'Basketball' },
+  nbl: { id: '4434', name: 'NBL Australia', sport: 'Basketball' },
   nba_sdb: { id: '4387', name: 'NBA', sport: 'Basketball' },
 
   // Ice Hockey (complementary)

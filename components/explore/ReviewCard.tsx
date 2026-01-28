@@ -36,7 +36,8 @@ export function ReviewCard({ review, onPress, showActions = true }: ReviewCardPr
     if (onPress) {
       onPress();
     } else {
-      router.push(`/review/${review.review_id}`);
+      // Navigate to the event page, not the review
+      router.push(`/event/${review.event_id}`);
     }
   };
 

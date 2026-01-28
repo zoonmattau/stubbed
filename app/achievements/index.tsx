@@ -5,6 +5,8 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
+  Modal,
+  FlatList,
 } from 'react-native';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -19,13 +21,14 @@ import { usePoints, POINTS } from '@/hooks/usePoints';
 import { colors, spacing, fontSize, fontWeight, borderRadius } from '@/constants/theme';
 import { CATEGORY_ICONS, RARITY_COLORS } from '@/constants/achievements';
 import { LEVELS, getCurrentLevel, getNextLevel, getLevelProgress } from '@/constants/levels';
-import type { AchievementWithStatus } from '@/types';
+import { parseLocalDate } from '@/utils/dates';
+import type { AchievementWithStatus, AttendedEventWithDetails } from '@/types';
 
 type CategoryFilter = 'all' | 'attendance' | 'diversity' | 'loyalty' | 'special';
 
 export default function AchievementsScreen() {
   const { user } = useAuthStore();
-  const { achievements, fetchAchievements, stats } = useStatsStore();
+  const { achievements, fetchAchievements, recalculateAchievements, stats } = useStatsStore();
   const { attendedEvents, fetchAttendedEvents } = useEventsStore();
 
   // Get detailed points breakdown
@@ -47,24 +50,24 @@ export default function AchievementsScreen() {
       const sportKey = event.sport_id || event.sport?.name || event.sport_name;
       if (sportKey) uniqueSports.add(sportKey.toLowerCase());
 
-      // Track unique teams and counts
-      const homeTeamKey = (event.home_team_id || event.home_team?.name || event.home_team_name || '').toLowerCase();
-      const awayTeamKey = (event.away_team_id || event.away_team?.name || event.away_team_name || '').toLowerCase();
+      // Track unique teams and counts - always use display name for consistency
+      const homeTeamName = (event.home_team?.name || event.home_team_name || '').toLowerCase();
+      const awayTeamName = (event.away_team?.name || event.away_team_name || '').toLowerCase();
 
-      if (homeTeamKey) {
-        uniqueTeams.add(homeTeamKey);
-        teamCounts[homeTeamKey] = (teamCounts[homeTeamKey] || 0) + 1;
+      if (homeTeamName) {
+        uniqueTeams.add(homeTeamName);
+        teamCounts[homeTeamName] = (teamCounts[homeTeamName] || 0) + 1;
       }
-      if (awayTeamKey) {
-        uniqueTeams.add(awayTeamKey);
-        teamCounts[awayTeamKey] = (teamCounts[awayTeamKey] || 0) + 1;
+      if (awayTeamName) {
+        uniqueTeams.add(awayTeamName);
+        teamCounts[awayTeamName] = (teamCounts[awayTeamName] || 0) + 1;
       }
 
-      // Track unique venues and counts
-      const venueKey = (event.venue_id || event.venue?.name || event.venue_name || '').toLowerCase();
-      if (venueKey) {
-        uniqueVenues.add(venueKey);
-        venueCounts[venueKey] = (venueCounts[venueKey] || 0) + 1;
+      // Track unique venues and counts - always use display name for consistency
+      const venueName = (event.venue?.name || event.venue_name || '').toLowerCase();
+      if (venueName) {
+        uniqueVenues.add(venueName);
+        venueCounts[venueName] = (venueCounts[venueName] || 0) + 1;
       }
     });
 
@@ -128,11 +131,182 @@ export default function AchievementsScreen() {
 
   const [filter, setFilter] = useState<CategoryFilter>('all');
   const [showUnlocked, setShowUnlocked] = useState(false);
+  const [selectedAchievement, setSelectedAchievement] = useState<AchievementWithStatus | null>(null);
+  const [showDetailModal, setShowDetailModal] = useState(false);
+
+  // Get events that contributed to an achievement
+  const getContributingEvents = (achievement: AchievementWithStatus): { event: AttendedEventWithDetails; highlight?: string; isNew?: boolean }[] => {
+    const req = (achievement.requirement_value || {}) as Record<string, unknown>;
+    const sortedEvents = [...attendedEvents].sort((a, b) =>
+      parseLocalDate(a.event?.event_date || a.created_at).getTime() -
+      parseLocalDate(b.event?.event_date || b.created_at).getTime()
+    );
+
+    // For count-based achievements (attend X events)
+    if ('count' in req) {
+      const count = req.count as number;
+      return sortedEvents.slice(0, count).map((e, i) => ({
+        event: e,
+        highlight: `Event #${i + 1}`,
+      }));
+    }
+
+    // For venue diversity (visit X different venues)
+    if ('venues' in req) {
+      const target = req.venues as number;
+      const seenVenues = new Set<string>();
+      const result: { event: AttendedEventWithDetails; highlight?: string; isNew?: boolean }[] = [];
+
+      for (const attended of sortedEvents) {
+        const venueName = (attended.event?.venue?.name || attended.event?.venue_name || '').toLowerCase();
+        if (venueName && !seenVenues.has(venueName)) {
+          seenVenues.add(venueName);
+          result.push({
+            event: attended,
+            highlight: attended.event?.venue?.name || attended.event?.venue_name || 'Unknown Venue',
+            isNew: true,
+          });
+          if (seenVenues.size >= target) break;
+        }
+      }
+      return result;
+    }
+
+    // For team diversity (watch X different teams)
+    if ('teams' in req) {
+      const target = req.teams as number;
+      const seenTeams = new Set<string>();
+      const result: { event: AttendedEventWithDetails; highlight?: string; isNew?: boolean }[] = [];
+
+      for (const attended of sortedEvents) {
+        const homeTeam = (attended.event?.home_team?.name || attended.event?.home_team_name || '').toLowerCase();
+        const awayTeam = (attended.event?.away_team?.name || attended.event?.away_team_name || '').toLowerCase();
+        const newTeams: string[] = [];
+
+        if (homeTeam && !seenTeams.has(homeTeam)) {
+          seenTeams.add(homeTeam);
+          newTeams.push(attended.event?.home_team?.name || attended.event?.home_team_name || '');
+        }
+        if (awayTeam && !seenTeams.has(awayTeam)) {
+          seenTeams.add(awayTeam);
+          newTeams.push(attended.event?.away_team?.name || attended.event?.away_team_name || '');
+        }
+
+        if (newTeams.length > 0) {
+          result.push({
+            event: attended,
+            highlight: `New: ${newTeams.join(', ')}`,
+            isNew: true,
+          });
+        }
+        if (seenTeams.size >= target) break;
+      }
+      return result;
+    }
+
+    // For sport diversity (attend events in X different sports)
+    if ('sports' in req) {
+      const target = req.sports as number;
+      const seenSports = new Set<string>();
+      const result: { event: AttendedEventWithDetails; highlight?: string; isNew?: boolean }[] = [];
+
+      for (const attended of sortedEvents) {
+        const sportName = (attended.event?.sport?.name || attended.event?.sport_name || '').toLowerCase();
+        if (sportName && !seenSports.has(sportName)) {
+          seenSports.add(sportName);
+          result.push({
+            event: attended,
+            highlight: attended.event?.sport?.name || attended.event?.sport_name || 'Unknown Sport',
+            isNew: true,
+          });
+          if (seenSports.size >= target) break;
+        }
+      }
+      return result;
+    }
+
+    // For same team loyalty (attend X games for same team)
+    if ('sameTeam' in req) {
+      const target = req.sameTeam as number;
+      const teamCounts: Record<string, AttendedEventWithDetails[]> = {};
+
+      for (const attended of sortedEvents) {
+        const homeTeam = (attended.event?.home_team?.name || attended.event?.home_team_name || '').toLowerCase();
+        const awayTeam = (attended.event?.away_team?.name || attended.event?.away_team_name || '').toLowerCase();
+
+        if (homeTeam) {
+          if (!teamCounts[homeTeam]) teamCounts[homeTeam] = [];
+          teamCounts[homeTeam].push(attended);
+        }
+        if (awayTeam) {
+          if (!teamCounts[awayTeam]) teamCounts[awayTeam] = [];
+          teamCounts[awayTeam].push(attended);
+        }
+      }
+
+      // Find the team with most games
+      let maxTeam = '';
+      let maxCount = 0;
+      for (const [team, events] of Object.entries(teamCounts)) {
+        if (events.length > maxCount) {
+          maxCount = events.length;
+          maxTeam = team;
+        }
+      }
+
+      if (maxTeam && teamCounts[maxTeam]) {
+        return teamCounts[maxTeam].slice(0, target).map((e, i) => ({
+          event: e,
+          highlight: `Game #${i + 1} for ${maxTeam.charAt(0).toUpperCase() + maxTeam.slice(1)}`,
+        }));
+      }
+    }
+
+    // For same venue loyalty
+    if ('sameVenue' in req) {
+      const target = req.sameVenue as number;
+      const venueCounts: Record<string, AttendedEventWithDetails[]> = {};
+
+      for (const attended of sortedEvents) {
+        const venueName = (attended.event?.venue?.name || attended.event?.venue_name || '').toLowerCase();
+        if (venueName) {
+          if (!venueCounts[venueName]) venueCounts[venueName] = [];
+          venueCounts[venueName].push(attended);
+        }
+      }
+
+      // Find the venue with most visits
+      let maxVenue = '';
+      let maxCount = 0;
+      for (const [venue, events] of Object.entries(venueCounts)) {
+        if (events.length > maxCount) {
+          maxCount = events.length;
+          maxVenue = venue;
+        }
+      }
+
+      if (maxVenue && venueCounts[maxVenue]) {
+        return venueCounts[maxVenue].slice(0, target).map((e, i) => ({
+          event: e,
+          highlight: `Visit #${i + 1} to ${maxVenue.charAt(0).toUpperCase() + maxVenue.slice(1)}`,
+        }));
+      }
+    }
+
+    return [];
+  };
+
+  const handleAchievementPress = (achievement: AchievementWithStatus) => {
+    setSelectedAchievement(achievement);
+    setShowDetailModal(true);
+  };
 
   useEffect(() => {
     if (user?.id) {
       fetchAchievements(user.id);
       fetchAttendedEvents(user.id);
+      // Recalculate achievements to ensure they're up to date
+      recalculateAchievements(user.id);
     }
   }, [user?.id]);
 
@@ -475,6 +649,7 @@ export default function AchievementsScreen() {
                     key={achievement.id}
                     achievement={achievement}
                     progress={getAchievementProgress(achievement)}
+                    onPress={() => handleAchievementPress(achievement)}
                   />
                 ))}
               </View>
@@ -494,6 +669,125 @@ export default function AchievementsScreen() {
         </View>
       )}
     </ScrollView>
+
+    {/* Achievement Detail Modal */}
+    <Modal
+      visible={showDetailModal}
+      animationType="slide"
+      transparent={true}
+      onRequestClose={() => setShowDetailModal(false)}
+    >
+      <View style={styles.modalOverlay}>
+        <View style={styles.modalContent}>
+          <View style={styles.modalHeader}>
+            <View style={styles.modalHeaderLeft}>
+              {selectedAchievement && (
+                <>
+                  <View style={[styles.modalIcon, { backgroundColor: `${RARITY_COLORS[selectedAchievement.rarity as keyof typeof RARITY_COLORS]}20` }]}>
+                    <Ionicons
+                      name={selectedAchievement.icon as any || 'trophy'}
+                      size={24}
+                      color={RARITY_COLORS[selectedAchievement.rarity as keyof typeof RARITY_COLORS]}
+                    />
+                  </View>
+                  <View style={styles.modalTitleContainer}>
+                    <Text style={styles.modalTitle}>{selectedAchievement.name}</Text>
+                    <Text style={styles.modalDescription}>{selectedAchievement.description}</Text>
+                  </View>
+                </>
+              )}
+            </View>
+            <TouchableOpacity onPress={() => setShowDetailModal(false)} style={styles.modalCloseButton}>
+              <Ionicons name="close" size={24} color={colors.text} />
+            </TouchableOpacity>
+          </View>
+
+          {selectedAchievement && (
+            <View style={styles.modalStatusRow}>
+              {selectedAchievement.unlocked ? (
+                <View style={[styles.modalStatusBadge, { backgroundColor: `${colors.success}15` }]}>
+                  <Ionicons name="checkmark-circle" size={16} color={colors.success} />
+                  <Text style={[styles.modalStatusText, { color: colors.success }]}>Unlocked</Text>
+                </View>
+              ) : (
+                <View style={[styles.modalStatusBadge, { backgroundColor: `${colors.textMuted}15` }]}>
+                  <Ionicons name="lock-closed" size={16} color={colors.textMuted} />
+                  <Text style={[styles.modalStatusText, { color: colors.textMuted }]}>Locked</Text>
+                </View>
+              )}
+              <View style={[styles.modalStatusBadge, { backgroundColor: `${colors.gold}15` }]}>
+                <Ionicons name="star" size={16} color={colors.gold} />
+                <Text style={[styles.modalStatusText, { color: colors.gold }]}>{selectedAchievement.points} pts</Text>
+              </View>
+            </View>
+          )}
+
+          <Text style={styles.modalSectionTitle}>
+            {selectedAchievement?.unlocked ? 'Contributing Events' : 'Progress Events'}
+          </Text>
+
+          <FlatList
+            data={selectedAchievement ? getContributingEvents(selectedAchievement) : []}
+            keyExtractor={(item, index) => `${item.event.id}-${index}`}
+            renderItem={({ item, index }) => {
+              const event = item.event.event;
+              if (!event) return null;
+              const homeTeam = event.home_team?.name || event.home_team_name || 'Home';
+              const awayTeam = event.away_team?.name || event.away_team_name || 'Away';
+              return (
+                <TouchableOpacity
+                  style={styles.modalEventItem}
+                  onPress={() => {
+                    setShowDetailModal(false);
+                    router.push(`/event/${item.event.event_id}`);
+                  }}
+                >
+                  <View style={styles.modalEventNumber}>
+                    <Text style={styles.modalEventNumberText}>{index + 1}</Text>
+                  </View>
+                  <View style={styles.modalEventInfo}>
+                    <Text style={styles.modalEventTeams} numberOfLines={1}>
+                      {homeTeam} vs {awayTeam}
+                    </Text>
+                    {item.highlight && (
+                      <View style={[styles.modalHighlightBadge, item.isNew && styles.modalHighlightNew]}>
+                        <Ionicons
+                          name={item.isNew ? 'sparkles' : 'checkmark'}
+                          size={12}
+                          color={item.isNew ? colors.gold : colors.success}
+                        />
+                        <Text style={[styles.modalHighlightText, item.isNew && styles.modalHighlightTextNew]}>
+                          {item.highlight}
+                        </Text>
+                      </View>
+                    )}
+                    <Text style={styles.modalEventDate}>
+                      {parseLocalDate(event.event_date).toLocaleDateString('en-AU', {
+                        day: 'numeric',
+                        month: 'short',
+                        year: 'numeric',
+                      })}
+                    </Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={20} color={colors.textMuted} />
+                </TouchableOpacity>
+              );
+            }}
+            ListEmptyComponent={
+              <View style={styles.modalEmptyContainer}>
+                <Ionicons name="calendar-outline" size={48} color={colors.textMuted} />
+                <Text style={styles.modalEmptyText}>
+                  {selectedAchievement?.unlocked
+                    ? 'No contributing events found'
+                    : 'Start attending events to unlock this achievement'}
+                </Text>
+              </View>
+            }
+            style={styles.modalEventsList}
+          />
+        </View>
+      </View>
+    </Modal>
     </View>
   );
 }
@@ -800,5 +1094,144 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     textAlign: 'center',
     marginTop: spacing.sm,
+  },
+  // Modal styles
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-end',
+  },
+  modalContent: {
+    backgroundColor: colors.background,
+    borderTopLeftRadius: borderRadius.xl,
+    borderTopRightRadius: borderRadius.xl,
+    maxHeight: '80%',
+    paddingBottom: spacing.xl,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    padding: spacing.lg,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  modalHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    gap: spacing.md,
+  },
+  modalIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalTitleContainer: {
+    flex: 1,
+  },
+  modalTitle: {
+    fontSize: fontSize.lg,
+    fontWeight: fontWeight.bold,
+    color: colors.text,
+  },
+  modalDescription: {
+    fontSize: fontSize.sm,
+    color: colors.textSecondary,
+    marginTop: 2,
+  },
+  modalCloseButton: {
+    padding: spacing.xs,
+  },
+  modalStatusRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+  },
+  modalStatusBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    paddingVertical: spacing.xs,
+    paddingHorizontal: spacing.sm,
+    borderRadius: borderRadius.full,
+  },
+  modalStatusText: {
+    fontSize: fontSize.sm,
+    fontWeight: fontWeight.medium,
+  },
+  modalSectionTitle: {
+    fontSize: fontSize.md,
+    fontWeight: fontWeight.semibold,
+    color: colors.text,
+    paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.sm,
+  },
+  modalEventsList: {
+    paddingHorizontal: spacing.md,
+  },
+  modalEventItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.surface,
+    padding: spacing.md,
+    marginBottom: spacing.sm,
+    borderRadius: borderRadius.md,
+    gap: spacing.md,
+  },
+  modalEventNumber: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalEventNumberText: {
+    fontSize: fontSize.sm,
+    fontWeight: fontWeight.bold,
+    color: colors.white,
+  },
+  modalEventInfo: {
+    flex: 1,
+  },
+  modalEventTeams: {
+    fontSize: fontSize.md,
+    fontWeight: fontWeight.medium,
+    color: colors.text,
+  },
+  modalHighlightBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: 4,
+  },
+  modalHighlightNew: {},
+  modalHighlightText: {
+    fontSize: fontSize.xs,
+    color: colors.success,
+    fontWeight: fontWeight.medium,
+  },
+  modalHighlightTextNew: {
+    color: colors.gold,
+  },
+  modalEventDate: {
+    fontSize: fontSize.xs,
+    color: colors.textMuted,
+    marginTop: 2,
+  },
+  modalEmptyContainer: {
+    alignItems: 'center',
+    paddingVertical: spacing['3xl'],
+  },
+  modalEmptyText: {
+    fontSize: fontSize.sm,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    marginTop: spacing.md,
+    paddingHorizontal: spacing.xl,
   },
 });

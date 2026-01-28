@@ -14,6 +14,7 @@ import { Card, Badge } from '@/components/ui';
 import { useEventsStore } from '@/stores/eventsStore';
 import { colors, spacing, fontSize, fontWeight, borderRadius } from '@/constants/theme';
 import { getSportColor } from '@/constants/sports';
+import { parseLocalDate } from '@/utils/dates';
 import type { AttendedEventWithDetails } from '@/types';
 
 interface TeamStats {
@@ -78,7 +79,7 @@ export default function TeamsStatsScreen() {
       if (!stats[homeTeam].venues.includes(venue)) {
         stats[homeTeam].venues.push(venue);
       }
-      if (new Date(eventDate) > new Date(stats[homeTeam].lastSeen)) {
+      if (parseLocalDate(eventDate) > parseLocalDate(stats[homeTeam].lastSeen)) {
         stats[homeTeam].lastSeen = eventDate;
       }
 
@@ -98,7 +99,7 @@ export default function TeamsStatsScreen() {
       if (!stats[awayTeam].venues.includes(venue)) {
         stats[awayTeam].venues.push(venue);
       }
-      if (new Date(eventDate) > new Date(stats[awayTeam].lastSeen)) {
+      if (parseLocalDate(eventDate) > parseLocalDate(stats[awayTeam].lastSeen)) {
         stats[awayTeam].lastSeen = eventDate;
       }
 
@@ -121,7 +122,7 @@ export default function TeamsStatsScreen() {
   }, [attendedEvents]);
 
   const formatDate = (dateStr: string) => {
-    const date = new Date(dateStr);
+    const date = parseLocalDate(dateStr);
     return date.toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' });
   };
 
@@ -268,7 +269,7 @@ export default function TeamsStatsScreen() {
                         <Text style={styles.modalEventScore}>{event.home_score} - {event.away_score}</Text>
                       )}
                       <Text style={styles.modalEventDate}>
-                        {new Date(event.event_date).toLocaleDateString('en-AU', {
+                        {parseLocalDate(event.event_date).toLocaleDateString('en-AU', {
                           day: 'numeric',
                           month: 'short',
                           year: 'numeric',
