@@ -12,11 +12,13 @@ import {
 import { useFocusEffect, router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuthStore } from '@/stores/authStore';
-import { useExploreStore } from '@/stores/exploreStore';
+import { useExploreStore, TrendingEvent } from '@/stores/exploreStore';
 import { ReviewCard, FeedToggle, SportFilter } from '@/components/explore';
 import { Avatar, Card } from '@/components/ui';
 import { supabase } from '@/lib/supabase';
 import { colors, spacing, fontSize, fontWeight, borderRadius } from '@/constants/theme';
+import { getSportIcon, getSportColor } from '@/constants/sports';
+import { parseLocalDate } from '@/utils/dates';
 import type { ReviewWithDetails } from '@/types';
 
 type SortField = 'events' | 'xp' | 'followers' | 'reviews';
@@ -36,6 +38,7 @@ export default function ExploreScreen() {
   const { user } = useAuthStore();
   const {
     feedType,
+    trendingEvents,
     trendingReviews,
     followingReviews,
     selectedSportId,
@@ -46,6 +49,7 @@ export default function ExploreScreen() {
     hasMoreFollowing,
     setFeedType,
     setSportFilter,
+    fetchTrendingEvents,
     fetchTrending,
     fetchFollowingFeed,
     fetchSports,
@@ -59,7 +63,7 @@ export default function ExploreScreen() {
   const [sortField, setSortField] = useState<SortField>('events');
 
   // Get current feed based on type
-  const reviews = feedType === 'trending' ? trendingReviews : followingReviews;
+  const reviews = followingReviews; // Only used for following feed now
   const isLoading = feedType === 'trending' ? isLoadingTrending : isLoadingFollowing;
   const hasMore = feedType === 'trending' ? hasMoreTrending : hasMoreFollowing;
 
@@ -68,8 +72,8 @@ export default function ExploreScreen() {
     useCallback(() => {
       fetchSports();
       if (feedType === 'trending') {
-        if (trendingReviews.length === 0) {
-          fetchTrending(true);
+        if (trendingEvents.length === 0) {
+          fetchTrendingEvents(true);
         }
       } else if (feedType === 'following' && user?.id) {
         if (followingReviews.length === 0) {
@@ -130,8 +134,8 @@ export default function ExploreScreen() {
   const handleFeedTypeChange = (type: 'trending' | 'following' | 'leaderboard') => {
     setFeedType(type as any);
     if (type === 'trending') {
-      if (trendingReviews.length === 0) {
-        fetchTrending(true);
+      if (trendingEvents.length === 0) {
+        fetchTrendingEvents(true);
       }
     } else if (type === 'following' && user?.id && followingReviews.length === 0) {
       fetchFollowingFeed(user.id, true);
@@ -142,7 +146,7 @@ export default function ExploreScreen() {
   const handleRefresh = async () => {
     setRefreshing(true);
     if (feedType === 'trending') {
-      await fetchTrending(true);
+      await fetchTrendingEvents(true);
     } else if (feedType === 'following' && user?.id) {
       await fetchFollowingFeed(user.id, true);
     } else if (feedType === 'leaderboard') {
@@ -156,7 +160,7 @@ export default function ExploreScreen() {
     if (feedType === 'leaderboard') return;
     if (isLoading || !hasMore) return;
     if (feedType === 'trending') {
-      fetchTrending();
+      fetchTrendingEvents();
     } else if (user?.id) {
       fetchFollowingFeed(user.id);
     }
@@ -180,6 +184,164 @@ export default function ExploreScreen() {
       case 'followers': return 'Followers';
       case 'reviews': return 'Reviews';
     }
+  };
+
+  // Helper to parse score value for comparison (handles cricket scores like "103/6")
+  const parseScoreValue = (score: string | null): number | null => {
+    if (!score) return null;
+    // For cricket scores like "103/6", take the runs (before /)
+    const cricketMatch = score.match(/^(\d+)\/\d+/);
+    if (cricketMatch) return parseInt(cricketMatch[1], 10);
+    // For simple numeric scores
+    const num = parseInt(score, 10);
+    return isNaN(num) ? null : num;
+  };
+
+  // Generate score summary with winner
+  const getScoreSummary = (item: TrendingEvent): string | null => {
+    if (!item.home_score && !item.away_score) return null;
+
+    const sport = item.sport_name?.toLowerCase() || '';
+    const homeScore = item.home_score || '';
+    const awayScore = item.away_score || '';
+    const homeName = item.home_team_name?.split(' ').pop() || 'Home'; // Last word of team name
+    const awayName = item.away_team_name?.split(' ').pop() || 'Away';
+
+    // Tennis: different format
+    if (sport === 'tennis') {
+      // For tennis, just show the scores
+      if (homeScore && awayScore) {
+        return `${homeName}: ${homeScore} | ${awayName}: ${awayScore}`;
+      }
+      return homeScore || awayScore;
+    }
+
+    const homeVal = parseScoreValue(homeScore);
+    const awayVal = parseScoreValue(awayScore);
+
+    // Can't determine winner
+    if (homeVal === null || awayVal === null) {
+      if (homeScore && awayScore) {
+        return `${homeScore} - ${awayScore}`;
+      }
+      return homeScore || awayScore;
+    }
+
+    // Cricket format
+    if (sport === 'cricket' && (homeScore.includes('/') || awayScore.includes('/'))) {
+      const diff = Math.abs(homeVal - awayVal);
+      if (homeVal > awayVal) {
+        return `${homeName} won by ${diff} runs - ${homeScore} v ${awayScore}`;
+      } else if (awayVal > homeVal) {
+        return `${awayName} won by ${diff} runs - ${awayScore} v ${homeScore}`;
+      }
+      return `Tied - ${homeScore} v ${awayScore}`;
+    }
+
+    // Standard team sports (AFL, Soccer, etc.)
+    const diff = Math.abs(homeVal - awayVal);
+    if (homeVal > awayVal) {
+      return `${homeName} won ${homeScore} - ${awayScore}`;
+    } else if (awayVal > homeVal) {
+      return `${awayName} won ${awayScore} - ${homeScore}`;
+    }
+    return `Draw ${homeScore} - ${awayScore}`;
+  };
+
+  // Render trending event item
+  const renderTrendingEventItem = ({ item }: { item: TrendingEvent }) => {
+    const eventDate = parseLocalDate(item.event_date);
+    const scoreSummary = getScoreSummary(item);
+    // Convert sport name to ID format (lowercase, no spaces) for constants lookup
+    const sportId = item.sport_name?.toLowerCase().replace(/\s+/g, '-') || '';
+    // Prioritize constants for consistent styling, fall back to database values
+    const constantIcon = getSportIcon(sportId);
+    const constantColor = getSportColor(sportId);
+    const sportIcon = (constantIcon !== 'trophy' ? constantIcon : (item.sport_icon || 'trophy-outline')) as keyof typeof Ionicons.glyphMap;
+    const sportColor = constantColor !== colors.sportDefault ? constantColor : (item.sport_color || colors.primary);
+
+    return (
+      <TouchableOpacity
+        style={styles.trendingEventCard}
+        onPress={() => router.push(`/event/${item.event_id}`)}
+        activeOpacity={0.7}
+      >
+        {/* Header with Sport Badge */}
+        <View style={styles.trendingEventHeader}>
+          <Text style={styles.trendingEventName} numberOfLines={1}>
+            {item.event_name}
+          </Text>
+          {item.sport_name && (
+            <View style={[styles.trendingEventSportBadge, { backgroundColor: `${sportColor}20` }]}>
+              <Ionicons name={sportIcon} size={12} color={sportColor} />
+              <Text style={[styles.trendingEventSportText, { color: sportColor }]}>
+                {item.sport_name.charAt(0).toUpperCase() + item.sport_name.slice(1)}
+              </Text>
+            </View>
+          )}
+        </View>
+
+        {/* Date, Time & Result Row */}
+        <View style={styles.trendingEventMeta}>
+          <View style={styles.trendingEventDateTime}>
+            <Ionicons name="calendar-outline" size={14} color={colors.textMuted} />
+            <Text style={styles.trendingEventMetaText}>
+              {eventDate.toLocaleDateString('en-AU', {
+                weekday: 'short',
+                day: 'numeric',
+                month: 'short',
+              })}
+              {item.event_time && ` at ${item.event_time.slice(0, 5)}`}
+            </Text>
+          </View>
+        </View>
+
+        {/* Score Summary */}
+        {scoreSummary && (
+          <View style={styles.trendingEventScoreSummary}>
+            <Ionicons name="trophy-outline" size={14} color={colors.gold} />
+            <Text style={styles.trendingEventScoreText} numberOfLines={1}>
+              {scoreSummary}
+            </Text>
+          </View>
+        )}
+
+        {/* Stats Row */}
+        <View style={styles.trendingEventStats}>
+          {/* Popularity */}
+          <View style={styles.trendingEventStat}>
+            <Ionicons name="trending-up" size={16} color={colors.primary} />
+            <Text style={styles.trendingEventStatValue}>{Math.round(item.trending_score)}</Text>
+            <Text style={styles.trendingEventStatLabel}>Popularity</Text>
+          </View>
+
+          {/* Attendance */}
+          <View style={styles.trendingEventStat}>
+            <Ionicons name="people" size={16} color={colors.info} />
+            <Text style={styles.trendingEventStatValue}>{item.attendance_count}</Text>
+            <Text style={styles.trendingEventStatLabel}>Attended</Text>
+          </View>
+
+          {/* Overall Rating */}
+          <View style={styles.trendingEventStat}>
+            <Ionicons name="star" size={16} color={colors.gold} />
+            <Text style={styles.trendingEventStatValue}>
+              {item.avg_overall_rating ? item.avg_overall_rating.toFixed(1) : '-'}
+            </Text>
+            <Text style={styles.trendingEventStatLabel}>Overall</Text>
+          </View>
+
+          {/* Atmosphere Rating */}
+          <View style={styles.trendingEventStat}>
+            <Ionicons name="flame" size={16} color={colors.warning} />
+            <Text style={styles.trendingEventStatValue}>
+              {item.avg_atmosphere_rating ? item.avg_atmosphere_rating.toFixed(1) : '-'}
+            </Text>
+            <Text style={styles.trendingEventStatLabel}>Atmosphere</Text>
+          </View>
+        </View>
+      </TouchableOpacity>
+    );
   };
 
   // Render review item
@@ -272,10 +434,10 @@ export default function ExploreScreen() {
 
     return (
       <View style={styles.emptyContainer}>
-        <Ionicons name="document-text-outline" size={64} color={colors.textMuted} />
-        <Text style={styles.emptyTitle}>No Trending Reviews</Text>
+        <Ionicons name="flame-outline" size={64} color={colors.textMuted} />
+        <Text style={styles.emptyTitle}>No Trending Events</Text>
         <Text style={styles.emptySubtitle}>
-          There are no public reviews yet. Be the first — add an event and share your experience!
+          There are no trending events yet. Be the first — add an event you attended!
         </Text>
         <TouchableOpacity
           style={styles.discoverButton}
@@ -365,13 +527,21 @@ export default function ExploreScreen() {
   );
 
   // Determine data and renderers based on feed type
-  const listData = feedType === 'leaderboard' ? leaderboard : reviews;
+  const listData = feedType === 'leaderboard'
+    ? leaderboard
+    : feedType === 'trending'
+      ? trendingEvents
+      : reviews;
   const keyExtractor = feedType === 'leaderboard'
     ? (item: any) => item.user_id
-    : (item: any) => item.review_id;
+    : feedType === 'trending'
+      ? (item: any) => item.event_id
+      : (item: any) => item.review_id;
   const renderItem = feedType === 'leaderboard'
     ? renderLeaderboardItem
-    : renderReviewItem;
+    : feedType === 'trending'
+      ? renderTrendingEventItem
+      : renderReviewItem;
 
   return (
     <View style={styles.container}>
@@ -571,5 +741,99 @@ const styles = StyleSheet.create({
   leaderboardValueLabel: {
     fontSize: fontSize.xs,
     color: colors.textMuted,
+  },
+
+  // Trending Event Card styles
+  trendingEventCard: {
+    backgroundColor: colors.surface,
+    marginHorizontal: spacing.lg,
+    marginBottom: spacing.md,
+    padding: spacing.md,
+    borderRadius: borderRadius.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  trendingEventHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.sm,
+    marginBottom: spacing.sm,
+  },
+  trendingEventName: {
+    fontSize: fontSize.md,
+    fontWeight: fontWeight.semibold,
+    color: colors.text,
+    flex: 1,
+  },
+  trendingEventSportBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    paddingVertical: spacing.xs,
+    paddingHorizontal: spacing.sm,
+    borderRadius: borderRadius.full,
+  },
+  trendingEventSportText: {
+    fontSize: fontSize.xs,
+    fontWeight: fontWeight.medium,
+  },
+  trendingEventMeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.lg,
+    marginBottom: spacing.md,
+  },
+  trendingEventDateTime: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+  },
+  trendingEventResult: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+  },
+  trendingEventMetaText: {
+    fontSize: fontSize.sm,
+    color: colors.textMuted,
+  },
+  trendingEventScoreSummary: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginBottom: spacing.md,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.sm,
+    backgroundColor: colors.surfaceLight,
+    borderRadius: borderRadius.md,
+  },
+  trendingEventScoreText: {
+    fontSize: fontSize.sm,
+    color: colors.text,
+    fontWeight: fontWeight.medium,
+    flex: 1,
+  },
+  trendingEventStats: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingTop: spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  trendingEventStat: {
+    alignItems: 'center',
+    flex: 1,
+  },
+  trendingEventStatValue: {
+    fontSize: fontSize.md,
+    fontWeight: fontWeight.bold,
+    color: colors.text,
+    marginTop: spacing.xs,
+  },
+  trendingEventStatLabel: {
+    fontSize: fontSize.xs,
+    color: colors.textMuted,
+    marginTop: 2,
   },
 });

@@ -4,9 +4,32 @@ import type { ReviewWithDetails, Sport } from '@/types';
 
 type FeedType = 'trending' | 'following' | 'leaderboard';
 
+export interface TrendingEvent {
+  event_id: string;
+  event_name: string;
+  event_date: string;
+  event_time: string | null;
+  home_team_name: string | null;
+  away_team_name: string | null;
+  home_team_logo: string | null;
+  away_team_logo: string | null;
+  home_score: string | null;
+  away_score: string | null;
+  venue_name: string | null;
+  sport_name: string | null;
+  sport_icon: string | null;
+  sport_color: string | null;
+  competition: string | null;
+  attendance_count: number;
+  avg_overall_rating: number | null;
+  avg_atmosphere_rating: number | null;
+  trending_score: number;
+}
+
 interface ExploreStore {
   // Feed state
   feedType: FeedType;
+  trendingEvents: TrendingEvent[];
   trendingReviews: ReviewWithDetails[];
   followingReviews: ReviewWithDetails[];
   searchResults: ReviewWithDetails[];
@@ -37,6 +60,7 @@ interface ExploreStore {
   setSportFilter: (sportId: string | null) => void;
   setSearchQuery: (query: string) => void;
 
+  fetchTrendingEvents: (reset?: boolean) => Promise<void>;
   fetchTrending: (reset?: boolean) => Promise<void>;
   fetchFollowingFeed: (userId: string, reset?: boolean) => Promise<void>;
   searchReviews: (query: string, reset?: boolean) => Promise<void>;
@@ -53,6 +77,7 @@ const PAGE_SIZE = 20;
 export const useExploreStore = create<ExploreStore>((set, get) => ({
   // Initial state
   feedType: 'trending',
+  trendingEvents: [],
   trendingReviews: [],
   followingReviews: [],
   searchResults: [],
@@ -81,12 +106,47 @@ export const useExploreStore = create<ExploreStore>((set, get) => ({
 
   setSportFilter: (sportId) => {
     set({ selectedSportId: sportId });
-    // Refetch trending with new filter
-    get().fetchTrending(true);
+    // Refetch trending events with new filter
+    get().fetchTrendingEvents(true);
   },
 
   setSearchQuery: (query) => {
     set({ searchQuery: query });
+  },
+
+  fetchTrendingEvents: async (reset = false) => {
+    const { selectedSportId, trendingOffset, isLoadingTrending } = get();
+
+    if (isLoadingTrending) return;
+
+    const offset = reset ? 0 : trendingOffset;
+    set({ isLoadingTrending: true, error: null });
+
+    try {
+      const { data, error } = await supabase.rpc('get_trending_events', {
+        p_sport_id: selectedSportId,
+        p_limit: PAGE_SIZE,
+        p_offset: offset,
+      });
+
+      if (error) throw error;
+
+      const events = (data || []) as TrendingEvent[];
+      const hasMore = events.length === PAGE_SIZE;
+
+      set({
+        trendingEvents: reset ? events : [...get().trendingEvents, ...events],
+        trendingOffset: offset + events.length,
+        hasMoreTrending: hasMore,
+        isLoadingTrending: false,
+      });
+    } catch (error: any) {
+      console.error('[ExploreStore] Error fetching trending events:', error);
+      set({
+        error: error.message,
+        isLoadingTrending: false,
+      });
+    }
   },
 
   fetchTrending: async (reset = false) => {
@@ -196,9 +256,32 @@ export const useExploreStore = create<ExploreStore>((set, get) => ({
 
   fetchSports: async () => {
     try {
+      // Only fetch sports that have events with attendees (i.e., sports actually used in the app)
+      // First get the sport IDs that have attended events
+      const { data: sportIds, error: sportIdsError } = await supabase
+        .from('attended_events')
+        .select('event:events(sport_id)')
+        .not('event.sport_id', 'is', null);
+
+      if (sportIdsError) throw sportIdsError;
+
+      // Extract unique sport IDs
+      const uniqueSportIds = [...new Set(
+        (sportIds || [])
+          .map((ae: any) => ae.event?.sport_id)
+          .filter(Boolean)
+      )];
+
+      if (uniqueSportIds.length === 0) {
+        set({ sports: [] });
+        return;
+      }
+
+      // Fetch the sports by those IDs
       const { data, error } = await supabase
         .from('sports')
         .select('*')
+        .in('id', uniqueSportIds)
         .order('name');
 
       if (error) throw error;
@@ -224,6 +307,7 @@ export const useExploreStore = create<ExploreStore>((set, get) => ({
   reset: () => {
     set({
       feedType: 'trending',
+      trendingEvents: [],
       trendingReviews: [],
       followingReviews: [],
       searchResults: [],
