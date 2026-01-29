@@ -292,10 +292,10 @@ export function useFriends() {
   );
 
   // Search users with extended stats (for friend search with previews)
-  interface UserWithStats extends Profile {
+  interface UserWithStats extends Omit<Profile, 'favorite_sport' | 'favorite_team'> {
     total_events?: number;
-    favorite_sport?: string;
-    favorite_team?: string;
+    favorite_sport?: string | null;
+    favorite_team?: string | null;
   }
 
   const searchUsersWithStats = useCallback(

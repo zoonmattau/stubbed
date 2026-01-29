@@ -10,7 +10,7 @@ export default function SportsLayout() {
         headerShown: true,
         headerStyle: { backgroundColor: colors.background },
         headerTintColor: colors.text,
-        headerBackTitleVisible: false,
+        headerBackVisible: false,
         contentStyle: { backgroundColor: colors.background },
         headerLeft: () => (
           <TouchableOpacity onPress={() => router.back()} style={{ marginLeft: 12, marginRight: 8 }}>

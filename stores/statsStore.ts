@@ -49,6 +49,7 @@ export const useStatsStore = create<StatsState>((set, get) => ({
       // If stats record doesn't exist, create it
       if (statsResponse.error && statsResponse.error.code === 'PGRST116') {
         console.log('[Stats] Creating user_stats record for user:', userId);
+        // @ts-expect-error - Supabase table type inference issue
         const { error: insertError } = await supabase.from('user_stats').insert({
           user_id: userId,
         });
@@ -281,10 +282,17 @@ export const useStatsStore = create<StatsState>((set, get) => ({
       });
 
       // Fetch user's current unlocked achievements
+      type UnlockedAchievement = {
+        id: string;
+        user_id: string;
+        achievement_id: string;
+        unlocked_at: string;
+        achievement: { id: string; code: string; name: string; points: number } | null;
+      };
       const { data: unlockedData, error: unlockedError } = await supabase
         .from('user_achievements')
         .select('*, achievement:achievements(*)')
-        .eq('user_id', userId);
+        .eq('user_id', userId) as { data: UnlockedAchievement[] | null; error: any };
 
       if (unlockedError) {
         console.error('[Stats] Error fetching unlocked achievements:', unlockedError);
@@ -526,7 +534,7 @@ export const useStatsStore = create<StatsState>((set, get) => ({
           console.log('[Stats] Achievement records found:', achievementRecords);
 
           // Insert user_achievements records
-          const userAchievements = achievementRecords.map(a => ({
+          const userAchievements = (achievementRecords as { id: string; code: string }[]).map(a => ({
             user_id: userId,
             achievement_id: a.id,
             unlocked_at: new Date().toISOString(),
@@ -535,13 +543,12 @@ export const useStatsStore = create<StatsState>((set, get) => ({
           console.log('[Stats] Inserting user achievements:', userAchievements);
 
           // Use upsert to handle duplicates gracefully (in case of partial grants from previous runs)
-          const { data: insertData, error: insertError } = await supabase
-            .from('user_achievements')
-            .upsert(userAchievements, {
-              onConflict: 'user_id,achievement_id',
-              ignoreDuplicates: true
-            })
-            .select();
+          const achievementsTable = supabase.from('user_achievements');
+          // @ts-ignore - Supabase table type inference issue
+          const { data: insertData, error: insertError } = await achievementsTable.upsert(userAchievements, {
+            onConflict: 'user_id,achievement_id',
+            ignoreDuplicates: true
+          }).select();
 
           if (insertError) {
             console.error('[Stats] Error granting achievements:', insertError);
@@ -583,17 +590,17 @@ export const useStatsStore = create<StatsState>((set, get) => ({
       const totalPoints = activityPoints + achievementPoints;
 
       // Update user_stats
-      const { error: statsError } = await supabase
-        .from('user_stats')
-        .upsert({
-          user_id: userId,
-          total_events: totalEvents,
-          total_sports: uniqueSports.size,
-          total_teams: uniqueTeams.size,
-          total_venues: uniqueVenues.size,
-          total_points: totalPoints,
-          updated_at: new Date().toISOString(),
-        }, { onConflict: 'user_id' });
+      const statsTable = supabase.from('user_stats');
+      // @ts-ignore - Supabase table type inference issue
+      const { error: statsError } = await statsTable.upsert({
+        user_id: userId,
+        total_events: totalEvents,
+        total_sports: uniqueSports.size,
+        total_teams: uniqueTeams.size,
+        total_venues: uniqueVenues.size,
+        total_points: totalPoints,
+        updated_at: new Date().toISOString(),
+      }, { onConflict: 'user_id' });
 
       if (statsError) {
         console.error('[Stats] Error updating stats:', statsError);

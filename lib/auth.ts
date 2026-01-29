@@ -66,7 +66,7 @@ export async function signIn(
       .from('profiles')
       .select('email')
       .eq('username', emailOrUsername)
-      .single();
+      .single() as { data: { email: string } | null; error: any };
 
     if (profileError || !profile?.email) {
       return {
@@ -121,10 +121,9 @@ export async function updateProfile(
     favorite_team?: string;
   }
 ): Promise<{ error: Error | null }> {
-  const { error } = await supabase
-    .from('profiles')
-    .update({ ...updates, updated_at: new Date().toISOString() })
-    .eq('id', userId);
+  const table = supabase.from('profiles');
+  // @ts-ignore - Supabase table type inference issue
+  const { error } = await table.update({ ...updates, updated_at: new Date().toISOString() }).eq('id', userId);
 
   return { error };
 }

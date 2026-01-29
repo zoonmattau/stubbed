@@ -206,9 +206,15 @@ export interface Database {
           away_score: string | null;
           winner_team_id: string | null;
           is_draw: boolean;
+          is_abandoned: boolean;
           is_verified: boolean;
           created_by: string | null;
           created_at: string;
+          // Text fields for manual entry
+          home_team_name: string | null;
+          away_team_name: string | null;
+          venue_name: string | null;
+          sport_name: string | null;
         };
         Insert: {
           id?: string;
@@ -225,9 +231,14 @@ export interface Database {
           away_score?: string | null;
           winner_team_id?: string | null;
           is_draw?: boolean;
+          is_abandoned?: boolean;
           is_verified?: boolean;
           created_by?: string | null;
           created_at?: string;
+          home_team_name?: string | null;
+          away_team_name?: string | null;
+          venue_name?: string | null;
+          sport_name?: string | null;
         };
         Update: {
           id?: string;
@@ -244,9 +255,14 @@ export interface Database {
           away_score?: string | null;
           winner_team_id?: string | null;
           is_draw?: boolean;
+          is_abandoned?: boolean;
           is_verified?: boolean;
           created_by?: string | null;
           created_at?: string;
+          home_team_name?: string | null;
+          away_team_name?: string | null;
+          venue_name?: string | null;
+          sport_name?: string | null;
         };
       };
       attended_events: {
@@ -262,8 +278,19 @@ export interface Database {
           photo_urls: string[] | null;
           atmosphere_rating: number | null;
           went_with: string[] | null;
+          went_with_user_ids: string[] | null;
           is_favorite: boolean;
+          is_abandoned: boolean;
+          supported_team: 'home' | 'away' | 'neutral' | null;
+          result: 'win' | 'loss' | 'draw' | 'no_result' | null;
           created_at: string;
+          // User-submitted event data
+          submitted_home_score: string | null;
+          submitted_away_score: string | null;
+          submitted_round: string | null;
+          submitted_event_time: string | null;
+          submitted_competition: string | null;
+          submitted_at: string | null;
         };
         Insert: {
           id?: string;
@@ -277,8 +304,18 @@ export interface Database {
           photo_urls?: string[] | null;
           atmosphere_rating?: number | null;
           went_with?: string[] | null;
+          went_with_user_ids?: string[] | null;
           is_favorite?: boolean;
+          is_abandoned?: boolean;
+          supported_team?: 'home' | 'away' | 'neutral' | null;
+          result?: 'win' | 'loss' | 'draw' | 'no_result' | null;
           created_at?: string;
+          submitted_home_score?: string | null;
+          submitted_away_score?: string | null;
+          submitted_round?: string | null;
+          submitted_event_time?: string | null;
+          submitted_competition?: string | null;
+          submitted_at?: string | null;
         };
         Update: {
           id?: string;
@@ -292,8 +329,18 @@ export interface Database {
           photo_urls?: string[] | null;
           atmosphere_rating?: number | null;
           went_with?: string[] | null;
+          went_with_user_ids?: string[] | null;
           is_favorite?: boolean;
+          is_abandoned?: boolean;
+          supported_team?: 'home' | 'away' | 'neutral' | null;
+          result?: 'win' | 'loss' | 'draw' | 'no_result' | null;
           created_at?: string;
+          submitted_home_score?: string | null;
+          submitted_away_score?: string | null;
+          submitted_round?: string | null;
+          submitted_event_time?: string | null;
+          submitted_competition?: string | null;
+          submitted_at?: string | null;
         };
       };
       event_lineups: {
@@ -528,6 +575,9 @@ export interface Database {
           show_events: boolean;
           allow_tagging: boolean;
           show_on_leaderboards: boolean;
+          reviews_public: boolean;
+          allow_comments: boolean;
+          show_watched_reviews: boolean;
           updated_at: string;
         };
         Insert: {
@@ -543,6 +593,9 @@ export interface Database {
           show_events?: boolean;
           allow_tagging?: boolean;
           show_on_leaderboards?: boolean;
+          reviews_public?: boolean;
+          allow_comments?: boolean;
+          show_watched_reviews?: boolean;
           updated_at?: string;
         };
         Update: {
@@ -558,6 +611,9 @@ export interface Database {
           show_events?: boolean;
           allow_tagging?: boolean;
           show_on_leaderboards?: boolean;
+          reviews_public?: boolean;
+          allow_comments?: boolean;
+          show_watched_reviews?: boolean;
           updated_at?: string;
         };
       };
@@ -591,6 +647,166 @@ export interface Database {
           message?: string | null;
           created_at?: string;
           responded_at?: string | null;
+        };
+      };
+      event_reviews: {
+        Row: {
+          id: string;
+          attended_event_id: string;
+          user_id: string;
+          event_id: string;
+          review_text: string | null;
+          rating: number | null;
+          atmosphere_rating: number | null;
+          photo_urls: string[] | null;
+          is_watched: boolean;
+          is_public: boolean;
+          likes_count: number;
+          comments_count: number;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          attended_event_id: string;
+          user_id: string;
+          event_id?: string;
+          review_text?: string | null;
+          rating?: number | null;
+          atmosphere_rating?: number | null;
+          photo_urls?: string[] | null;
+          is_watched?: boolean;
+          is_public?: boolean;
+          likes_count?: number;
+          comments_count?: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          attended_event_id?: string;
+          user_id?: string;
+          event_id?: string;
+          review_text?: string | null;
+          rating?: number | null;
+          atmosphere_rating?: number | null;
+          photo_urls?: string[] | null;
+          is_watched?: boolean;
+          is_public?: boolean;
+          likes_count?: number;
+          comments_count?: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+      };
+      review_likes: {
+        Row: {
+          id: string;
+          review_id: string;
+          user_id: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          review_id: string;
+          user_id: string;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          review_id?: string;
+          user_id?: string;
+          created_at?: string;
+        };
+      };
+      review_comments: {
+        Row: {
+          id: string;
+          review_id: string;
+          user_id: string;
+          parent_id: string | null;
+          content: string;
+          is_edited: boolean;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          review_id: string;
+          user_id: string;
+          parent_id?: string | null;
+          content: string;
+          is_edited?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          review_id?: string;
+          user_id?: string;
+          parent_id?: string | null;
+          content?: string;
+          is_edited?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+      };
+      follows: {
+        Row: {
+          id: string;
+          follower_id: string;
+          following_id: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          follower_id: string;
+          following_id: string;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          follower_id?: string;
+          following_id?: string;
+          created_at?: string;
+        };
+      };
+      reports: {
+        Row: {
+          id: string;
+          reporter_id: string;
+          content_type: 'review' | 'comment';
+          content_id: string;
+          reason: 'spam' | 'harassment' | 'inappropriate' | 'misinformation' | 'other';
+          description: string | null;
+          status: 'pending' | 'reviewed' | 'actioned' | 'dismissed';
+          reviewed_by: string | null;
+          reviewed_at: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          reporter_id: string;
+          content_type: 'review' | 'comment';
+          content_id: string;
+          reason: 'spam' | 'harassment' | 'inappropriate' | 'misinformation' | 'other';
+          description?: string | null;
+          status?: 'pending' | 'reviewed' | 'actioned' | 'dismissed';
+          reviewed_by?: string | null;
+          reviewed_at?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          reporter_id?: string;
+          content_type?: 'review' | 'comment';
+          content_id?: string;
+          reason?: 'spam' | 'harassment' | 'inappropriate' | 'misinformation' | 'other';
+          description?: string | null;
+          status?: 'pending' | 'reviewed' | 'actioned' | 'dismissed';
+          reviewed_by?: string | null;
+          reviewed_at?: string | null;
+          created_at?: string;
         };
       };
     };
@@ -633,6 +849,67 @@ export interface Database {
         Returns: {
           month: string;
           event_count: number;
+        }[];
+      };
+      get_trending_events: {
+        Args: { p_sport_id?: string | null; p_limit?: number; p_offset?: number };
+        Returns: {
+          event_id: string;
+          event_name: string;
+          event_date: string;
+          event_time: string | null;
+          home_team_name: string | null;
+          away_team_name: string | null;
+          home_team_logo: string | null;
+          away_team_logo: string | null;
+          home_score: string | null;
+          away_score: string | null;
+          venue_name: string | null;
+          sport_name: string | null;
+          sport_icon: string | null;
+          sport_color: string | null;
+          competition: string | null;
+          attendance_count: number;
+          avg_overall_rating: number | null;
+          avg_atmosphere_rating: number | null;
+          trending_score: number;
+        }[];
+      };
+      get_trending_reviews: {
+        Args: { p_sport_id?: string | null; p_limit?: number; p_offset?: number };
+        Returns: Json[];
+      };
+      get_following_feed: {
+        Args: { p_user_id: string; p_limit?: number; p_offset?: number };
+        Returns: Json[];
+      };
+      get_leaderboard: {
+        Args: { p_limit?: number };
+        Returns: {
+          user_id: string;
+          username: string;
+          display_name: string | null;
+          avatar_url: string | null;
+          total_events: number;
+          total_xp: number;
+          followers_count: number;
+          reviews_count: number;
+        }[];
+      };
+      search_reviews: {
+        Args: { p_query: string; p_limit?: number; p_offset?: number };
+        Returns: Json[];
+      };
+      search_profiles: {
+        Args: { p_query: string; p_limit?: number; p_offset?: number };
+        Returns: {
+          user_id: string;
+          username: string;
+          display_name: string | null;
+          avatar_url: string | null;
+          bio: string | null;
+          followers_count: number;
+          reviews_count: number;
         }[];
       };
     };

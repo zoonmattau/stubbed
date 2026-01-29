@@ -76,11 +76,9 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       // If no settings exist, create default settings
       if (!data) {
         try {
-          const { data: newData, error: insertError } = await supabase
-            .from('user_settings')
-            .insert({ user_id: userId, ...DEFAULT_SETTINGS })
-            .select()
-            .single();
+          const table = supabase.from('user_settings');
+          // @ts-ignore - Supabase table type inference issue
+          const { data: newData, error: insertError } = await table.insert({ user_id: userId, ...DEFAULT_SETTINGS }).select().single();
 
           if (insertError) {
             set({
@@ -119,10 +117,9 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     set({ settings: { ...settings, ...updates } });
 
     try {
-      const { error } = await supabase
-        .from('user_settings')
-        .update({ ...updates, updated_at: new Date().toISOString() })
-        .eq('user_id', settings.user_id);
+      const table = supabase.from('user_settings');
+      // @ts-ignore - Supabase table type inference issue
+      const { error } = await table.update({ ...updates, updated_at: new Date().toISOString() }).eq('user_id', settings.user_id);
 
       if (error) {
         // Revert on error

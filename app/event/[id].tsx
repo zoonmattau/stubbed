@@ -133,6 +133,13 @@ export default function EventDetailScreen() {
     if (!id) return;
     try {
       // Get attendees with their profiles
+      type AttendeeData = {
+        user_id: string;
+        rating: number | null;
+        atmosphere_rating: number | null;
+        photo_urls: string[] | null;
+        profiles: { username: string; display_name: string | null; avatar_url: string | null } | null;
+      };
       const { data: attendeesData, error: attendeesError } = await supabase
         .from('attended_events')
         .select(`
@@ -143,7 +150,7 @@ export default function EventDetailScreen() {
           profiles:user_id(username, display_name, avatar_url)
         `)
         .eq('event_id', id)
-        .limit(20);
+        .limit(20) as { data: AttendeeData[] | null; error: any };
 
       if (!attendeesError && attendeesData) {
         // Calculate stats
@@ -161,9 +168,9 @@ export default function EventDetailScreen() {
           .filter(a => a.profiles && a.user_id !== user?.id)
           .map(a => ({
             user_id: a.user_id,
-            username: (a.profiles as any).username,
-            display_name: (a.profiles as any).display_name,
-            avatar_url: (a.profiles as any).avatar_url,
+            username: a.profiles!.username,
+            display_name: a.profiles!.display_name,
+            avatar_url: a.profiles!.avatar_url,
           }))
           .slice(0, 10);
         setAttendees(uniqueAttendees);
@@ -196,10 +203,11 @@ export default function EventDetailScreen() {
       }
 
       try {
+        type ProfileData = { id: string; username: string; display_name: string | null; avatar_url: string | null };
         const { data, error } = await supabase
           .from('profiles')
           .select('id, username, display_name, avatar_url')
-          .in('id', attendance.went_with_user_ids);
+          .in('id', attendance.went_with_user_ids) as { data: ProfileData[] | null; error: any };
 
         if (!error && data) {
           setWentWithProfiles(data.map(p => ({
@@ -427,10 +435,12 @@ export default function EventDetailScreen() {
   const isTestMatch = isCricket && homeScoreData && homeScoreData.innings.length > 1;
 
   const handleToggleFavorite = async () => {
+    if (!attendance) return;
     await updateAttendedEvent(attendance.id, { is_favorite: !attendance.is_favorite });
   };
 
   const handleDelete = () => {
+    if (!attendance) return;
     const doDelete = async () => {
       const result = await deleteAttendedEvent(attendance.id);
       if (result.success) {
@@ -463,6 +473,7 @@ export default function EventDetailScreen() {
   };
 
   const handleEdit = () => {
+    if (!attendance) return;
     router.push(`/event/edit/${attendance.id}`);
   };
 
@@ -618,9 +629,9 @@ export default function EventDetailScreen() {
                   onPress={() => router.push(`/profile/${attendee.user_id}`)}
                 >
                   <Avatar
-                    uri={attendee.avatar_url || undefined}
+                    source={attendee.avatar_url}
                     name={attendee.display_name || attendee.username}
-                    size={50}
+                    size="lg"
                   />
                   <Text style={styles.attendeeName} numberOfLines={1}>
                     {attendee.display_name || attendee.username}
@@ -669,9 +680,9 @@ export default function EventDetailScreen() {
                   onPress={() => router.push(`/profile/${profile.user_id}`)}
                 >
                   <Avatar
-                    uri={profile.avatar_url || undefined}
+                    source={profile.avatar_url}
                     name={profile.display_name || profile.username}
-                    size={50}
+                    size="lg"
                   />
                   <Text style={styles.attendeeName} numberOfLines={1}>
                     {profile.display_name || profile.username}

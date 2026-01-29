@@ -96,6 +96,7 @@ export default function ExploreScreen() {
   const fetchLeaderboard = async () => {
     setLeaderboardLoading(true);
     try {
+      // @ts-expect-error - Supabase RPC type inference issue
       const { data, error } = await supabase.rpc('get_leaderboard', { p_limit: 50 });
 
       if (error) {
@@ -103,7 +104,7 @@ export default function ExploreScreen() {
         throw error;
       }
 
-      const entries: LeaderboardEntry[] = (data || []).map((row: any) => ({
+      const entries: LeaderboardEntry[] = ((data || []) as any[]).map((row: any) => ({
         user_id: row.user_id,
         username: row.username,
         display_name: row.display_name,

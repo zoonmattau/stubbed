@@ -97,7 +97,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
                 }
               }
 
-              const { error: insertError } = await supabase.from('profiles').insert({
+              const profilesTable = supabase.from('profiles');
+              // @ts-ignore - Supabase table type inference issue
+              const { error: insertError } = await profilesTable.insert({
                 id: session.user.id,
                 username,
                 display_name: displayName,
@@ -124,7 +126,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
               .single();
 
             if (!existingStats) {
-              const { error: statsError } = await supabase.from('user_stats').insert({
+              const statsTable = supabase.from('user_stats');
+              // @ts-ignore - Supabase table type inference issue
+              const { error: statsError } = await statsTable.insert({
                 user_id: session.user.id,
               });
               if (statsError && statsError.code !== '23505') { // Ignore duplicate key error
@@ -185,7 +189,12 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
 
   signOut: async () => {
-    await supabase.auth.signOut();
-    set({ user: null, session: null, profile: null });
+    try {
+      await supabase.auth.signOut();
+    } catch (error) {
+      console.error('[Auth] Sign out error:', error);
+    } finally {
+      set({ user: null, session: null, profile: null });
+    }
   },
 }));

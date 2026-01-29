@@ -4,13 +4,15 @@ import { colors, borderRadius, fontSize, fontWeight } from '@/constants/theme';
 
 interface AvatarProps {
   source?: string | null;
+  uri?: string | null; // Alias for source
   name?: string;
-  size?: 'sm' | 'md' | 'lg' | 'xl';
+  size?: 'sm' | 'md' | 'lg' | 'xl' | number;
   style?: ViewStyle;
 }
 
-export function Avatar({ source, name, size = 'md', style }: AvatarProps) {
-  const sizeValue = SIZES[size];
+export function Avatar({ source, uri, name, size = 'md', style }: AvatarProps) {
+  const imageSource = source || uri;
+  const sizeValue = typeof size === 'number' ? size : SIZES[size];
   const initials = name
     ? name
         .split(' ')
@@ -22,7 +24,7 @@ export function Avatar({ source, name, size = 'md', style }: AvatarProps) {
 
   const sizeStyle = { width: sizeValue, height: sizeValue, borderRadius: sizeValue / 2 };
 
-  if (source) {
+  if (imageSource) {
     const imageStyle: ImageStyle = {
       ...sizeStyle,
       overflow: 'hidden',
@@ -30,7 +32,7 @@ export function Avatar({ source, name, size = 'md', style }: AvatarProps) {
     };
     return (
       <Image
-        source={{ uri: source }}
+        source={{ uri: imageSource }}
         style={[imageStyle, style as ImageStyle]}
         resizeMode="cover"
       />

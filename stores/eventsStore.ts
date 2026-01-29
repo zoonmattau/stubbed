@@ -181,7 +181,7 @@ export const useEventsStore = create<EventsState>((set, get) => ({
           .select('id')
           .ilike('name', home_team_name)
           .limit(1)
-          .single();
+          .single() as { data: { id: string } | null; error: any };
         if (homeTeam) homeTeamId = homeTeam.id;
       }
 
@@ -191,7 +191,7 @@ export const useEventsStore = create<EventsState>((set, get) => ({
           .select('id')
           .ilike('name', away_team_name)
           .limit(1)
-          .single();
+          .single() as { data: { id: string } | null; error: any };
         if (awayTeam) awayTeamId = awayTeam.id;
       }
 
@@ -201,7 +201,7 @@ export const useEventsStore = create<EventsState>((set, get) => ({
           .select('id')
           .ilike('name', venue_name)
           .limit(1)
-          .single();
+          .single() as { data: { id: string } | null; error: any };
         if (venue) venueId = venue.id;
       }
 
@@ -210,7 +210,8 @@ export const useEventsStore = create<EventsState>((set, get) => ({
         eventId = eventData.id;
       } else {
         // Try to find an existing event with same teams and date (deduplication)
-        let existingEvent = null;
+        type ExistingEvent = { id: string; home_score: string | null; away_score: string | null; round: string | null; competition: string | null; event_time: string | null; venue_id: string | null; venue_name: string | null };
+        let existingEvent: ExistingEvent | null = null;
 
         // Build query to find matching event
         if (eventData.event_date && (homeTeamId || home_team_name) && (awayTeamId || away_team_name)) {
@@ -232,7 +233,7 @@ export const useEventsStore = create<EventsState>((set, get) => ({
             }
           }
 
-          const { data: matchingEvents } = await query.limit(1);
+          const { data: matchingEvents } = await query.limit(1) as { data: ExistingEvent[] | null; error: any };
           if (matchingEvents && matchingEvents.length > 0) {
             existingEvent = matchingEvents[0];
           }
@@ -278,10 +279,9 @@ export const useEventsStore = create<EventsState>((set, get) => ({
 
           // Apply updates if any
           if (Object.keys(updates).length > 0) {
-            await supabase
-              .from('events')
-              .update(updates)
-              .eq('id', eventId);
+            const eventsTable = supabase.from('events');
+            // @ts-ignore - Supabase table type inference issue
+            await eventsTable.update(updates).eq('id', eventId);
             console.log('[EventStore] Updated existing event with missing fields:', Object.keys(updates));
           }
         } else {
@@ -309,14 +309,12 @@ export const useEventsStore = create<EventsState>((set, get) => ({
           };
 
           // Create new event
-          const { data: newEvent, error: eventError } = await supabase
-            .from('events')
-            .insert(insertData)
-            .select()
-            .single();
+          const eventsTable = supabase.from('events');
+          // @ts-ignore - Supabase table type inference issue
+          const { data: newEvent, error: eventError } = await eventsTable.insert(insertData).select().single();
 
           if (eventError) throw eventError;
-          eventId = newEvent.id;
+          eventId = (newEvent as { id: string }).id;
           console.log('[EventStore] Created new event:', eventId);
         }
       }
@@ -345,31 +343,27 @@ export const useEventsStore = create<EventsState>((set, get) => ({
       };
 
       // Try with consensus fields first
-      const result = await supabase
-        .from('attended_events')
-        .insert(insertDataWithConsensus)
-        .select()
-        .single();
+      const attendedTable = supabase.from('attended_events');
+      // @ts-ignore - Supabase table type inference issue
+      const result = await attendedTable.insert(insertDataWithConsensus).select().single();
 
       if (result.error?.message?.includes('column') && result.error?.message?.includes('does not exist')) {
         // Consensus columns don't exist yet, fall back to basic insert
         console.log('[EventStore] Consensus columns not found, using basic insert');
-        const basicResult = await supabase
-          .from('attended_events')
-          .insert(insertData)
-          .select()
-          .single();
-        newAttendance = basicResult.data;
+        // @ts-ignore - Supabase table type inference issue
+        const basicResult = await attendedTable.insert(insertData).select().single();
+        newAttendance = basicResult.data as { id: string } | null;
         attendanceError = basicResult.error;
       } else {
-        newAttendance = result.data;
+        newAttendance = result.data as { id: string } | null;
         attendanceError = result.error;
       }
 
-      if (attendanceError) throw attendanceError;
+      if (attendanceError || !newAttendance) throw attendanceError || new Error('Failed to create attendance');
 
       // Try to apply consensus (function may not exist if migration not run)
       try {
+        // @ts-ignore - Supabase RPC type inference issue
         await supabase.rpc('apply_event_consensus', { p_event_id: eventId });
         console.log('[EventStore] Applied consensus for event:', eventId);
       } catch (consensusError) {
@@ -389,10 +383,9 @@ export const useEventsStore = create<EventsState>((set, get) => ({
 
   updateAttendedEvent: async (attendanceId, updates) => {
     try {
-      const { error } = await supabase
-        .from('attended_events')
-        .update(updates)
-        .eq('id', attendanceId);
+      const table = supabase.from('attended_events');
+      // @ts-ignore - Supabase table type inference issue
+      const { error } = await table.update(updates).eq('id', attendanceId);
 
       if (error) throw error;
 
@@ -411,10 +404,9 @@ export const useEventsStore = create<EventsState>((set, get) => ({
 
   updateEvent: async (eventId, updates) => {
     try {
-      const { error } = await supabase
-        .from('events')
-        .update(updates)
-        .eq('id', eventId);
+      const table = supabase.from('events');
+      // @ts-ignore - Supabase table type inference issue
+      const { error } = await table.update(updates).eq('id', eventId);
 
       if (error) throw error;
 
@@ -450,7 +442,7 @@ export const useEventsStore = create<EventsState>((set, get) => ({
         .from('attended_events')
         .select('id, user_id')
         .eq('id', attendanceId)
-        .single();
+        .single() as { data: { id: string; user_id: string } | null; error: any };
 
       console.log('[Events] Existing record:', existing, 'Check error:', checkError);
 
@@ -515,6 +507,7 @@ export const useEventsStore = create<EventsState>((set, get) => ({
 
   getEventConsensus: async (eventId) => {
     try {
+      // @ts-ignore - Supabase RPC type inference issue
       const { data, error } = await supabase.rpc('get_event_consensus', {
         p_event_id: eventId,
       });
@@ -535,14 +528,14 @@ export const useEventsStore = create<EventsState>((set, get) => ({
     try {
       // Update the user's submitted value
       const updateField = `submitted_${field}`;
-      const { error: updateError } = await supabase
-        .from('attended_events')
-        .update({ [updateField]: value, submitted_at: new Date().toISOString() })
-        .eq('id', attendanceId);
+      const table = supabase.from('attended_events');
+      // @ts-ignore - Supabase table type inference issue
+      const { error: updateError } = await table.update({ [updateField]: value, submitted_at: new Date().toISOString() }).eq('id', attendanceId);
 
       if (updateError) throw updateError;
 
       // Re-apply consensus to update the event
+      // @ts-ignore - Supabase RPC type inference issue
       await supabase.rpc('apply_event_consensus', { p_event_id: eventId });
 
       // Refresh the attended events to get updated data

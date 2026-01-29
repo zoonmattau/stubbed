@@ -85,6 +85,11 @@ export interface Event {
   away_team_name?: string | null;
   venue_name?: string | null;
   sport_name?: string | null;
+  // Joined relations (populated via select with joins)
+  sport?: Sport;
+  home_team?: Team;
+  away_team?: Team;
+  venue?: Venue;
 }
 
 export interface AttendedEvent {
@@ -101,6 +106,7 @@ export interface AttendedEvent {
   went_with: string[] | null;
   went_with_user_ids: string[] | null;
   is_favorite: boolean;
+  is_abandoned: boolean;
   supported_team: 'home' | 'away' | 'neutral' | null;
   result: 'win' | 'loss' | 'draw' | 'no_result' | null;
   created_at: string;
@@ -406,10 +412,11 @@ export interface UserSuggestion {
 // Review form data
 export interface ReviewFormData {
   attended_event_id: string;
-  review_text?: string;
-  rating?: number;
-  atmosphere_rating?: number;
-  photo_urls?: string[];
+  event_id?: string;
+  review_text?: string | null;
+  rating?: number | null;
+  atmosphere_rating?: number | null;
+  photo_urls?: string[] | null;
   is_watched?: boolean;
   is_public?: boolean;
 }

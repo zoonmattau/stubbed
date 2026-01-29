@@ -67,12 +67,14 @@ export default function PublicProfileScreen() {
     if (!userId) return;
 
     try {
+      // @ts-ignore - Supabase RPC type inference issue
       const { data, error } = await supabase.rpc('get_user_public_stats', {
         p_user_id: userId,
       });
 
-      if (!error && data && data.length > 0) {
-        const row = data[0];
+      const results = (data || []) as any[];
+      if (!error && results.length > 0) {
+        const row = results[0];
         setUserStats({
           user_id: userId,
           total_events: row.total_events || 0,

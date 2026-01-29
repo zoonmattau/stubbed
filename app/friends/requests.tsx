@@ -10,10 +10,10 @@ import { useFriends } from '@/hooks/useFriends';
 import { parseLocalDate } from '@/utils/dates';
 import type { FriendWithProfile, Profile } from '@/types';
 
-interface UserWithStats extends Profile {
+interface UserWithStats extends Omit<Profile, 'favorite_sport' | 'favorite_team'> {
   total_events?: number;
-  favorite_sport?: string;
-  favorite_team?: string;
+  favorite_sport?: string | null;
+  favorite_team?: string | null;
 }
 
 export default function FriendRequestsScreen() {
