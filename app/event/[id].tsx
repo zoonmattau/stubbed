@@ -663,6 +663,34 @@ export default function EventDetailScreen() {
             <Badge label={sportName} size="md" color={hc.badgeBg} />
           </View>
 
+          {/* Date/Time (left) + Venue (right) */}
+          <View style={styles.heroInfoRow}>
+            <TouchableOpacity
+              style={[styles.heroInfoItem, { backgroundColor: hc.bgOverlay }]}
+              onPress={() => router.push(`/date/${event.event_date}` as any)}
+              activeOpacity={0.7}
+            >
+              <Ionicons name="calendar" size={13} color={hc.text} />
+              <Text style={[styles.heroInfoText, { color: hc.text }]}>
+                {formatDate(event.event_date)}{event.event_time ? ` · ${formatTime(event.event_time)}` : ''}
+              </Text>
+              <Ionicons name="chevron-forward" size={11} color={hc.a60} />
+            </TouchableOpacity>
+            {venueName && (
+              <TouchableOpacity
+                style={[styles.heroInfoItem, { backgroundColor: hc.bgOverlay }]}
+                onPress={() => router.push(`/venue/${encodeURIComponent(venueName)}` as any)}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="location" size={13} color={hc.text} />
+                <Text style={[styles.heroInfoText, { color: hc.text }]} numberOfLines={1}>
+                  {venueName}{venueCity ? `, ${venueCity}` : ''}
+                </Text>
+                <Ionicons name="chevron-forward" size={11} color={hc.a60} />
+              </TouchableOpacity>
+            )}
+          </View>
+
           {/* Competition & Round */}
           {(event.competition || event.round) && (
             <View style={styles.heroCompetitionRow}>
@@ -730,33 +758,6 @@ export default function EventDetailScreen() {
             </View>
           )}
 
-          {/* Date/Time + Venue in hero */}
-          <View style={styles.heroInfoRow}>
-            <TouchableOpacity
-              style={[styles.heroInfoItem, { backgroundColor: hc.bgOverlay }]}
-              onPress={() => router.push(`/date/${event.event_date}` as any)}
-              activeOpacity={0.7}
-            >
-              <Ionicons name="calendar" size={14} color={hc.text} />
-              <Text style={[styles.heroInfoText, { color: hc.text }]}>
-                {formatDate(event.event_date)}{event.event_time ? ` · ${formatTime(event.event_time)}` : ''}
-              </Text>
-              <Ionicons name="chevron-forward" size={12} color={hc.a60} />
-            </TouchableOpacity>
-            {venueName && (
-              <TouchableOpacity
-                style={[styles.heroInfoItem, { backgroundColor: hc.bgOverlay }]}
-                onPress={() => router.push(`/venue/${encodeURIComponent(venueName)}` as any)}
-                activeOpacity={0.7}
-              >
-                <Ionicons name="location" size={14} color={hc.text} />
-                <Text style={[styles.heroInfoText, { color: hc.text }]} numberOfLines={1}>
-                  {venueName}{venueCity ? `, ${venueCity}` : ''}
-                </Text>
-                <Ionicons name="chevron-forward" size={12} color={hc.a60} />
-              </TouchableOpacity>
-            )}
-          </View>
         </LinearGradient>
 
         {/* ============ QUICK STATS BAR ============ */}
@@ -1351,20 +1352,22 @@ const styles = StyleSheet.create({
     fontWeight: fontWeight.medium,
   },
   heroInfoRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
-    gap: spacing.sm,
-    marginTop: spacing.lg,
+    marginBottom: spacing.sm,
   },
   heroInfoItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.xs,
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.lg,
+    gap: 4,
+    paddingVertical: spacing.xs,
+    paddingHorizontal: spacing.sm,
     borderRadius: borderRadius.full,
+    flexShrink: 1,
   },
   heroInfoText: {
-    fontSize: fontSize.sm,
+    fontSize: fontSize.xs,
     fontWeight: fontWeight.medium,
   },
   abandonedContainer: {
