@@ -16,6 +16,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Card, Avatar, Footer } from '@/components/ui';
 import { EventCard } from '@/components/events';
+import type { EventCardStats } from '@/components/events';
+import { supabase } from '@/lib/supabase';
 import { useAuthStore } from '@/stores/authStore';
 import { useEventsStore } from '@/stores/eventsStore';
 import { useStatsStore } from '@/stores/statsStore';
@@ -111,6 +113,40 @@ export default function HomeScreen() {
   };
 
   const recentEvents = attendedEvents.slice(0, 3);
+
+  // Batch-fetch community stats for recent events (same as EventList)
+  const [recentStatsMap, setRecentStatsMap] = React.useState<Record<string, EventCardStats>>({});
+  useEffect(() => {
+    const fetchRecentStats = async () => {
+      const eventIds = recentEvents.map(e => e.event_id).filter(Boolean);
+      if (eventIds.length === 0) return;
+      try {
+        type StatsRow = { event_id: string; rating: number | null; atmosphere_rating: number | null };
+        const { data, error } = await supabase
+          .from('attended_events')
+          .select('event_id, rating, atmosphere_rating')
+          .in('event_id', eventIds) as { data: StatsRow[] | null; error: any };
+        if (error || !data) return;
+        const map: Record<string, { count: number; ratings: number[]; atmospheres: number[] }> = {};
+        for (const row of data) {
+          if (!map[row.event_id]) map[row.event_id] = { count: 0, ratings: [], atmospheres: [] };
+          map[row.event_id].count++;
+          if (row.rating != null) map[row.event_id].ratings.push(row.rating);
+          if (row.atmosphere_rating != null) map[row.event_id].atmospheres.push(row.atmosphere_rating);
+        }
+        const result: Record<string, EventCardStats> = {};
+        for (const [eventId, agg] of Object.entries(map)) {
+          result[eventId] = {
+            attendeeCount: agg.count,
+            avgRating: agg.ratings.length > 0 ? agg.ratings.reduce((a, b) => a + b, 0) / agg.ratings.length : null,
+            avgAtmosphere: agg.atmospheres.length > 0 ? agg.atmospheres.reduce((a, b) => a + b, 0) / agg.atmospheres.length : null,
+          };
+        }
+        setRecentStatsMap(result);
+      } catch { /* stats are nice-to-have */ }
+    };
+    fetchRecentStats();
+  }, [recentEvents.map(e => e.event_id).join(',')]);
 
   // Get achievements for total points calculation
   const { achievements } = useStatsStore();
@@ -553,7 +589,7 @@ export default function HomeScreen() {
                 event={attended.event!}
                 attendance={attended}
                 onPress={() => router.push(`/event/${attended.event_id}`)}
-                mini
+                stats={recentStatsMap[attended.event_id]}
               />
             ))}
           </View>

@@ -336,7 +336,7 @@ export function EventCard({ event, attendance, onPress, compact = false, mini = 
   // Racing regular card
   if (result.isRacing) {
     return (
-      <Card onPress={onPress} style={[styles.card, resultTintStyle]}>
+      <Card onPress={onPress} padding="none" style={[styles.card, resultTintStyle]}>
         {/* Sport accent top border */}
         <View style={[styles.cardAccent, { backgroundColor: sportColor }]} />
 
@@ -417,7 +417,7 @@ export function EventCard({ event, attendance, onPress, compact = false, mini = 
 
   // Standard sport card
   return (
-    <Card onPress={onPress} style={[styles.card, resultTintStyle]}>
+    <Card onPress={onPress} padding="none" style={[styles.card, resultTintStyle]}>
       {/* Sport accent top border */}
       <View style={[styles.cardAccent, { backgroundColor: sportColor }]} />
 
