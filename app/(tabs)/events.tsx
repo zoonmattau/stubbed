@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback, useMemo } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import {
   View,
   Text,
@@ -13,7 +13,6 @@ import {
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { EventList } from '@/components/events';
 import { Card, Badge } from '@/components/ui';
 import { InteractiveBarChart, BarChartItem, DonutChart, DonutSegment } from '@/components/stats';
@@ -25,35 +24,9 @@ import { getSportColor } from '@/constants/sports';
 import { useIsMounted } from '@/hooks/useSafeAsync';
 import type { AttendedEventWithDetails } from '@/types';
 
-type MainTabType = 'my_events' | 'live' | 'stats';
+type MainTabType = 'my_events' | 'stats';
 type FilterType = 'all' | 'favorites';
 type SortType = 'date_desc' | 'date_asc' | 'rating';
-
-interface SportCategory {
-  id: string;
-  name: string;
-  icon: string;
-  color: string;
-  route: string;
-}
-
-// Sorted alphabetically - A-League is inside Soccer, not separate
-const LIVE_SPORTS: SportCategory[] = [
-  { id: 'afl', name: 'AFL', icon: 'football', color: '#3b82f6', route: '/sports/afl' },
-  { id: 'basketball', name: 'Basketball', icon: 'basketball', color: '#f97316', route: '/sports/basketball' },
-  { id: 'cricket', name: 'Cricket', icon: 'baseball', color: '#22c55e', route: '/sports/cricket' },
-  { id: 'golf', name: 'Golf', icon: 'golf', color: '#10b981', route: '/sports/golf' },
-  { id: 'hockey', name: 'Ice Hockey', icon: 'snow', color: '#0ea5e9', route: '/sports/hockey' },
-  { id: 'motorsport', name: 'Motorsport', icon: 'car-sport', color: '#ef4444', route: '/sports/motorsport' },
-  { id: 'netball', name: 'Netball', icon: 'people', color: '#ec4899', route: '/sports/netball' },
-  { id: 'nrl', name: 'NRL', icon: 'football-outline', color: '#8b5cf6', route: '/sports/nrl' },
-  { id: 'rugby', name: 'Rugby Union', icon: 'american-football', color: '#f59e0b', route: '/sports/rugby' },
-  { id: 'soccer', name: 'Soccer', icon: 'football', color: '#16a34a', route: '/sports/soccer' },
-  { id: 'tennis', name: 'Tennis', icon: 'tennisball', color: '#84cc16', route: '/tennis' },
-  { id: 'combat', name: 'UFC & Boxing', icon: 'fitness', color: '#f97316', route: '/sports/combat' },
-];
-
-const SPORTS_FILTER_KEY = '@sports_filter';
 
 export default function EventsScreen() {
   const { user } = useAuthStore();
@@ -64,8 +37,6 @@ export default function EventsScreen() {
   const [filter, setFilter] = useState<FilterType>('all');
   const [sort, setSort] = useState<SortType>('date_desc');
   const [refreshing, setRefreshing] = useState(false);
-  const [hiddenSports, setHiddenSports] = useState<Set<string>>(new Set());
-  const [showFilterModal, setShowFilterModal] = useState(false);
 
   // Stats tab state
   const [statsFilterType, setStatsFilterType] = useState<'wins' | 'draws' | 'losses' | 'month' | 'sport' | 'team' | 'venue' | null>(null);
@@ -324,47 +295,6 @@ export default function EventsScreen() {
     setStatsFilterValue(null);
   };
 
-  // Load saved sports filter preferences
-  useEffect(() => {
-    const loadSportsFilter = async () => {
-      try {
-        const saved = await AsyncStorage.getItem(SPORTS_FILTER_KEY);
-        if (saved && isMounted()) {
-          setHiddenSports(new Set(JSON.parse(saved)));
-        }
-      } catch (error) {
-        if (isMounted()) {
-          console.error('Error loading sports filter:', error);
-        }
-      }
-    };
-    loadSportsFilter();
-  }, [isMounted]);
-
-  // Save sports filter preferences
-  const saveSportsFilter = useCallback(async (hidden: Set<string>) => {
-    try {
-      await AsyncStorage.setItem(SPORTS_FILTER_KEY, JSON.stringify([...hidden]));
-    } catch (error) {
-      console.error('Error saving sports filter:', error);
-    }
-  }, []);
-
-  const toggleSportVisibility = useCallback((sportId: string) => {
-    setHiddenSports(prev => {
-      const next = new Set(prev);
-      if (next.has(sportId)) {
-        next.delete(sportId);
-      } else {
-        next.add(sportId);
-      }
-      saveSportsFilter(next);
-      return next;
-    });
-  }, [saveSportsFilter]);
-
-  const visibleSports = LIVE_SPORTS.filter(sport => !hiddenSports.has(sport.id));
-
   useEffect(() => {
     if (user?.id) {
       fetchAttendedEvents(user.id);
@@ -450,126 +380,7 @@ export default function EventsScreen() {
           Stats
         </Text>
       </TouchableOpacity>
-      <TouchableOpacity
-        style={[styles.mainTab, mainTab === 'live' && styles.mainTabActive]}
-        onPress={() => setMainTab('live')}
-      >
-        <View style={styles.liveIndicator}>
-          <View style={styles.liveDot} />
-        </View>
-        <Text style={[styles.mainTabText, mainTab === 'live' && styles.mainTabTextActive]}>
-          Live Sports
-        </Text>
-      </TouchableOpacity>
     </View>
-  );
-
-  const renderFilterModal = () => (
-    <Modal
-      visible={showFilterModal}
-      animationType="slide"
-      transparent={true}
-      onRequestClose={() => setShowFilterModal(false)}
-    >
-      <View style={styles.modalOverlay}>
-        <View style={styles.modalContent}>
-          <View style={styles.modalHeader}>
-            <Text style={styles.modalTitle}>Filter Sports</Text>
-            <TouchableOpacity onPress={() => setShowFilterModal(false)}>
-              <Ionicons name="close" size={24} color={colors.text} />
-            </TouchableOpacity>
-          </View>
-          <Text style={styles.modalSubtitle}>Toggle sports to show or hide them</Text>
-
-          <ScrollView style={styles.modalList}>
-            {LIVE_SPORTS.map((sport) => {
-              const isVisible = !hiddenSports.has(sport.id);
-              return (
-                <TouchableOpacity
-                  key={sport.id}
-                  style={styles.filterItem}
-                  onPress={() => toggleSportVisibility(sport.id)}
-                  activeOpacity={0.7}
-                >
-                  <View style={[styles.filterIcon, { backgroundColor: sport.color + '20' }]}>
-                    <Ionicons name={sport.icon as any} size={20} color={sport.color} />
-                  </View>
-                  <Text style={styles.filterItemName}>{sport.name}</Text>
-                  <Ionicons
-                    name={isVisible ? 'checkmark-circle' : 'ellipse-outline'}
-                    size={24}
-                    color={isVisible ? colors.success : colors.textMuted}
-                  />
-                </TouchableOpacity>
-              );
-            })}
-          </ScrollView>
-
-          <TouchableOpacity
-            style={styles.modalDoneButton}
-            onPress={() => setShowFilterModal(false)}
-          >
-            <Text style={styles.modalDoneText}>Done</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-    </Modal>
-  );
-
-  const renderLiveSports = () => (
-    <ScrollView
-      style={styles.liveContainer}
-      contentContainerStyle={styles.liveContent}
-      showsVerticalScrollIndicator={false}
-    >
-      <View style={styles.liveHeader}>
-        <View>
-          <Text style={styles.liveTitle}>Browse Live Sports</Text>
-          <Text style={styles.liveSubtitle}>Scores, fixtures, standings & more</Text>
-        </View>
-        <TouchableOpacity
-          style={styles.filterButton}
-          onPress={() => setShowFilterModal(true)}
-        >
-          <Ionicons name="options-outline" size={18} color={colors.primary} />
-          {hiddenSports.size > 0 && (
-            <View style={styles.filterBadge}>
-              <Text style={styles.filterBadgeText}>{hiddenSports.size}</Text>
-            </View>
-          )}
-        </TouchableOpacity>
-      </View>
-
-      <View style={styles.sportsGrid}>
-        {visibleSports.map((sport) => (
-          <TouchableOpacity
-            key={sport.id}
-            style={styles.sportCard}
-            onPress={() => router.push(sport.route as any)}
-            activeOpacity={0.7}
-          >
-            <View style={[styles.sportIcon, { backgroundColor: sport.color + '20' }]}>
-              <Ionicons name={sport.icon as any} size={24} color={sport.color} />
-            </View>
-            <Text style={styles.sportName}>{sport.name}</Text>
-            <Ionicons name="chevron-forward" size={14} color={colors.textMuted} style={styles.sportArrow} />
-          </TouchableOpacity>
-        ))}
-      </View>
-
-      {visibleSports.length === 0 && (
-        <View style={styles.emptyFilter}>
-          <Ionicons name="filter-outline" size={48} color={colors.textMuted} />
-          <Text style={styles.emptyFilterText}>All sports are hidden</Text>
-          <TouchableOpacity
-            style={styles.showAllButton}
-            onPress={() => setShowFilterModal(true)}
-          >
-            <Text style={styles.showAllText}>Manage Filters</Text>
-          </TouchableOpacity>
-        </View>
-      )}
-    </ScrollView>
   );
 
   const renderMyEvents = () => (
@@ -989,7 +800,6 @@ export default function EventsScreen() {
 
       {mainTab === 'my_events' && renderMyEvents()}
       {mainTab === 'stats' && renderStats()}
-      {mainTab === 'live' && renderLiveSports()}
 
       {/* FAB - only show on My Events */}
       {mainTab === 'my_events' && (
@@ -1001,7 +811,6 @@ export default function EventsScreen() {
         </TouchableOpacity>
       )}
 
-      {renderFilterModal()}
       {renderStatsEventsModal()}
     </View>
   );
@@ -1042,96 +851,6 @@ const styles = StyleSheet.create({
   },
   mainTabTextActive: {
     color: colors.white,
-  },
-  liveIndicator: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: '#ef4444',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  liveDot: {
-    width: 4,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: colors.white,
-  },
-  // Live sports section
-  liveContainer: {
-    flex: 1,
-  },
-  liveContent: {
-    padding: spacing.lg,
-  },
-  liveHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: spacing.lg,
-  },
-  liveTitle: {
-    fontSize: fontSize.xl,
-    fontWeight: fontWeight.bold,
-    color: colors.text,
-    marginBottom: spacing.xs,
-  },
-  liveSubtitle: {
-    fontSize: fontSize.sm,
-    color: colors.textSecondary,
-  },
-  filterButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.primary + '15',
-    paddingVertical: spacing.xs,
-    paddingHorizontal: spacing.sm,
-    borderRadius: borderRadius.full,
-    borderWidth: 1,
-    borderColor: colors.primary + '30',
-  },
-  filterBadge: {
-    backgroundColor: colors.primary,
-    width: 16,
-    height: 16,
-    borderRadius: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginLeft: 4,
-  },
-  filterBadgeText: {
-    fontSize: 10,
-    fontWeight: fontWeight.bold,
-    color: colors.white,
-  },
-  sportsGrid: {
-    gap: spacing.sm,
-  },
-  sportCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.surface,
-    padding: spacing.md,
-    borderRadius: borderRadius.lg,
-    borderWidth: 1,
-    borderColor: colors.border,
-    gap: spacing.md,
-  },
-  sportIcon: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  sportName: {
-    flex: 1,
-    fontSize: fontSize.md,
-    fontWeight: fontWeight.medium,
-    color: colors.text,
-  },
-  sportArrow: {
-    marginLeft: 'auto',
   },
   // Search
   searchContainer: {
@@ -1212,96 +931,6 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.3,
     shadowRadius: 8,
     elevation: 8,
-  },
-  // Empty filter state
-  emptyFilter: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: spacing['3xl'],
-  },
-  emptyFilterText: {
-    fontSize: fontSize.md,
-    color: colors.textSecondary,
-    marginTop: spacing.md,
-    marginBottom: spacing.lg,
-  },
-  showAllButton: {
-    backgroundColor: colors.primary,
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.lg,
-    borderRadius: borderRadius.md,
-  },
-  showAllText: {
-    fontSize: fontSize.sm,
-    fontWeight: fontWeight.semibold,
-    color: colors.white,
-  },
-  // Modal styles
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    justifyContent: 'flex-end',
-  },
-  modalContent: {
-    backgroundColor: colors.background,
-    borderTopLeftRadius: borderRadius.xl,
-    borderTopRightRadius: borderRadius.xl,
-    maxHeight: '80%',
-    paddingBottom: spacing.xl,
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: spacing.lg,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-  modalTitle: {
-    fontSize: fontSize.lg,
-    fontWeight: fontWeight.bold,
-    color: colors.text,
-  },
-  modalSubtitle: {
-    fontSize: fontSize.sm,
-    color: colors.textSecondary,
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.sm,
-  },
-  modalList: {
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.md,
-  },
-  filterItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: spacing.sm,
-    gap: spacing.md,
-  },
-  filterIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  filterItemName: {
-    flex: 1,
-    fontSize: fontSize.md,
-    color: colors.text,
-  },
-  modalDoneButton: {
-    backgroundColor: colors.primary,
-    marginHorizontal: spacing.lg,
-    marginTop: spacing.lg,
-    paddingVertical: spacing.md,
-    borderRadius: borderRadius.md,
-    alignItems: 'center',
-  },
-  modalDoneText: {
-    fontSize: fontSize.md,
-    fontWeight: fontWeight.semibold,
-    color: colors.white,
   },
   // Stats tab styles
   statsContainer: {

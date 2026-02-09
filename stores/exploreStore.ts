@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { supabase } from '@/lib/supabase';
 import type { ReviewWithDetails, Sport } from '@/types';
 
-type FeedType = 'trending' | 'following' | 'leaderboard';
+type FeedType = 'trending' | 'following' | 'leaderboard' | 'live';
 
 export interface TrendingEvent {
   event_id: string;
