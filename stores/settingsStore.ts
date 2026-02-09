@@ -6,7 +6,6 @@ export interface UserSettings {
   // Push Notifications
   push_enabled: boolean;
   // Notification Types
-  notify_friend_requests: boolean;
   notify_achievements: boolean;
   notify_event_reminders: boolean;
   // Email
@@ -26,7 +25,6 @@ export interface UserSettings {
 
 const DEFAULT_SETTINGS: Omit<UserSettings, 'user_id'> = {
   push_enabled: true,
-  notify_friend_requests: true,
   notify_achievements: true,
   notify_event_reminders: true,
   email_enabled: true,

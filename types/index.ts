@@ -137,16 +137,6 @@ export interface EventLineup {
   created_at: string;
 }
 
-// Social types
-export interface Friendship {
-  id: string;
-  requester_id: string;
-  addressee_id: string;
-  status: 'pending' | 'accepted' | 'declined' | 'blocked';
-  created_at: string;
-  updated_at: string;
-}
-
 export interface ActivityFeed {
   id: string;
   user_id: string;
@@ -220,10 +210,6 @@ export interface AttendedEventWithDetails extends AttendedEvent {
 export interface AchievementWithStatus extends Achievement {
   unlocked?: boolean;
   unlocked_at?: string;
-}
-
-export interface FriendWithProfile extends Friendship {
-  profile?: Profile;
 }
 
 // Form types

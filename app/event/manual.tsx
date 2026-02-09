@@ -210,7 +210,7 @@ export default function ManualEventScreen() {
   const [photos, setPhotos] = useState<string[]>([]);
   const [rating, setRating] = useState(0);
   const [atmosphereRating, setAtmosphereRating] = useState(0);
-  const [selectedFriendIds, setSelectedFriendIds] = useState<string[]>([]);
+  const [selectedUserIds, setSelectedUserIds] = useState<string[]>([]);
   const [textNames, setTextNames] = useState<string[]>([]);
   const [supportedTeam, setSupportedTeam] = useState<'home' | 'away' | 'neutral' | null>(null);
   const [autoSetSupport, setAutoSetSupport] = useState(false); // Track if we auto-set
@@ -566,7 +566,7 @@ export default function ManualEventScreen() {
           ticket_price: data.ticket_price ? parseFloat(data.ticket_price) : null,
           notes: data.notes || null,
           went_with: textNames.length > 0 ? textNames : null,
-          went_with_user_ids: selectedFriendIds.length > 0 ? selectedFriendIds : null,
+          went_with_user_ids: selectedUserIds.length > 0 ? selectedUserIds : null,
           rating: rating || null,
           atmosphere_rating: atmosphereRating || null,
           photo_urls: photoUrls.length > 0 ? photoUrls : null,
@@ -575,10 +575,10 @@ export default function ManualEventScreen() {
         }
       );
 
-      if (result.success && result.attendedEventId && selectedFriendIds.length > 0) {
+      if (result.success && result.attendedEventId && selectedUserIds.length > 0) {
         // Create tag invitations for each tagged friend
         try {
-          await createInvitations(result.attendedEventId, selectedFriendIds);
+          await createInvitations(result.attendedEventId, selectedUserIds);
         } catch (inviteError) {
           console.warn('Failed to create invitations:', inviteError);
           // Don't fail the whole operation if invites fail
@@ -1412,8 +1412,8 @@ export default function ManualEventScreen() {
           />
 
           <UserTagPicker
-            selectedUserIds={selectedFriendIds}
-            onSelectedUsersChange={setSelectedFriendIds}
+            selectedUserIds={selectedUserIds}
+            onSelectedUsersChange={setSelectedUserIds}
             textNames={textNames}
             onTextNamesChange={setTextNames}
           />

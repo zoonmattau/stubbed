@@ -593,20 +593,6 @@ export default function HomeScreen() {
           </TouchableOpacity>
 
           <TouchableOpacity
-            style={[styles.exploreCard, { backgroundColor: colors.info }]}
-            onPress={() => router.push('/friends')}
-            activeOpacity={0.8}
-          >
-            <View style={styles.exploreCardContent}>
-              <View style={styles.exploreCardIcon}>
-                <Ionicons name="people" size={24} color={colors.white} />
-              </View>
-              <Text style={styles.exploreCardTitle}>Friends</Text>
-              <Text style={styles.exploreCardSubtitle}>Connect with fans</Text>
-            </View>
-          </TouchableOpacity>
-
-          <TouchableOpacity
             style={[styles.exploreCard, { backgroundColor: colors.gold }]}
             onPress={() => router.push('/achievements')}
             activeOpacity={0.8}

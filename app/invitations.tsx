@@ -212,7 +212,7 @@ export default function InvitationsScreen() {
           <Ionicons name="mail-outline" size={64} color={colors.textMuted} />
           <Text style={styles.emptyTitle}>No Pending Invitations</Text>
           <Text style={styles.emptySubtitle}>
-            When friends tag you in events, they'll appear here
+            When someone tags you in an event, it'll appear here
           </Text>
           <Button
             title="Go Back"

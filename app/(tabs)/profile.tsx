@@ -368,45 +368,6 @@ export default function ProfileScreen() {
         )}
       </View>
 
-      {/* Friends Section */}
-      <View style={styles.section}>
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Friends</Text>
-          <TouchableOpacity onPress={() => router.push('/friends')}>
-            <Text style={styles.seeAll}>See All</Text>
-          </TouchableOpacity>
-        </View>
-        <Card>
-          <View style={styles.friendsSearchContainer}>
-            <View style={styles.friendsSearchBar}>
-              <Ionicons name="search" size={18} color={colors.textMuted} />
-              <TextInput
-                style={styles.friendsSearchInput}
-                placeholder="Search for friends..."
-                placeholderTextColor={colors.textMuted}
-                onFocus={() => router.push('/friends')}
-              />
-            </View>
-          </View>
-          <View style={styles.friendsActions}>
-            <TouchableOpacity
-              style={styles.friendsActionButton}
-              onPress={() => router.push('/friends/requests')}
-            >
-              <Ionicons name="person-add" size={20} color={colors.primary} />
-              <Text style={styles.friendsActionText}>Add Friends</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.friendsActionButton}
-              onPress={() => router.push('/friends')}
-            >
-              <Ionicons name="people" size={20} color={colors.primary} />
-              <Text style={styles.friendsActionText}>View All</Text>
-            </TouchableOpacity>
-          </View>
-        </Card>
-      </View>
-
       {/* Recent Activity */}
       <View style={styles.section}>
         <View style={styles.sectionHeader}>
@@ -1101,42 +1062,6 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     textAlign: 'center',
     marginTop: spacing.sm,
-  },
-  friendsSearchContainer: {
-    marginBottom: spacing.md,
-  },
-  friendsSearchBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.background,
-    borderRadius: borderRadius.md,
-    paddingHorizontal: spacing.md,
-    gap: spacing.sm,
-  },
-  friendsSearchInput: {
-    flex: 1,
-    fontSize: fontSize.sm,
-    color: colors.text,
-    paddingVertical: spacing.sm,
-  },
-  friendsActions: {
-    flexDirection: 'row',
-    gap: spacing.md,
-  },
-  friendsActionButton: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing.sm,
-    paddingVertical: spacing.md,
-    backgroundColor: `${colors.primary}15`,
-    borderRadius: borderRadius.md,
-  },
-  friendsActionText: {
-    fontSize: fontSize.sm,
-    color: colors.primary,
-    fontWeight: fontWeight.medium,
   },
   menuItem: {
     flexDirection: 'row',

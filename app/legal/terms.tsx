@@ -32,7 +32,7 @@ export default function TermsOfServiceScreen() {
         <Text style={styles.bulletPoint}>• Log and track sporting events they attend</Text>
         <Text style={styles.bulletPoint}>• View upcoming sports events and schedules</Text>
         <Text style={styles.bulletPoint}>• Track statistics about their event attendance</Text>
-        <Text style={styles.bulletPoint}>• Connect with friends and share experiences</Text>
+        <Text style={styles.bulletPoint}>• Connect with other users and share experiences</Text>
         <Text style={styles.bulletPoint}>• Earn achievements and track progress</Text>
       </View>
 

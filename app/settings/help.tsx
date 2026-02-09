@@ -26,10 +26,6 @@ const FAQ_ITEMS = [
     answer: 'Yes! Go to the Events tab, tap on the event you want to edit, then tap the edit button to update the details.',
   },
   {
-    question: 'How do I add friends?',
-    answer: 'Go to your Profile, tap on Friends, then use the search bar to find friends by username or tap "Add Friends" to send requests.',
-  },
-  {
     question: 'What data is synced across devices?',
     answer: 'All your events, stats, achievements, and settings are synced to your account and available on any device you sign in to.',
   },

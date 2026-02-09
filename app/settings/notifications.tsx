@@ -69,18 +69,6 @@ export default function NotificationsScreen() {
         <Card padding="none">
           <View style={styles.settingItem}>
             <View style={styles.settingInfo}>
-              <Text style={styles.settingLabel}>Friend Requests</Text>
-              <Text style={styles.settingDescription}>When someone sends you a friend request</Text>
-            </View>
-            <Switch
-              value={settings?.notify_friend_requests ?? true}
-              onValueChange={(value) => updateSettings({ notify_friend_requests: value })}
-              trackColor={{ false: colors.border, true: colors.primary }}
-              thumbColor={colors.white}
-            />
-          </View>
-          <View style={[styles.settingItem, styles.settingItemBorder]}>
-            <View style={styles.settingInfo}>
               <Text style={styles.settingLabel}>Achievements</Text>
               <Text style={styles.settingDescription}>When you unlock a new achievement</Text>
             </View>

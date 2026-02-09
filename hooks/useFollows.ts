@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useAuthStore } from '@/stores/authStore';
-import type { FollowCounts, FollowWithProfile, Profile, UserSuggestion } from '@/types';
+import type { FollowCounts, FollowWithProfile, Profile, TaggedUser, UserSuggestion } from '@/types';
 
 export function useFollows() {
   const { user } = useAuthStore();
@@ -194,6 +194,50 @@ export function useFollows() {
     }
   }, [user?.id]);
 
+  // Search all users by username or display name (direct profiles query)
+  const searchAllUsers = useCallback(
+    async (query: string): Promise<Profile[]> => {
+      if (!query.trim() || query.length < 2) return [];
+
+      try {
+        const { data, error: searchError } = await supabase
+          .from('profiles')
+          .select('id, username, display_name, avatar_url, bio')
+          .or(`username.ilike.%${query}%,display_name.ilike.%${query}%`)
+          .neq('id', user?.id || '')
+          .limit(10);
+
+        if (searchError) throw searchError;
+        return (data as Profile[]) || [];
+      } catch (err) {
+        console.error('Error searching users:', err);
+        return [];
+      }
+    },
+    [user?.id]
+  );
+
+  // Fetch profiles by user IDs (for displaying tagged users)
+  const fetchUsersByIds = useCallback(
+    async (userIds: string[]): Promise<TaggedUser[]> => {
+      if (!userIds.length) return [];
+
+      try {
+        const { data, error } = await supabase
+          .from('profiles')
+          .select('id, username, display_name, avatar_url')
+          .in('id', userIds);
+
+        if (error) throw error;
+        return (data as TaggedUser[]) || [];
+      } catch (err) {
+        console.error('Error fetching users by IDs:', err);
+        return [];
+      }
+    },
+    []
+  );
+
   // Search users
   const searchUsers = useCallback(async (query: string, limit = 20): Promise<UserSuggestion[]> => {
     if (!query.trim()) return [];
@@ -270,6 +314,8 @@ export function useFollows() {
     getFollowCounts,
     getSuggestedUsers,
     searchUsers,
+    searchAllUsers,
+    fetchUsersByIds,
 
     // Fetch methods
     fetchFollowers,

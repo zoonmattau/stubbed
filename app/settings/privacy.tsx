@@ -116,7 +116,7 @@ export default function PrivacyScreen() {
           <View style={styles.settingItem}>
             <View style={styles.settingInfo}>
               <Text style={styles.settingLabel}>Allow Tagging</Text>
-              <Text style={styles.settingDescription}>Let friends tag you in events</Text>
+              <Text style={styles.settingDescription}>Let other users tag you in events</Text>
             </View>
             <Switch
               value={settings?.allow_tagging ?? true}

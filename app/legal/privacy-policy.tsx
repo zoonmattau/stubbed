@@ -23,7 +23,7 @@ export default function PrivacyPolicyScreen() {
         <Text style={styles.bulletPoint}>• Account information (email, username, display name)</Text>
         <Text style={styles.bulletPoint}>• Profile information (favorite sport, favorite team, bio)</Text>
         <Text style={styles.bulletPoint}>• Event data (events attended, ratings, notes, photos)</Text>
-        <Text style={styles.bulletPoint}>• Social connections (friends, tagged users)</Text>
+        <Text style={styles.bulletPoint}>• Social connections (followers, tagged users)</Text>
       </View>
 
       <View style={styles.section}>
@@ -31,7 +31,7 @@ export default function PrivacyPolicyScreen() {
         <Text style={styles.paragraph}>We use the information we collect to:</Text>
         <Text style={styles.bulletPoint}>• Provide, maintain, and improve our services</Text>
         <Text style={styles.bulletPoint}>• Track your event attendance and generate statistics</Text>
-        <Text style={styles.bulletPoint}>• Enable social features like friend connections and tagging</Text>
+        <Text style={styles.bulletPoint}>• Enable social features like user connections and tagging</Text>
         <Text style={styles.bulletPoint}>• Send you notifications about achievements and events</Text>
         <Text style={styles.bulletPoint}>• Respond to your comments and questions</Text>
       </View>

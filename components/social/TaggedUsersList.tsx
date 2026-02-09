@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Avatar } from '@/components/ui';
-import { useFriends } from '@/hooks/useFriends';
+import { useFollows } from '@/hooks/useFollows';
 import { colors, spacing, fontSize, fontWeight, borderRadius } from '@/constants/theme';
 import type { TaggedUser } from '@/types';
 
@@ -13,7 +13,7 @@ interface TaggedUsersListProps {
 }
 
 export function TaggedUsersList({ userIds, textNames }: TaggedUsersListProps) {
-  const { fetchUsersByIds } = useFriends();
+  const { fetchUsersByIds } = useFollows();
   const [taggedUsers, setTaggedUsers] = useState<TaggedUser[]>([]);
   const [isLoading, setIsLoading] = useState(false);
 

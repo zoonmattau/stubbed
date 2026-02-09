@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -11,11 +11,9 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Avatar } from '@/components/ui';
-import { useFriends } from '@/hooks/useFriends';
+import { useFollows } from '@/hooks/useFollows';
 import { colors, spacing, fontSize, fontWeight, borderRadius } from '@/constants/theme';
 import type { Profile } from '@/types';
-
-type SearchTab = 'friends' | 'everyone';
 
 interface UserTagPickerProps {
   selectedUserIds: string[];
@@ -30,53 +28,38 @@ export function UserTagPicker({
   textNames,
   onTextNamesChange,
 }: UserTagPickerProps) {
-  const { friendProfiles, searchFriends, searchAllUsers } = useFriends();
+  const { searchAllUsers } = useFollows();
   const [modalVisible, setModalVisible] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [addNameModalVisible, setAddNameModalVisible] = useState(false);
   const [newName, setNewName] = useState('');
-  const [searchTab, setSearchTab] = useState<SearchTab>('friends');
-  const [allUserResults, setAllUserResults] = useState<Profile[]>([]);
+  const [searchResults, setSearchResults] = useState<Profile[]>([]);
   const [isSearching, setIsSearching] = useState(false);
 
-  // Filter friends based on search query and exclude already selected
-  const filteredFriends = useMemo(() => {
-    const results = searchFriends(searchQuery);
-    return results.filter((friend) => !selectedUserIds.includes(friend.id));
-  }, [searchFriends, searchQuery, selectedUserIds]);
-
-  // Search all users when on "everyone" tab
+  // Search all users with debounce
   useEffect(() => {
-    if (searchTab === 'everyone' && searchQuery.length >= 2) {
+    if (searchQuery.length >= 2) {
       setIsSearching(true);
       const timeoutId = setTimeout(async () => {
         const results = await searchAllUsers(searchQuery);
-        setAllUserResults(results.filter((user) => !selectedUserIds.includes(user.id)));
+        setSearchResults(results.filter((user) => !selectedUserIds.includes(user.id)));
         setIsSearching(false);
-      }, 300); // Debounce
+      }, 300);
 
       return () => clearTimeout(timeoutId);
-    } else if (searchTab === 'everyone') {
-      setAllUserResults([]);
+    } else {
+      setSearchResults([]);
     }
-  }, [searchQuery, searchTab, searchAllUsers, selectedUserIds]);
+  }, [searchQuery, searchAllUsers, selectedUserIds]);
 
-  // Get the current list based on tab
-  const displayedUsers = searchTab === 'friends' ? filteredFriends : allUserResults;
-
-  // Get selected friend profiles
-  const selectedFriends = useMemo(() => {
-    return friendProfiles.filter((friend) => selectedUserIds.includes(friend.id));
-  }, [friendProfiles, selectedUserIds]);
-
-  const handleSelectFriend = (friend: Profile) => {
-    onSelectedUsersChange([...selectedUserIds, friend.id]);
+  const handleSelectUser = (user: Profile) => {
+    onSelectedUsersChange([...selectedUserIds, user.id]);
     setSearchQuery('');
     setModalVisible(false);
   };
 
-  const handleRemoveFriend = (friendId: string) => {
-    onSelectedUsersChange(selectedUserIds.filter((id) => id !== friendId));
+  const handleRemoveUser = (userId: string) => {
+    onSelectedUsersChange(selectedUserIds.filter((id) => id !== userId));
   };
 
   const handleRemoveTextName = (index: number) => {
@@ -91,18 +74,18 @@ export function UserTagPicker({
     }
   };
 
-  const renderSelectedItem = (item: { type: 'friend' | 'text'; data: Profile | string; key: string }) => {
-    if (item.type === 'friend') {
-      const friend = item.data as Profile;
+  const renderSelectedItem = (item: { type: 'user' | 'text'; data: Profile | string; key: string }) => {
+    if (item.type === 'user') {
+      const user = item.data as Profile;
       return (
         <View key={item.key} style={styles.chip}>
-          <Avatar source={friend.avatar_url} name={friend.display_name || friend.username} size="sm" />
+          <Avatar source={user.avatar_url} name={user.display_name || user.username} size="sm" />
           <Text style={styles.chipText} numberOfLines={1}>
-            {friend.display_name || friend.username}
+            {user.display_name || user.username}
           </Text>
           <TouchableOpacity
             style={styles.chipRemove}
-            onPress={() => handleRemoveFriend(friend.id)}
+            onPress={() => handleRemoveUser(user.id)}
             hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
           >
             <Ionicons name="close-circle" size={18} color={colors.textMuted} />
@@ -130,9 +113,9 @@ export function UserTagPicker({
     }
   };
 
-  // Combine selected friends and text names for display
+  // Combine selected users and text names for display
   const allSelected = [
-    ...selectedFriends.map((f) => ({ type: 'friend' as const, data: f, key: `friend-${f.id}` })),
+    ...selectedUserIds.map((id) => ({ type: 'user' as const, data: { id, username: '', display_name: null, avatar_url: null } as Profile, key: `user-${id}` })),
     ...textNames.map((n, i) => ({ type: 'text' as const, data: n, key: `text-${i}` })),
   ];
 
@@ -150,7 +133,7 @@ export function UserTagPicker({
           onPress={() => setModalVisible(true)}
         >
           <Ionicons name="person-add" size={16} color={colors.primary} />
-          <Text style={styles.addButtonText}>Tag Friend</Text>
+          <Text style={styles.addButtonText}>Tag User</Text>
         </TouchableOpacity>
 
         <TouchableOpacity
@@ -177,41 +160,11 @@ export function UserTagPicker({
             </TouchableOpacity>
           </View>
 
-          {/* Tab switcher */}
-          <View style={styles.tabContainer}>
-            <TouchableOpacity
-              style={[styles.tab, searchTab === 'friends' && styles.tabActive]}
-              onPress={() => setSearchTab('friends')}
-            >
-              <Ionicons
-                name="people"
-                size={16}
-                color={searchTab === 'friends' ? colors.primary : colors.textMuted}
-              />
-              <Text style={[styles.tabText, searchTab === 'friends' && styles.tabTextActive]}>
-                Friends
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.tab, searchTab === 'everyone' && styles.tabActive]}
-              onPress={() => setSearchTab('everyone')}
-            >
-              <Ionicons
-                name="globe"
-                size={16}
-                color={searchTab === 'everyone' ? colors.primary : colors.textMuted}
-              />
-              <Text style={[styles.tabText, searchTab === 'everyone' && styles.tabTextActive]}>
-                Everyone
-              </Text>
-            </TouchableOpacity>
-          </View>
-
           <View style={styles.searchContainer}>
             <Ionicons name="search" size={20} color={colors.textMuted} />
             <TextInput
               style={styles.searchInput}
-              placeholder={searchTab === 'friends' ? 'Search friends...' : 'Search by username...'}
+              placeholder="Search by username..."
               placeholderTextColor={colors.textMuted}
               value={searchQuery}
               onChangeText={setSearchQuery}
@@ -224,7 +177,7 @@ export function UserTagPicker({
             )}
           </View>
 
-          {searchTab === 'everyone' && searchQuery.length < 2 ? (
+          {searchQuery.length < 2 ? (
             <View style={styles.emptyState}>
               <Ionicons name="search-outline" size={48} color={colors.textMuted} />
               <Text style={styles.emptyStateText}>
@@ -236,41 +189,35 @@ export function UserTagPicker({
               <ActivityIndicator size="large" color={colors.primary} />
               <Text style={styles.emptyStateText}>Searching...</Text>
             </View>
-          ) : displayedUsers.length === 0 ? (
+          ) : searchResults.length === 0 ? (
             <View style={styles.emptyState}>
               <Ionicons name="people-outline" size={48} color={colors.textMuted} />
-              <Text style={styles.emptyStateText}>
-                {searchTab === 'friends'
-                  ? friendProfiles.length === 0
-                    ? 'Add some friends first!'
-                    : 'No matching friends found'
-                  : 'No users found'}
-              </Text>
+              <Text style={styles.emptyStateText}>No users found</Text>
             </View>
           ) : (
             <FlatList
-              data={displayedUsers}
+              data={searchResults}
               keyExtractor={(item) => item.id}
               renderItem={({ item }) => (
                 <TouchableOpacity
-                  style={styles.friendItem}
-                  onPress={() => handleSelectFriend(item)}
+                  style={styles.userItem}
+                  onPress={() => handleSelectUser(item)}
                 >
                   <Avatar
                     source={item.avatar_url}
                     name={item.display_name || item.username}
                     size="md"
                   />
-                  <View style={styles.friendInfo}>
-                    <Text style={styles.friendName}>
+                  <View style={styles.userInfo}>
+                    <Text style={styles.userName}>
                       {item.display_name || item.username}
                     </Text>
-                    <Text style={styles.friendUsername}>@{item.username}</Text>
+                    <Text style={styles.userUsername}>@{item.username}</Text>
                   </View>
                   <Ionicons name="add-circle-outline" size={24} color={colors.primary} />
                 </TouchableOpacity>
               )}
-              contentContainerStyle={styles.friendList}
+              contentContainerStyle={styles.userList}
             />
           )}
         </View>
@@ -397,33 +344,6 @@ const styles = StyleSheet.create({
     fontWeight: fontWeight.semibold,
     color: colors.text,
   },
-  tabContainer: {
-    flexDirection: 'row',
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.md,
-    gap: spacing.sm,
-  },
-  tab: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing.xs,
-    paddingVertical: spacing.sm,
-    borderRadius: borderRadius.lg,
-    backgroundColor: colors.surface,
-  },
-  tabActive: {
-    backgroundColor: `${colors.primary}15`,
-  },
-  tabText: {
-    fontSize: fontSize.sm,
-    fontWeight: fontWeight.medium,
-    color: colors.textMuted,
-  },
-  tabTextActive: {
-    color: colors.primary,
-  },
   searchContainer: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -451,10 +371,10 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     textAlign: 'center',
   },
-  friendList: {
+  userList: {
     padding: spacing.lg,
   },
-  friendItem: {
+  userItem: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingVertical: spacing.md,
@@ -462,15 +382,15 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
   },
-  friendInfo: {
+  userInfo: {
     flex: 1,
   },
-  friendName: {
+  userName: {
     fontSize: fontSize.md,
     fontWeight: fontWeight.medium,
     color: colors.text,
   },
-  friendUsername: {
+  userUsername: {
     fontSize: fontSize.sm,
     color: colors.textSecondary,
   },
