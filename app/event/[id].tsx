@@ -11,9 +11,11 @@ import {
   Share,
   Linking,
   ActivityIndicator,
+  Dimensions,
 } from 'react-native';
 import { useLocalSearchParams, router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import { Card, Badge, Button, StarRating, Avatar } from '@/components/ui';
 import { TaggedUsersList } from '@/components/social/TaggedUsersList';
 import { ConflictResolver } from '@/components/events/ConflictResolver';
@@ -22,20 +24,29 @@ import { useEventsStore } from '@/stores/eventsStore';
 import { useTeamLogos } from '@/hooks/useTeamLogos';
 import { useReviews } from '@/hooks/useReviews';
 import { supabase } from '@/lib/supabase';
-import { colors, spacing, fontSize, fontWeight, borderRadius } from '@/constants/theme';
+import { colors, spacing, fontSize, fontWeight, borderRadius, shadows } from '@/constants/theme';
 import { formatDate, formatTime, parseLocalDate } from '@/utils/dates';
 import { getSportColor, getSportById, SPORTS } from '@/constants/sports';
 import { parseTennisScore } from '@/utils/scores';
 import type { AttendedEventWithDetails, ReviewWithDetails, Event } from '@/types';
 
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
+
 // Helper to get display name from sport code
 function getSportDisplayName(sportCode: string | null | undefined): string {
   if (!sportCode) return 'Sport';
-  // Try to find in SPORTS constant
   const sport = SPORTS.find(s => s.id.toLowerCase() === sportCode.toLowerCase());
   if (sport) return sport.name;
-  // Fallback: capitalize first letter
   return sportCode.charAt(0).toUpperCase() + sportCode.slice(1);
+}
+
+// Helper to lighten a hex color
+function lightenColor(hex: string, amount: number): string {
+  const num = parseInt(hex.replace('#', ''), 16);
+  const r = Math.min(255, (num >> 16) + Math.round(amount * 255));
+  const g = Math.min(255, ((num >> 8) & 0x00FF) + Math.round(amount * 255));
+  const b = Math.min(255, (num & 0x0000FF) + Math.round(amount * 255));
+  return `#${(1 << 24 | r << 16 | g << 8 | b).toString(16).slice(1)}`;
 }
 
 export default function EventDetailScreen() {
@@ -68,6 +79,14 @@ export default function EventDetailScreen() {
   }>>([]);
   const [attendeePhotos, setAttendeePhotos] = useState<string[]>([]);
 
+  // People you follow who attended
+  const [followedAttendees, setFollowedAttendees] = useState<Array<{
+    user_id: string;
+    username: string;
+    display_name: string | null;
+    avatar_url: string | null;
+  }>>([]);
+
   // Went with profiles (for own events)
   const [wentWithProfiles, setWentWithProfiles] = useState<Array<{
     user_id: string;
@@ -84,7 +103,7 @@ export default function EventDetailScreen() {
     }
   };
 
-  // Fetch events on mount if not loaded (e.g., page refresh)
+  // Fetch events on mount if not loaded
   useEffect(() => {
     if (user?.id && attendedEvents.length === 0 && !hasFetched && !isLoading) {
       setHasFetched(true);
@@ -96,14 +115,12 @@ export default function EventDetailScreen() {
     const found = attendedEvents.find((e) => e.event_id === id);
     setAttendance(found || null);
 
-    // If not in user's events, fetch public event data
     if (!found && id && !fetchingPublicEvent) {
       setFetchingPublicEvent(true);
       fetchPublicEvent();
     }
   }, [id, attendedEvents]);
 
-  // Fetch public event data (for viewing others' events)
   const fetchPublicEvent = async () => {
     if (!id) return;
     try {
@@ -128,11 +145,10 @@ export default function EventDetailScreen() {
     }
   };
 
-  // Fetch event stats for public events
+  // Fetch event stats and cross-reference with following
   const fetchEventStats = async () => {
     if (!id) return;
     try {
-      // Get attendees with their profiles
       type AttendeeData = {
         user_id: string;
         rating: number | null;
@@ -153,7 +169,6 @@ export default function EventDetailScreen() {
         .limit(20) as { data: AttendeeData[] | null; error: any };
 
       if (!attendeesError && attendeesData) {
-        // Calculate stats
         const ratings = attendeesData.filter(a => a.rating).map(a => a.rating as number);
         const atmospheres = attendeesData.filter(a => a.atmosphere_rating).map(a => a.atmosphere_rating as number);
 
@@ -163,7 +178,6 @@ export default function EventDetailScreen() {
           avgAtmosphere: atmospheres.length > 0 ? atmospheres.reduce((a, b) => a + b, 0) / atmospheres.length : null,
         });
 
-        // Get unique attendees with profiles (exclude current user)
         const uniqueAttendees = attendeesData
           .filter(a => a.profiles && a.user_id !== user?.id)
           .map(a => ({
@@ -175,26 +189,43 @@ export default function EventDetailScreen() {
           .slice(0, 10);
         setAttendees(uniqueAttendees);
 
-        // Collect all photos
         const allPhotos = attendeesData
           .filter(a => a.photo_urls && a.photo_urls.length > 0)
           .flatMap(a => a.photo_urls as string[])
           .slice(0, 6);
         setAttendeePhotos(allPhotos);
+
+        // Cross-reference with following list
+        if (user?.id && uniqueAttendees.length > 0) {
+          try {
+            const attendeeIds = uniqueAttendees.map(a => a.user_id);
+            const { data: followData } = await supabase
+              .from('follows')
+              .select('following_id')
+              .eq('follower_id', user.id)
+              .in('following_id', attendeeIds) as { data: { following_id: string }[] | null };
+
+            if (followData && followData.length > 0) {
+              const followedIds = new Set(followData.map((f: { following_id: string }) => f.following_id));
+              setFollowedAttendees(uniqueAttendees.filter(a => followedIds.has(a.user_id)));
+            }
+          } catch {
+            // Silently fail - this is a nice-to-have feature
+          }
+        }
       }
     } catch (err) {
       console.error('Error fetching event stats:', err);
     }
   };
 
-  // Fetch stats for all events (social feature)
   useEffect(() => {
     if (id) {
       fetchEventStats();
     }
   }, [id, user?.id]);
 
-  // Fetch went with profiles for own events
+  // Fetch went with profiles
   useEffect(() => {
     const fetchWentWithProfiles = async () => {
       if (!attendance?.went_with_user_ids || attendance.went_with_user_ids.length === 0) {
@@ -227,7 +258,7 @@ export default function EventDetailScreen() {
     }
   }, [attendance?.went_with_user_ids]);
 
-  // Handle "I Was There" - add event to user's attendance
+  // Handle "I Was There"
   const handleIWasThere = async () => {
     if (!user || !publicEvent) return;
 
@@ -236,7 +267,7 @@ export default function EventDetailScreen() {
       const result = await addAttendedEvent(
         user.id,
         {
-          id: publicEvent.id,  // Use 'id' not 'event_id' - store checks for this
+          id: publicEvent.id,
           sport_id: publicEvent.sport_id,
           event_date: publicEvent.event_date,
           home_team_name: publicEvent.home_team?.name || publicEvent.home_team_name,
@@ -250,9 +281,7 @@ export default function EventDetailScreen() {
       );
 
       if (result.success && result.attendedEventId) {
-        // Refresh attended events to get the new attendance
         await fetchAttendedEvents(user.id);
-        // Navigate to edit page so user can add their details
         router.push(`/event/edit/${result.attendedEventId}`);
       } else {
         throw new Error(result.error || 'Failed to add event');
@@ -269,7 +298,7 @@ export default function EventDetailScreen() {
     }
   };
 
-  // Check if user already has a review for this event
+  // Check if user already has a review
   useEffect(() => {
     const checkReview = async () => {
       if (!attendance?.id) {
@@ -284,7 +313,7 @@ export default function EventDetailScreen() {
     checkReview();
   }, [attendance?.id, getReviewForAttendedEvent]);
 
-  // Fetch public reviews for this event
+  // Fetch public reviews
   useEffect(() => {
     const fetchReviews = async () => {
       if (!id) return;
@@ -294,35 +323,34 @@ export default function EventDetailScreen() {
     fetchReviews();
   }, [id, getEventReviews]);
 
-  // Show loading while fetching
+  // Loading state
   if (isLoading || fetchingPublicEvent || (!attendance && !publicEvent && !hasFetched && attendedEvents.length === 0)) {
     return (
       <View style={styles.container}>
-        <View style={styles.notFound}>
+        <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={colors.primary} />
-          <Text style={styles.notFoundText}>Loading...</Text>
+          <Text style={styles.loadingText}>Loading event...</Text>
         </View>
       </View>
     );
   }
 
-  // Check if this is the user's own event or a public event
   const isOwnEvent = !!attendance;
   const event = attendance?.event || publicEvent;
 
   if (!event) {
     return (
       <View style={styles.container}>
-        <View style={styles.notFound}>
+        <View style={styles.loadingContainer}>
           <Ionicons name="alert-circle-outline" size={48} color={colors.textMuted} />
-          <Text style={styles.notFoundText}>Event not found</Text>
+          <Text style={styles.loadingText}>Event not found</Text>
           <Button title="Go Back" onPress={handleBack} variant="outline" />
         </View>
       </View>
     );
   }
 
-  // Use text fields as fallback for manually entered events
+  // Derived data
   const homeTeamName = event.home_team?.name || event.home_team_name || 'Home Team';
   const awayTeamName = event.away_team?.name || event.away_team_name || 'Away Team';
   const homeTeamShort = event.home_team?.short_name || event.home_team_name || 'Home';
@@ -331,24 +359,20 @@ export default function EventDetailScreen() {
   const venueCity = event.venue?.city;
   const sportName = getSportDisplayName(event.sport?.name || event.sport_name);
   const sportColor = getSportColor(sportName.toLowerCase());
+  const gradientEnd = lightenColor(sportColor, 0.15);
 
-  // Get logos - try FK first, then lookup by name
   const homeTeamLogo = event.home_team?.logo_url || getTeamLogo(homeTeamName);
   const awayTeamLogo = event.away_team?.logo_url || getTeamLogo(awayTeamName);
 
-  // Calculate winner info
+  // Score calculations
   const isCricket = sportName.toLowerCase() === 'cricket';
   const isTennis = sportName.toLowerCase() === 'tennis';
-
-  // Tennis: parse from home_score field which contains "6-4, 6-3" format
   const tennisResult = isTennis ? parseTennisScore(event.home_score) : null;
 
-  // Parse cricket score to get runs and wickets
   const parseCricketScore = (score: string | number | null | undefined): { runs: number; wickets: number } => {
     if (score === null || score === undefined) return { runs: 0, wickets: 10 };
     const scoreStr = String(score);
     if (scoreStr.includes('+')) {
-      // Test match with multiple innings - sum runs, use last innings wickets
       const innings = scoreStr.split('+').map(s => s.trim());
       const totalRuns = innings.reduce((total, inning) => {
         const runs = inning.includes('/') ? parseInt(inning.split('/')[0], 10) : parseInt(inning, 10);
@@ -368,42 +392,27 @@ export default function EventDetailScreen() {
   const parseScore = (score: string | number | null | undefined): number => {
     if (score === null || score === undefined) return 0;
     const scoreStr = String(score);
-    if (isCricket) {
-      return parseCricketScore(score).runs;
-    }
+    if (isCricket) return parseCricketScore(score).runs;
     return parseInt(scoreStr, 10) || 0;
   };
 
   const homeScoreNum = parseScore(event.home_score);
   const awayScoreNum = parseScore(event.away_score);
-
-  // For cricket: parse wickets to determine win type
-  // Convention: home team bats first, so if away wins, they won by wickets
   const homeCricketScore = isCricket ? parseCricketScore(event.home_score) : null;
   const awayCricketScore = isCricket ? parseCricketScore(event.away_score) : null;
 
-  // Tennis uses different logic: winner by sets won
   const hasScore = isTennis
     ? tennisResult !== null && tennisResult.sets.length > 0
     : event.home_score !== null && event.away_score !== null;
-  const homeWon = isTennis
-    ? tennisResult?.winner === 'home'
-    : hasScore && homeScoreNum > awayScoreNum;
-  const awayWon = isTennis
-    ? tennisResult?.winner === 'away'
-    : hasScore && awayScoreNum > homeScoreNum;
-  const isDraw = isTennis
-    ? tennisResult?.winner === 'draw'
-    : hasScore && homeScoreNum === awayScoreNum;
+  const homeWon = isTennis ? tennisResult?.winner === 'home' : hasScore && homeScoreNum > awayScoreNum;
+  const awayWon = isTennis ? tennisResult?.winner === 'away' : hasScore && awayScoreNum > homeScoreNum;
+  const isDraw = isTennis ? tennisResult?.winner === 'draw' : hasScore && homeScoreNum === awayScoreNum;
 
-  // Calculate margin/wickets for result text
   const getCricketResultText = (): string => {
     if (!homeCricketScore || !awayCricketScore) return '';
     if (homeWon) {
-      // Home team batted first and won = won by runs
       return `${Math.abs(homeScoreNum - awayScoreNum)} runs`;
     } else if (awayWon) {
-      // Away team batted second and won = won by wickets remaining
       const wicketsRemaining = 10 - awayCricketScore.wickets;
       return `${wicketsRemaining} wicket${wicketsRemaining !== 1 ? 's' : ''}`;
     }
@@ -415,7 +424,6 @@ export default function EventDetailScreen() {
     : Math.abs(homeScoreNum - awayScoreNum);
   const winnerName = homeWon ? homeTeamShort : awayTeamShort;
 
-  // Format cricket scores to show innings nicely
   const formatCricketScore = (score: string | number | null | undefined): { total: number; innings: string[] } => {
     if (score === null || score === undefined) return { total: 0, innings: [] };
     const scoreStr = String(score);
@@ -434,6 +442,7 @@ export default function EventDetailScreen() {
   const awayScoreData = isCricket ? formatCricketScore(event.away_score) : null;
   const isTestMatch = isCricket && homeScoreData && homeScoreData.innings.length > 1;
 
+  // Handlers
   const handleToggleFavorite = async () => {
     if (!attendance) return;
     await updateAttendedEvent(attendance.id, { is_favorite: !attendance.is_favorite });
@@ -457,9 +466,7 @@ export default function EventDetailScreen() {
 
     if (Platform.OS === 'web') {
       const confirmed = window.confirm('Are you sure you want to remove this event from your history?');
-      if (confirmed) {
-        doDelete();
-      }
+      if (confirmed) doDelete();
     } else {
       Alert.alert(
         'Delete Event',
@@ -487,35 +494,22 @@ export default function EventDetailScreen() {
     const message = `I attended ${homeTeam} vs ${awayTeam}${score ? ` (${score})` : ''} at ${venue} on ${date}! Tracked with Stubbed - Sports Attendance Tracker`;
 
     if (Platform.OS === 'web') {
-      // Web share or copy to clipboard
       if (navigator.share) {
         try {
-          await navigator.share({
-            title: `${homeTeam} vs ${awayTeam}`,
-            text: message,
-          });
-        } catch (error) {
-          // User cancelled or error
-        }
+          await navigator.share({ title: `${homeTeam} vs ${awayTeam}`, text: message });
+        } catch {}
       } else {
-        // Fallback: copy to clipboard
         try {
           await navigator.clipboard.writeText(message);
           window.alert('Copied to clipboard!');
-        } catch (error) {
+        } catch {
           window.alert('Unable to share. Copy this:\n\n' + message);
         }
       }
     } else {
-      // Native share
       try {
-        await Share.share({
-          message,
-          title: `${homeTeam} vs ${awayTeam}`,
-        });
-      } catch (error) {
-        // User cancelled or error
-      }
+        await Share.share({ message, title: `${homeTeam} vs ${awayTeam}` });
+      } catch {}
     }
   };
 
@@ -539,633 +533,639 @@ export default function EventDetailScreen() {
     Linking.openURL(url);
   };
 
-  return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      {/* Header with sport color */}
-      <View style={[styles.header, { backgroundColor: sportColor }]}>
-        <TouchableOpacity style={styles.backButton} onPress={handleBack}>
-          <Ionicons name="arrow-back" size={24} color={colors.white} />
-        </TouchableOpacity>
-        <View style={styles.headerContent}>
-          <View style={styles.headerSpacer} />
-          <Badge label={sportName} size="md" color={`${sportColor}dd`} />
+  // Render score section (reused in hero)
+  const renderScore = () => {
+    if (attendance?.is_abandoned) {
+      return (
+        <View style={styles.abandonedContainer}>
+          <Ionicons name="cloud-offline-outline" size={28} color="rgba(255,255,255,0.7)" />
+          <Text style={styles.abandonedText}>Abandoned</Text>
         </View>
+      );
+    }
+
+    if (!hasScore) {
+      return <Text style={styles.heroVs}>VS</Text>;
+    }
+
+    if (isTennis && tennisResult) {
+      return (
+        <View style={styles.tennisScoreContainer}>
+          {tennisResult.sets.map((set, i) => (
+            <Text key={i} style={[
+              styles.tennisSet,
+              set.winner === 'home' && styles.tennisSetWon,
+              set.winner === 'away' && styles.tennisSetLost,
+            ]}>
+              {set.player1}-{set.player2}
+            </Text>
+          ))}
+        </View>
+      );
+    }
+
+    if (isTestMatch && homeScoreData && awayScoreData) {
+      return (
+        <View style={styles.cricketScoresContainer}>
+          <View style={styles.cricketScoreColumn}>
+            {homeScoreData.innings.map((inn, i) => (
+              <Text key={i} style={[styles.cricketInning, homeWon && styles.cricketInningWon]}>
+                {inn}
+              </Text>
+            ))}
+          </View>
+          <Text style={styles.cricketDivider}>v</Text>
+          <View style={styles.cricketScoreColumn}>
+            {awayScoreData.innings.map((inn, i) => (
+              <Text key={i} style={[styles.cricketInning, awayWon && styles.cricketInningWon]}>
+                {inn}
+              </Text>
+            ))}
+          </View>
+        </View>
+      );
+    }
+
+    return (
+      <View style={styles.heroScoreRow}>
+        <Text style={[styles.heroScore, homeWon && styles.heroScoreWinner, awayWon && styles.heroScoreDim]}>
+          {event.home_score}
+        </Text>
+        <Text style={styles.heroScoreDivider}>-</Text>
+        <Text style={[styles.heroScore, awayWon && styles.heroScoreWinner, homeWon && styles.heroScoreDim]}>
+          {event.away_score}
+        </Text>
       </View>
+    );
+  };
 
-      {/* Conflict Resolution Banner (if there are data conflicts) - only for own events */}
-      {isOwnEvent && attendance && (
-        <View style={{ paddingHorizontal: spacing.lg, marginTop: spacing.md }}>
-          <ConflictResolver
-            eventId={attendance.event_id}
-            attendanceId={attendance.id}
-            onResolved={() => {
-              // Refresh data after conflict resolution
-              if (user?.id) {
-                fetchAttendedEvents(user.id);
-              }
-            }}
-          />
-        </View>
-      )}
+  const renderResultText = () => {
+    if (!hasScore || attendance?.is_abandoned) return null;
+    if (isDraw) {
+      return <Text style={styles.heroResultText}>Draw</Text>;
+    }
+    return (
+      <Text style={styles.heroResultText}>
+        {winnerName} won{isTennis
+          ? ` ${tennisResult?.player1Sets}-${tennisResult?.player2Sets}`
+          : isCricket
+          ? ` by ${getCricketResultText()}`
+          : ` by ${margin}`}
+      </Text>
+    );
+  };
 
-      {/* "I Was There" Button - for public events the user hasn't added yet */}
-      {!isOwnEvent && user && (
-        <View style={styles.iWasThereSection}>
-          <TouchableOpacity
-            style={styles.iWasThereButton}
-            onPress={handleIWasThere}
-            disabled={isAddingAttendance}
-          >
-            {isAddingAttendance ? (
-              <ActivityIndicator size="small" color={colors.white} />
-            ) : (
-              <>
-                <Ionicons name="hand-left" size={24} color={colors.white} />
-                <Text style={styles.iWasThereText}>I Was There Too!</Text>
-              </>
-            )}
-          </TouchableOpacity>
-          <Text style={styles.iWasThereHint}>Add this event to your attendance history</Text>
-        </View>
-      )}
+  // Determine FAB action
+  const showFab = isOwnEvent && attendance && !checkingReview && !hasExistingReview;
 
-      {/* Community Stats - show for all events */}
-      {eventStats.attendeeCount > 0 && (
-        <Card style={styles.publicStatsCard}>
-          <View style={styles.publicStatsRow}>
-            <View style={styles.publicStatItem}>
-              <Ionicons name="people" size={24} color={colors.primary} />
-              <Text style={styles.publicStatValue}>{eventStats.attendeeCount}</Text>
-              <Text style={styles.publicStatLabel}>Attended</Text>
+  return (
+    <View style={styles.container}>
+      <ScrollView
+        style={styles.scrollView}
+        contentContainerStyle={[styles.content, showFab && { paddingBottom: 100 }]}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* ============ HERO SECTION ============ */}
+        <LinearGradient
+          colors={[sportColor, gradientEnd, `${sportColor}dd`]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.hero}
+        >
+          {/* Top bar */}
+          <View style={styles.heroTopBar}>
+            <TouchableOpacity style={styles.heroBackButton} onPress={handleBack}>
+              <Ionicons name="arrow-back" size={22} color={colors.white} />
+            </TouchableOpacity>
+            <Badge label={sportName} size="md" color="rgba(255,255,255,0.25)" />
+          </View>
+
+          {/* Competition & Round */}
+          {(event.competition || event.round) && (
+            <View style={styles.heroCompetitionRow}>
+              {event.competition && (
+                <Text style={styles.heroCompetition}>{event.competition}</Text>
+              )}
+              {event.round && (
+                <Text style={styles.heroRound}>{event.round}</Text>
+              )}
+            </View>
+          )}
+
+          {/* Teams & Score */}
+          <View style={styles.heroMatchup}>
+            <TouchableOpacity
+              style={styles.heroTeam}
+              onPress={() => router.push(`/team/${encodeURIComponent(homeTeamName)}`)}
+            >
+              <View style={styles.heroLogoContainer}>
+                {homeTeamLogo ? (
+                  <Image source={{ uri: homeTeamLogo }} style={styles.heroLogo} />
+                ) : (
+                  <View style={styles.heroLogoPlaceholder}>
+                    <Text style={styles.heroLogoText}>{homeTeamShort[0]}</Text>
+                  </View>
+                )}
+              </View>
+              <Text style={styles.heroTeamName} numberOfLines={2}>{homeTeamName}</Text>
+            </TouchableOpacity>
+
+            <View style={styles.heroCenter}>
+              {renderScore()}
+              {renderResultText()}
+            </View>
+
+            <TouchableOpacity
+              style={styles.heroTeam}
+              onPress={() => router.push(`/team/${encodeURIComponent(awayTeamName)}`)}
+            >
+              <View style={styles.heroLogoContainer}>
+                {awayTeamLogo ? (
+                  <Image source={{ uri: awayTeamLogo }} style={styles.heroLogo} />
+                ) : (
+                  <View style={styles.heroLogoPlaceholder}>
+                    <Text style={styles.heroLogoText}>{awayTeamShort[0]}</Text>
+                  </View>
+                )}
+              </View>
+              <Text style={styles.heroTeamName} numberOfLines={2}>{awayTeamName}</Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* User's result badge in hero */}
+          {isOwnEvent && attendance?.supported_team && attendance?.result && (
+            <View style={styles.heroUserResult}>
+              <Ionicons
+                name={attendance.result === 'win' ? 'trophy' : attendance.result === 'loss' ? 'sad-outline' : 'remove-circle-outline'}
+                size={16}
+                color={colors.white}
+              />
+              <Text style={styles.heroUserResultText}>
+                You supported {attendance.supported_team === 'home' ? homeTeamShort : attendance.supported_team === 'away' ? awayTeamShort : 'Neutral'}
+                {' '}({attendance.result})
+              </Text>
+            </View>
+          )}
+        </LinearGradient>
+
+        {/* ============ QUICK STATS BAR ============ */}
+        {eventStats.attendeeCount > 0 && (
+          <View style={styles.statsBar}>
+            <View style={styles.statPill}>
+              <Ionicons name="people" size={18} color={sportColor} />
+              <Text style={styles.statPillValue}>{eventStats.attendeeCount}</Text>
+              <Text style={styles.statPillLabel}>Attended</Text>
             </View>
             {eventStats.avgRating && (
-              <View style={styles.publicStatItem}>
-                <Ionicons name="star" size={24} color={colors.gold} />
-                <Text style={styles.publicStatValue}>{eventStats.avgRating.toFixed(1)}</Text>
-                <Text style={styles.publicStatLabel}>Avg Rating</Text>
+              <View style={styles.statPill}>
+                <Ionicons name="star" size={18} color={colors.gold} />
+                <Text style={styles.statPillValue}>{eventStats.avgRating.toFixed(1)}</Text>
+                <Text style={styles.statPillLabel}>Rating</Text>
               </View>
             )}
             {eventStats.avgAtmosphere && (
-              <View style={styles.publicStatItem}>
-                <Ionicons name="flame" size={24} color={colors.secondary} />
-                <Text style={styles.publicStatValue}>{eventStats.avgAtmosphere.toFixed(1)}</Text>
-                <Text style={styles.publicStatLabel}>Atmosphere</Text>
+              <View style={styles.statPill}>
+                <Ionicons name="flame" size={18} color={colors.secondary} />
+                <Text style={styles.statPillValue}>{eventStats.avgAtmosphere.toFixed(1)}</Text>
+                <Text style={styles.statPillLabel}>Atmosphere</Text>
               </View>
             )}
-          </View>
-        </Card>
-      )}
-
-      {/* Who Was There - all attendees (community) */}
-      {attendees.length > 0 && (
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Also Attended</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-            <View style={styles.attendeesRow}>
-              {attendees.map((attendee) => (
-                <TouchableOpacity
-                  key={attendee.user_id}
-                  style={styles.attendeeItem}
-                  onPress={() => router.push(`/profile/${attendee.user_id}`)}
-                >
-                  <Avatar
-                    source={attendee.avatar_url}
-                    name={attendee.display_name || attendee.username}
-                    size="lg"
-                  />
-                  <Text style={styles.attendeeName} numberOfLines={1}>
-                    {attendee.display_name || attendee.username}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-              {eventStats.attendeeCount > attendees.length && (
-                <View style={styles.moreAttendeesItem}>
-                  <View style={styles.moreAttendeesCircle}>
-                    <Text style={styles.moreAttendeesText}>
-                      +{eventStats.attendeeCount - attendees.length}
-                    </Text>
-                  </View>
-                  <Text style={styles.attendeeName}>more</Text>
-                </View>
-              )}
-            </View>
-          </ScrollView>
-        </View>
-      )}
-
-      {/* Fan Photos - photos from all attendees */}
-      {attendeePhotos.length > 0 && (
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Fan Photos</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-            <View style={styles.fanPhotosRow}>
-              {attendeePhotos.map((url, index) => (
-                <Image key={index} source={{ uri: url }} style={styles.fanPhoto} />
-              ))}
-            </View>
-          </ScrollView>
-        </View>
-      )}
-
-      {/* My Group - people you went with (own events only) */}
-      {isOwnEvent && (wentWithProfiles.length > 0 || (attendance?.went_with && attendance.went_with.length > 0)) && (
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>My Group</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-            <View style={styles.attendeesRow}>
-              {wentWithProfiles.map((profile) => (
-                <TouchableOpacity
-                  key={profile.user_id}
-                  style={styles.attendeeItem}
-                  onPress={() => router.push(`/profile/${profile.user_id}`)}
-                >
-                  <Avatar
-                    source={profile.avatar_url}
-                    name={profile.display_name || profile.username}
-                    size="lg"
-                  />
-                  <Text style={styles.attendeeName} numberOfLines={1}>
-                    {profile.display_name || profile.username}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-              {/* Show text-only names (non-users) */}
-              {attendance?.went_with?.map((name, index) => (
-                <View key={`text-${index}`} style={styles.attendeeItem}>
-                  <View style={styles.textOnlyAvatar}>
-                    <Text style={styles.textOnlyAvatarText}>{name[0]?.toUpperCase()}</Text>
-                  </View>
-                  <Text style={styles.attendeeName} numberOfLines={1}>
-                    {name}
-                  </Text>
-                </View>
-              ))}
-            </View>
-          </ScrollView>
-        </View>
-      )}
-
-      {/* Teams & Score */}
-      <Card style={styles.matchCard}>
-        {/* Competition & Round - moved up */}
-        {(event.competition || event.round) && (
-          <View style={styles.matchHeader}>
-            {event.competition && (
-              <Text style={styles.matchCompetition}>{event.competition}</Text>
-            )}
-            {event.round && (
-              <Text style={styles.matchRound}>{event.round}</Text>
+            {isOwnEvent && attendance?.rating && (
+              <View style={styles.statPill}>
+                <Ionicons name="person" size={18} color={colors.primary} />
+                <Text style={styles.statPillValue}>{attendance.rating}</Text>
+                <Text style={styles.statPillLabel}>Your Rating</Text>
+              </View>
             )}
           </View>
         )}
 
-        <View style={styles.teamsContainer}>
-          <TouchableOpacity
-            style={styles.teamColumn}
-            onPress={() => router.push(`/team/${encodeURIComponent(homeTeamName)}`)}
-          >
-            <View style={styles.teamLogoContainer}>
-              {homeTeamLogo ? (
-                <Image
-                  source={{ uri: homeTeamLogo }}
-                  style={styles.teamLogo}
-                />
-              ) : (
-                <View style={[styles.teamLogoPlaceholder, { backgroundColor: sportColor }]}>
-                  <Text style={styles.teamLogoText}>
-                    {homeTeamShort[0]}
-                  </Text>
-                </View>
-              )}
-            </View>
-            <Text style={[styles.teamName, styles.teamNameClickable]}>{homeTeamName}</Text>
-          </TouchableOpacity>
-
-          <View style={styles.scoreColumn}>
-            {attendance?.is_abandoned ? (
-              <View style={styles.abandonedContainer}>
-                <Ionicons name="cloud-offline-outline" size={28} color={colors.textMuted} />
-                <Text style={styles.abandonedText}>Abandoned</Text>
-              </View>
-            ) : hasScore ? (
-              <>
-                {isTennis && tennisResult ? (
-                  /* Tennis score display - show sets */
-                  <View style={styles.tennisScoreContainer}>
-                    {tennisResult.sets.map((set, i) => (
-                      <Text key={i} style={[
-                        styles.tennisSet,
-                        set.winner === 'home' && styles.tennisSetHomeWon,
-                        set.winner === 'away' && styles.tennisSetAwayWon,
-                      ]}>
-                        {set.player1}-{set.player2}
-                      </Text>
-                    ))}
-                  </View>
-                ) : isTestMatch && homeScoreData && awayScoreData ? (
-                  /* Test cricket with multiple innings */
-                  <View style={styles.cricketScoresContainer}>
-                    <View style={styles.cricketScoreColumn}>
-                      {homeScoreData.innings.map((inn, i) => (
-                        <Text key={i} style={[styles.cricketInning, homeWon && styles.cricketInningWinner]}>
-                          {inn}
-                        </Text>
-                      ))}
-                    </View>
-                    <Text style={styles.cricketDivider}>v</Text>
-                    <View style={styles.cricketScoreColumn}>
-                      {awayScoreData.innings.map((inn, i) => (
-                        <Text key={i} style={[styles.cricketInning, awayWon && styles.cricketInningWinner]}>
-                          {inn}
-                        </Text>
-                      ))}
-                    </View>
-                  </View>
-                ) : (
-                  /* Standard score display */
-                  <View style={styles.scoreRow}>
-                    <Text style={[styles.score, homeWon && styles.scoreWinner, awayWon && styles.scoreLoser]}>
-                      {event.home_score}
-                    </Text>
-                    <Text style={styles.scoreDivider}>-</Text>
-                    <Text style={[styles.score, awayWon && styles.scoreWinner, homeWon && styles.scoreLoser]}>
-                      {event.away_score}
-                    </Text>
-                  </View>
-                )}
-                {isDraw ? (
-                  <Text style={styles.resultText}>Draw</Text>
-                ) : (
-                  <Text style={styles.resultText}>
-                    {winnerName} won{isTennis
-                      ? ` ${tennisResult?.player1Sets}-${tennisResult?.player2Sets}`
-                      : isCricket
-                      ? ` by ${getCricketResultText()}`
-                      : ` by ${margin}`}
-                  </Text>
-                )}
-              </>
-            ) : (
-              <Text style={styles.vs}>VS</Text>
-            )}
+        {/* ============ EVENT INFO CHIPS ============ */}
+        <View style={styles.infoChipsRow}>
+          <View style={styles.infoChip}>
+            <Ionicons name="calendar" size={14} color={sportColor} />
+            <Text style={styles.infoChipText}>{formatDate(event.event_date)}</Text>
           </View>
-
-          <TouchableOpacity
-            style={styles.teamColumn}
-            onPress={() => router.push(`/team/${encodeURIComponent(awayTeamName)}`)}
-          >
-            <View style={styles.teamLogoContainer}>
-              {awayTeamLogo ? (
-                <Image
-                  source={{ uri: awayTeamLogo }}
-                  style={styles.teamLogo}
-                />
-              ) : (
-                <View style={[styles.teamLogoPlaceholder, { backgroundColor: sportColor }]}>
-                  <Text style={styles.teamLogoText}>
-                    {awayTeamShort[0]}
-                  </Text>
-                </View>
-              )}
-            </View>
-            <Text style={[styles.teamName, styles.teamNameClickable]}>{awayTeamName}</Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* Quick user data summary - only for own events, or just venue for public */}
-        <View style={styles.matchFooter}>
-          {/* Supported Team - own events only */}
-          {isOwnEvent && attendance?.supported_team && (
-            <View style={styles.matchFooterItem}>
-              <Ionicons
-                name={attendance.result === 'win' ? 'trophy' : attendance.result === 'loss' ? 'sad' : 'remove'}
-                size={16}
-                color={attendance.result === 'win' ? colors.gold : attendance.result === 'loss' ? colors.error : colors.textSecondary}
-              />
-              <Text style={[
-                styles.matchFooterText,
-                attendance.result === 'win' && { color: colors.gold, fontWeight: fontWeight.semibold },
-                attendance.result === 'loss' && { color: colors.error },
-              ]}>
-                {attendance.supported_team === 'home'
-                  ? homeTeamShort
-                  : attendance.supported_team === 'away'
-                  ? awayTeamShort
-                  : 'Neutral'}
-                {attendance.result && ` (${attendance.result})`}
-              </Text>
+          {event.event_time && (
+            <View style={styles.infoChip}>
+              <Ionicons name="time" size={14} color={sportColor} />
+              <Text style={styles.infoChipText}>{formatTime(event.event_time)}</Text>
             </View>
           )}
-
-          {/* Rating - own events only */}
-          {isOwnEvent && attendance?.rating && (
-            <View style={styles.matchFooterItem}>
-              <StarRating rating={attendance.rating} size={16} readonly />
-            </View>
-          )}
-
-          {/* Went With - own events only */}
-          {isOwnEvent && ((attendance?.went_with && attendance.went_with.length > 0) ||
-            (attendance?.went_with_user_ids && attendance.went_with_user_ids.length > 0)) && (
-            <View style={styles.matchFooterItem}>
-              <Ionicons name="people" size={16} color={colors.textSecondary} />
-              <Text style={styles.matchFooterText}>
-                {attendance.went_with_user_ids?.length || attendance.went_with?.length || 0} people
-              </Text>
-            </View>
-          )}
-
-          {/* Venue/Stadium - always show */}
           {venueName && (
-            <View style={styles.matchFooterItem}>
-              <Ionicons name="location" size={16} color={colors.textSecondary} />
-              <Text style={styles.matchFooterText}>{venueName}</Text>
+            <View style={styles.infoChip}>
+              <Ionicons name="location" size={14} color={sportColor} />
+              <Text style={styles.infoChipText}>{venueName}{venueCity ? `, ${venueCity}` : ''}</Text>
+            </View>
+          )}
+          {event.season && (
+            <View style={styles.infoChip}>
+              <Ionicons name="flag" size={14} color={sportColor} />
+              <Text style={styles.infoChipText}>Season {event.season}</Text>
             </View>
           )}
         </View>
-      </Card>
 
-      {/* Event Info */}
-      <Card style={styles.infoCard}>
-        <View style={styles.infoRow}>
-          <Ionicons name="calendar-outline" size={20} color={colors.textSecondary} />
-          <Text style={styles.infoText}>{formatDate(event.event_date)}</Text>
-        </View>
-        {event.event_time && (
-          <View style={styles.infoRow}>
-            <Ionicons name="time-outline" size={20} color={colors.textSecondary} />
-            <Text style={styles.infoText}>{formatTime(event.event_time)}</Text>
+        {/* ============ CONFLICT RESOLVER ============ */}
+        {isOwnEvent && attendance && (
+          <View style={{ paddingHorizontal: spacing.lg }}>
+            <ConflictResolver
+              eventId={attendance.event_id}
+              attendanceId={attendance.id}
+              onResolved={() => {
+                if (user?.id) fetchAttendedEvents(user.id);
+              }}
+            />
           </View>
         )}
-        {venueName && (
-          <View style={styles.infoRow}>
-            <Ionicons name="location-outline" size={20} color={colors.textSecondary} />
-            <Text style={styles.infoText}>
-              {venueName}
-              {venueCity && `, ${venueCity}`}
-            </Text>
-          </View>
-        )}
-        {event.season && (
-          <View style={styles.infoRow}>
-            <Ionicons name="flag-outline" size={20} color={colors.textSecondary} />
-            <Text style={styles.infoText}>Season {event.season}</Text>
-          </View>
-        )}
-      </Card>
 
-      {/* Your Experience - only for own events */}
-      {isOwnEvent && attendance && (
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Your Experience</Text>
-        <Card>
-          {/* Supported Team & Result */}
-          {attendance.supported_team && (
-            <View style={styles.experienceRow}>
-              <Text style={styles.experienceLabel}>Supporting</Text>
-              <View style={styles.experienceValueRow}>
-                <Text style={[
-                  styles.experienceValue,
-                  attendance.result === 'win' && { color: colors.success },
-                  attendance.result === 'loss' && { color: colors.error },
-                ]}>
-                  {attendance.supported_team === 'home'
-                    ? homeTeamName
-                    : attendance.supported_team === 'away'
-                    ? awayTeamName
-                    : 'Neutral'}
+        {/* ============ "I WAS THERE" BUTTON ============ */}
+        {!isOwnEvent && user && (
+          <View style={styles.iWasThereSection}>
+            <TouchableOpacity
+              style={[styles.iWasThereButton, { backgroundColor: sportColor }]}
+              onPress={handleIWasThere}
+              disabled={isAddingAttendance}
+              activeOpacity={0.8}
+            >
+              {isAddingAttendance ? (
+                <ActivityIndicator size="small" color={colors.white} />
+              ) : (
+                <>
+                  <Ionicons name="hand-left" size={22} color={colors.white} />
+                  <Text style={styles.iWasThereText}>I Was There Too!</Text>
+                </>
+              )}
+            </TouchableOpacity>
+            <Text style={styles.iWasThereHint}>Add this event to your attendance history</Text>
+          </View>
+        )}
+
+        {/* ============ PEOPLE YOU FOLLOW WERE HERE ============ */}
+        {followedAttendees.length > 0 && (
+          <View style={styles.section}>
+            <View style={[styles.followedCard, { borderLeftColor: sportColor }]}>
+              <View style={styles.followedHeader}>
+                <Ionicons name="people-circle" size={22} color={sportColor} />
+                <Text style={styles.followedTitle}>
+                  {followedAttendees.length} {followedAttendees.length === 1 ? 'person' : 'people'} you follow {followedAttendees.length === 1 ? 'was' : 'were'} here
                 </Text>
-                {attendance.result && (
-                  <Badge
-                    label={attendance.result.toUpperCase()}
-                    size="sm"
-                    color={attendance.result === 'win' ? colors.success : attendance.result === 'loss' ? colors.error : colors.textSecondary}
-                  />
+              </View>
+              <View style={styles.followedAvatars}>
+                {followedAttendees.slice(0, 5).map((attendee) => (
+                  <TouchableOpacity
+                    key={attendee.user_id}
+                    onPress={() => router.push(`/profile/${attendee.user_id}`)}
+                    style={styles.followedAvatarItem}
+                  >
+                    <Avatar
+                      source={attendee.avatar_url}
+                      name={attendee.display_name || attendee.username}
+                      size="md"
+                    />
+                    <Text style={styles.followedAvatarName} numberOfLines={1}>
+                      {attendee.display_name || attendee.username}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+                {followedAttendees.length > 5 && (
+                  <View style={styles.followedAvatarItem}>
+                    <View style={styles.moreCircle}>
+                      <Text style={styles.moreCircleText}>+{followedAttendees.length - 5}</Text>
+                    </View>
+                  </View>
                 )}
               </View>
             </View>
-          )}
+          </View>
+        )}
 
-          {/* Rating */}
-          {attendance.rating && (
-            <View style={styles.experienceRow}>
-              <Text style={styles.experienceLabel}>Overall Rating</Text>
-              <StarRating rating={attendance.rating} size={20} readonly />
+        {/* ============ COMMUNITY ATTENDEES ============ */}
+        {attendees.length > 0 && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Who Was There</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+              <View style={styles.attendeesRow}>
+                {attendees.map((attendee) => (
+                  <TouchableOpacity
+                    key={attendee.user_id}
+                    style={styles.attendeeItem}
+                    onPress={() => router.push(`/profile/${attendee.user_id}`)}
+                  >
+                    <Avatar
+                      source={attendee.avatar_url}
+                      name={attendee.display_name || attendee.username}
+                      size="lg"
+                    />
+                    <Text style={styles.attendeeName} numberOfLines={1}>
+                      {attendee.display_name || attendee.username}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+                {eventStats.attendeeCount > attendees.length + 1 && (
+                  <View style={styles.attendeeItem}>
+                    <View style={styles.moreCircleLg}>
+                      <Text style={styles.moreCircleLgText}>
+                        +{eventStats.attendeeCount - attendees.length - (isOwnEvent ? 1 : 0)}
+                      </Text>
+                    </View>
+                    <Text style={styles.attendeeName}>more</Text>
+                  </View>
+                )}
+              </View>
+            </ScrollView>
+          </View>
+        )}
+
+        {/* ============ YOUR EXPERIENCE ============ */}
+        {isOwnEvent && attendance && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Your Experience</Text>
+            <View style={styles.experienceCard}>
+              {/* Ratings row */}
+              {(attendance.rating || attendance.atmosphere_rating) && (
+                <View style={styles.experienceRatingsRow}>
+                  {attendance.rating && (
+                    <View style={styles.experienceRatingBox}>
+                      <Text style={styles.experienceRatingLabel}>Overall</Text>
+                      <StarRating rating={attendance.rating} size={18} readonly />
+                    </View>
+                  )}
+                  {attendance.atmosphere_rating && (
+                    <View style={styles.experienceRatingBox}>
+                      <Text style={styles.experienceRatingLabel}>Atmosphere</Text>
+                      <StarRating rating={attendance.atmosphere_rating} size={18} color={colors.secondary} readonly />
+                    </View>
+                  )}
+                </View>
+              )}
+
+              {/* Details grid */}
+              <View style={styles.experienceDetails}>
+                {attendance.supported_team && (
+                  <View style={styles.experienceDetail}>
+                    <Ionicons name="shirt" size={16} color={colors.textSecondary} />
+                    <Text style={styles.experienceDetailLabel}>Supporting</Text>
+                    <View style={styles.experienceDetailValueRow}>
+                      <Text style={[
+                        styles.experienceDetailValue,
+                        attendance.result === 'win' && { color: colors.success },
+                        attendance.result === 'loss' && { color: colors.error },
+                      ]}>
+                        {attendance.supported_team === 'home' ? homeTeamShort : attendance.supported_team === 'away' ? awayTeamShort : 'Neutral'}
+                      </Text>
+                      {attendance.result && (
+                        <Badge
+                          label={attendance.result.toUpperCase()}
+                          size="sm"
+                          color={attendance.result === 'win' ? colors.success : attendance.result === 'loss' ? colors.error : colors.textSecondary}
+                        />
+                      )}
+                    </View>
+                  </View>
+                )}
+
+                {(attendance.section || attendance.seat_info) && (
+                  <View style={styles.experienceDetail}>
+                    <Ionicons name="ticket" size={16} color={colors.textSecondary} />
+                    <Text style={styles.experienceDetailLabel}>Seating</Text>
+                    <Text style={styles.experienceDetailValue}>
+                      {[attendance.section, attendance.seat_info].filter(Boolean).join(' - ')}
+                    </Text>
+                  </View>
+                )}
+
+                {attendance.ticket_price != null && attendance.ticket_price > 0 && (
+                  <View style={styles.experienceDetail}>
+                    <Ionicons name="cash" size={16} color={colors.textSecondary} />
+                    <Text style={styles.experienceDetailLabel}>Ticket</Text>
+                    <Text style={styles.experienceDetailValue}>${attendance.ticket_price.toFixed(2)}</Text>
+                  </View>
+                )}
+              </View>
+
+              {/* Went With */}
+              {((attendance.went_with && attendance.went_with.length > 0) ||
+                (attendance.went_with_user_ids && attendance.went_with_user_ids.length > 0)) && (
+                <View style={styles.experienceWentWith}>
+                  <TaggedUsersList
+                    userIds={attendance.went_with_user_ids}
+                    textNames={attendance.went_with}
+                  />
+                </View>
+              )}
+
+              {/* Notes */}
+              {attendance.notes && (
+                <View style={styles.experienceNotes}>
+                  <Ionicons name="document-text" size={16} color={colors.textSecondary} />
+                  <Text style={styles.experienceNotesText}>{attendance.notes}</Text>
+                </View>
+              )}
             </View>
-          )}
+          </View>
+        )}
 
-          {/* Atmosphere */}
-          {attendance.atmosphere_rating && (
-            <View style={styles.experienceRow}>
-              <Text style={styles.experienceLabel}>Atmosphere</Text>
-              <StarRating
-                rating={attendance.atmosphere_rating}
-                size={20}
-                color={colors.secondary}
-                readonly
-              />
-            </View>
-          )}
+        {/* ============ MY GROUP ============ */}
+        {isOwnEvent && (wentWithProfiles.length > 0 || (attendance?.went_with && attendance.went_with.length > 0)) && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>My Group</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+              <View style={styles.attendeesRow}>
+                {wentWithProfiles.map((profile) => (
+                  <TouchableOpacity
+                    key={profile.user_id}
+                    style={styles.attendeeItem}
+                    onPress={() => router.push(`/profile/${profile.user_id}`)}
+                  >
+                    <Avatar
+                      source={profile.avatar_url}
+                      name={profile.display_name || profile.username}
+                      size="lg"
+                    />
+                    <Text style={styles.attendeeName} numberOfLines={1}>
+                      {profile.display_name || profile.username}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+                {attendance?.went_with?.map((name, index) => (
+                  <View key={`text-${index}`} style={styles.attendeeItem}>
+                    <View style={styles.textOnlyAvatar}>
+                      <Text style={styles.textOnlyAvatarText}>{name[0]?.toUpperCase()}</Text>
+                    </View>
+                    <Text style={styles.attendeeName} numberOfLines={1}>{name}</Text>
+                  </View>
+                ))}
+              </View>
+            </ScrollView>
+          </View>
+        )}
 
-          {/* Seat Info */}
-          {(attendance.section || attendance.seat_info) && (
-            <View style={styles.experienceRow}>
-              <Text style={styles.experienceLabel}>Seating</Text>
-              <Text style={styles.experienceValue}>
-                {[attendance.section, attendance.seat_info].filter(Boolean).join(' - ')}
-              </Text>
-            </View>
-          )}
-
-          {/* Ticket Price */}
-          {attendance.ticket_price && (
-            <View style={styles.experienceRow}>
-              <Text style={styles.experienceLabel}>Ticket Price</Text>
-              <Text style={styles.experienceValue}>
-                ${attendance.ticket_price.toFixed(2)}
-              </Text>
-            </View>
-          )}
-
-          {/* Went With */}
-          {((attendance.went_with && attendance.went_with.length > 0) ||
-            (attendance.went_with_user_ids && attendance.went_with_user_ids.length > 0)) && (
-            <TaggedUsersList
-              userIds={attendance.went_with_user_ids}
-              textNames={attendance.went_with}
-            />
-          )}
-
-          {/* Notes */}
-          {attendance.notes && (
-            <View style={styles.notesContainer}>
-              <Text style={styles.experienceLabel}>Notes</Text>
-              <Text style={styles.notesText}>{attendance.notes}</Text>
-            </View>
-          )}
-        </Card>
-      </View>
-      )}
-
-      {/* Photos - only for own events */}
-      {isOwnEvent && attendance && attendance.photo_urls && attendance.photo_urls.length > 0 && (
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Photos</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-            <View style={styles.photosContainer}>
+        {/* ============ PHOTOS ============ */}
+        {/* Own photos */}
+        {isOwnEvent && attendance?.photo_urls && attendance.photo_urls.length > 0 && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Your Photos</Text>
+            <View style={styles.photoGrid}>
               {attendance.photo_urls.map((url, index) => (
-                <Image key={index} source={{ uri: url }} style={styles.photo} />
+                <Image key={index} source={{ uri: url }} style={styles.photoGridItem} />
               ))}
             </View>
-          </ScrollView>
-        </View>
-      )}
-
-      {/* Write Review Button - only show if no existing review and own event */}
-      {isOwnEvent && attendance && !checkingReview && !hasExistingReview && (
-        <View style={styles.reviewSection}>
-          <TouchableOpacity
-            style={styles.writeReviewButton}
-            onPress={() => router.push(`/event/review/${attendance.id}`)}
-          >
-            <Ionicons name="create-outline" size={24} color={colors.white} />
-            <Text style={styles.writeReviewText}>Write a Public Review</Text>
-          </TouchableOpacity>
-          <Text style={styles.reviewHint}>Share your experience with the community</Text>
-        </View>
-      )}
-
-      {/* Already reviewed indicator - only for own events */}
-      {isOwnEvent && !checkingReview && hasExistingReview && (
-        <View style={styles.reviewSection}>
-          <View style={styles.reviewedBadge}>
-            <Ionicons name="checkmark-circle" size={24} color={colors.success} />
-            <Text style={styles.reviewedText}>Review Published</Text>
           </View>
-          <Text style={styles.reviewHint}>Your review is visible on the Explore feed</Text>
-        </View>
-      )}
+        )}
 
-      {/* Public Reviews Section */}
-      {publicReviews.length > 0 && (
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Community Reviews</Text>
-          <Card>
+        {/* Fan photos from community */}
+        {attendeePhotos.length > 0 && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Fan Photos</Text>
+            <View style={styles.photoGrid}>
+              {attendeePhotos.map((url, index) => (
+                <Image key={index} source={{ uri: url }} style={styles.photoGridItem} />
+              ))}
+            </View>
+          </View>
+        )}
+
+        {/* ============ REVIEW STATUS ============ */}
+        {isOwnEvent && attendance && !checkingReview && hasExistingReview && (
+          <View style={styles.section}>
+            <View style={styles.reviewedBanner}>
+              <Ionicons name="checkmark-circle" size={20} color={colors.success} />
+              <Text style={styles.reviewedBannerText}>Your review is published</Text>
+            </View>
+          </View>
+        )}
+
+        {/* ============ COMMUNITY REVIEWS ============ */}
+        {publicReviews.length > 0 && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Community Reviews</Text>
             {publicReviews.map((review, index) => (
               <View
                 key={review.review_id}
                 style={[
-                  styles.reviewItem,
-                  index < publicReviews.length - 1 && styles.reviewItemBorder,
+                  styles.reviewCard,
+                  index < publicReviews.length - 1 && { marginBottom: spacing.md },
                 ]}
               >
                 <View style={styles.reviewHeader}>
-                  <Avatar
-                    source={review.avatar_url}
-                    name={review.display_name || review.username}
-                    size="sm"
-                  />
-                  <View style={styles.reviewAuthor}>
-                    <Text style={styles.reviewAuthorName}>
-                      {review.display_name || review.username || 'Anonymous'}
-                    </Text>
-                    <Text style={styles.reviewDate}>
-                      {parseLocalDate(review.created_at).toLocaleDateString('en-AU', {
-                        day: 'numeric',
-                        month: 'short',
-                        year: 'numeric',
-                      })}
-                      {review.is_watched && ' • Watched'}
-                    </Text>
-                  </View>
-                  <View style={styles.reviewRating}>
-                    <Ionicons name="star" size={14} color={colors.gold} />
-                    <Text style={styles.reviewRatingText}>{review.rating}</Text>
-                  </View>
+                  <TouchableOpacity
+                    style={styles.reviewAuthorRow}
+                    onPress={() => router.push(`/profile/${review.user_id}`)}
+                  >
+                    <Avatar
+                      source={review.avatar_url}
+                      name={review.display_name || review.username}
+                      size="sm"
+                    />
+                    <View style={styles.reviewAuthor}>
+                      <Text style={styles.reviewAuthorName}>
+                        {review.display_name || review.username || 'Anonymous'}
+                      </Text>
+                      <Text style={styles.reviewDate}>
+                        {parseLocalDate(review.created_at).toLocaleDateString('en-AU', {
+                          day: 'numeric',
+                          month: 'short',
+                          year: 'numeric',
+                        })}
+                        {review.is_watched && ' \u00B7 Watched'}
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+                  {review.rating && (
+                    <View style={styles.reviewRatingPill}>
+                      <Ionicons name="star" size={12} color={colors.gold} />
+                      <Text style={styles.reviewRatingText}>{review.rating}</Text>
+                    </View>
+                  )}
                 </View>
                 {review.review_text && (
-                  <Text style={styles.reviewText} numberOfLines={3}>
+                  <Text style={styles.reviewText} numberOfLines={4}>
                     {review.review_text}
                   </Text>
                 )}
-                <View style={styles.reviewStats}>
+                <View style={styles.reviewFooter}>
                   <View style={styles.reviewStat}>
-                    <Ionicons name="heart" size={14} color={colors.textMuted} />
+                    <Ionicons name="heart-outline" size={16} color={colors.textMuted} />
                     <Text style={styles.reviewStatText}>{review.likes_count || 0}</Text>
                   </View>
                   <View style={styles.reviewStat}>
-                    <Ionicons name="chatbubble" size={14} color={colors.textMuted} />
+                    <Ionicons name="chatbubble-outline" size={16} color={colors.textMuted} />
                     <Text style={styles.reviewStatText}>{review.comments_count || 0}</Text>
                   </View>
                 </View>
               </View>
             ))}
-          </Card>
-        </View>
-      )}
+          </View>
+        )}
 
-      {/* Actions - only for own events */}
-      {isOwnEvent && attendance && (
-      <View style={styles.actions}>
+        {/* ============ ACTIONS BAR ============ */}
+        {isOwnEvent && attendance && (
+          <View style={styles.actionsSection}>
+            <View style={styles.actionsRow}>
+              <TouchableOpacity
+                style={[styles.actionBtn, attendance.is_favorite && styles.actionBtnActive]}
+                onPress={handleToggleFavorite}
+              >
+                <Ionicons
+                  name={attendance.is_favorite ? 'heart' : 'heart-outline'}
+                  size={22}
+                  color={attendance.is_favorite ? colors.error : colors.textSecondary}
+                />
+                <Text style={[styles.actionBtnText, attendance.is_favorite && { color: colors.error }]}>
+                  {attendance.is_favorite ? 'Favorited' : 'Favorite'}
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity style={styles.actionBtn} onPress={handleEdit}>
+                <Ionicons name="pencil-outline" size={22} color={colors.primary} />
+                <Text style={[styles.actionBtnText, { color: colors.primary }]}>Edit</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity style={styles.actionBtn} onPress={handleShare}>
+                <Ionicons name="share-outline" size={22} color={colors.info} />
+                <Text style={[styles.actionBtnText, { color: colors.info }]}>Share</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity style={styles.actionBtn} onPress={handleDelete}>
+                <Ionicons name="trash-outline" size={22} color={colors.error} />
+                <Text style={[styles.actionBtnText, { color: colors.error }]}>Delete</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Social Share */}
+            <View style={styles.socialRow}>
+              <TouchableOpacity
+                style={[styles.socialBtn, { backgroundColor: '#1DA1F2' }]}
+                onPress={() => handleSocialShare('twitter')}
+              >
+                <Ionicons name="logo-twitter" size={18} color={colors.white} />
+                <Text style={styles.socialBtnText}>Tweet</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.socialBtn, { backgroundColor: '#1877F2' }]}
+                onPress={() => handleSocialShare('facebook')}
+              >
+                <Ionicons name="logo-facebook" size={18} color={colors.white} />
+                <Text style={styles.socialBtnText}>Share</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
+      </ScrollView>
+
+      {/* ============ FLOATING ACTION BUTTON ============ */}
+      {showFab && (
         <TouchableOpacity
-          style={[styles.actionButton, attendance.is_favorite && styles.actionButtonActive]}
-          onPress={handleToggleFavorite}
+          style={[styles.fab, { backgroundColor: sportColor }]}
+          onPress={() => router.push(`/event/review/${attendance.id}`)}
+          activeOpacity={0.85}
         >
-          <Ionicons
-            name={attendance.is_favorite ? 'heart' : 'heart-outline'}
-            size={24}
-            color={attendance.is_favorite ? colors.error : colors.textSecondary}
-          />
-          <Text
-            style={[
-              styles.actionButtonText,
-              attendance.is_favorite && styles.actionButtonTextActive,
-            ]}
-          >
-            {attendance.is_favorite ? 'Favorited' : 'Favorite'}
-          </Text>
+          <Ionicons name="create" size={22} color={colors.white} />
+          <Text style={styles.fabText}>Write Review</Text>
         </TouchableOpacity>
-
-        <TouchableOpacity style={styles.actionButton} onPress={handleEdit}>
-          <Ionicons name="pencil-outline" size={24} color={colors.primary} />
-          <Text style={[styles.actionButtonText, { color: colors.primary }]}>Edit</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity style={styles.actionButton} onPress={handleShare}>
-          <Ionicons name="share-outline" size={24} color={colors.info} />
-          <Text style={[styles.actionButtonText, { color: colors.info }]}>Share</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity style={styles.actionButton} onPress={handleDelete}>
-          <Ionicons name="trash-outline" size={24} color={colors.error} />
-          <Text style={[styles.actionButtonText, { color: colors.error }]}>Delete</Text>
-        </TouchableOpacity>
-      </View>
       )}
-
-      {/* Social Share - only for own events */}
-      {isOwnEvent && (
-      <View style={styles.socialShare}>
-        <Text style={styles.socialShareTitle}>Share on Social Media</Text>
-        <View style={styles.socialButtons}>
-          <TouchableOpacity
-            style={[styles.socialButton, { backgroundColor: '#1DA1F2' }]}
-            onPress={() => handleSocialShare('twitter')}
-          >
-            <Ionicons name="logo-twitter" size={20} color={colors.white} />
-            <Text style={styles.socialButtonText}>Twitter</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.socialButton, { backgroundColor: '#1877F2' }]}
-            onPress={() => handleSocialShare('facebook')}
-          >
-            <Ionicons name="logo-facebook" size={20} color={colors.white} />
-            <Text style={styles.socialButtonText}>Facebook</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-      )}
-    </ScrollView>
+    </View>
   );
 }
 
@@ -1174,158 +1174,146 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background,
   },
+  scrollView: {
+    flex: 1,
+  },
   content: {
     paddingBottom: spacing['3xl'],
   },
-  notFound: {
+  loadingContainer: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
     gap: spacing.lg,
   },
-  notFoundText: {
+  loadingText: {
     fontSize: fontSize.lg,
     color: colors.textSecondary,
   },
-  header: {
-    paddingTop: spacing['2xl'],
-    paddingBottom: spacing.xl,
+
+  // ============ HERO ============
+  hero: {
+    paddingTop: spacing['3xl'],
+    paddingBottom: spacing['2xl'],
     paddingHorizontal: spacing.lg,
-    position: 'relative',
   },
-  backButton: {
-    position: 'absolute',
-    top: spacing.lg,
-    left: spacing.md,
-    padding: spacing.sm,
-    zIndex: 10,
-    width: 40,
-    height: 40,
+  heroTopBar: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: spacing.lg,
+  },
+  heroBackButton: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: 'rgba(0,0,0,0.15)',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  headerContent: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
+  heroCompetitionRow: {
     alignItems: 'center',
-    paddingHorizontal: spacing.md,
+    marginBottom: spacing.lg,
   },
-  headerSpacer: {
-    width: 40,
-  },
-  matchCard: {
-    marginHorizontal: spacing.lg,
-    marginTop: -spacing.xl,
-  },
-  matchHeader: {
-    alignItems: 'center',
-    paddingBottom: spacing.md,
-    marginBottom: spacing.md,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-  matchCompetition: {
+  heroCompetition: {
     fontSize: fontSize.lg,
     fontWeight: fontWeight.bold,
-    color: colors.text,
+    color: colors.white,
     textAlign: 'center',
   },
-  matchRound: {
+  heroRound: {
     fontSize: fontSize.sm,
-    color: colors.textSecondary,
+    color: 'rgba(255,255,255,0.75)',
     marginTop: spacing.xs,
   },
-  matchFooter: {
+  heroMatchup: {
     flexDirection: 'row',
+    alignItems: 'center',
     justifyContent: 'center',
-    alignItems: 'center',
-    flexWrap: 'wrap',
-    gap: spacing.lg,
-    paddingTop: spacing.md,
-    marginTop: spacing.md,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
   },
-  matchFooterItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs,
-  },
-  matchFooterText: {
-    fontSize: fontSize.sm,
-    color: colors.textSecondary,
-  },
-  teamsContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  teamColumn: {
+  heroTeam: {
     flex: 1,
     alignItems: 'center',
   },
-  teamLogoContainer: {
+  heroLogoContainer: {
     marginBottom: spacing.sm,
   },
-  teamLogo: {
-    width: 60,
-    height: 60,
+  heroLogo: {
+    width: 72,
+    height: 72,
   },
-  teamLogoPlaceholder: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
+  heroLogoPlaceholder: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    backgroundColor: 'rgba(255,255,255,0.2)',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  teamLogoText: {
-    fontSize: fontSize['2xl'],
+  heroLogoText: {
+    fontSize: fontSize['3xl'],
     fontWeight: fontWeight.bold,
     color: colors.white,
   },
-  teamName: {
+  heroTeamName: {
     fontSize: fontSize.sm,
-    fontWeight: fontWeight.medium,
-    color: colors.text,
+    fontWeight: fontWeight.semibold,
+    color: colors.white,
     textAlign: 'center',
+    maxWidth: 100,
   },
-  teamNameClickable: {
-    textDecorationLine: 'underline',
-    color: colors.primary,
-  },
-  scoreColumn: {
+  heroCenter: {
     alignItems: 'center',
     paddingHorizontal: spacing.md,
+    minWidth: 100,
   },
-  scoreRow: {
+  heroScoreRow: {
     flexDirection: 'row',
     alignItems: 'center',
   },
-  score: {
-    fontSize: fontSize['4xl'],
+  heroScore: {
+    fontSize: fontSize['5xl'],
     fontWeight: fontWeight.bold,
-    color: colors.text,
+    color: colors.white,
   },
-  scoreWinner: {
-    color: colors.primary,
+  heroScoreWinner: {
+    color: colors.white,
   },
-  scoreLoser: {
-    color: colors.textMuted,
+  heroScoreDim: {
+    color: 'rgba(255,255,255,0.5)',
   },
-  scoreDivider: {
-    fontSize: fontSize.xl,
-    color: colors.textMuted,
+  heroScoreDivider: {
+    fontSize: fontSize['2xl'],
+    color: 'rgba(255,255,255,0.5)',
     marginHorizontal: spacing.sm,
   },
-  resultText: {
+  heroVs: {
+    fontSize: fontSize['2xl'],
+    fontWeight: fontWeight.bold,
+    color: 'rgba(255,255,255,0.6)',
+  },
+  heroResultText: {
     fontSize: fontSize.sm,
-    color: colors.textSecondary,
+    color: 'rgba(255,255,255,0.8)',
     marginTop: spacing.xs,
     fontWeight: fontWeight.medium,
   },
-  vs: {
-    fontSize: fontSize.xl,
-    fontWeight: fontWeight.semibold,
-    color: colors.textMuted,
+  heroUserResult: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.xs,
+    marginTop: spacing.lg,
+    backgroundColor: 'rgba(0,0,0,0.15)',
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.lg,
+    borderRadius: borderRadius.full,
+    alignSelf: 'center',
+  },
+  heroUserResultText: {
+    fontSize: fontSize.sm,
+    color: colors.white,
+    fontWeight: fontWeight.medium,
   },
   abandonedContainer: {
     alignItems: 'center',
@@ -1334,9 +1322,30 @@ const styles = StyleSheet.create({
   abandonedText: {
     fontSize: fontSize.md,
     fontWeight: fontWeight.semibold,
-    color: colors.textMuted,
+    color: 'rgba(255,255,255,0.7)',
   },
-  // Cricket-specific styles
+
+  // Tennis
+  tennisScoreContainer: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+  },
+  tennisSet: {
+    fontSize: fontSize.xl,
+    fontWeight: fontWeight.bold,
+    color: 'rgba(255,255,255,0.6)',
+    paddingHorizontal: spacing.xs,
+  },
+  tennisSetWon: {
+    color: colors.white,
+  },
+  tennisSetLost: {
+    color: 'rgba(255,255,255,0.4)',
+  },
+
+  // Cricket
   cricketScoresContainer: {
     flexDirection: 'row',
     alignItems: 'flex-start',
@@ -1348,262 +1357,76 @@ const styles = StyleSheet.create({
   cricketInning: {
     fontSize: fontSize.lg,
     fontWeight: fontWeight.medium,
-    color: colors.textSecondary,
+    color: 'rgba(255,255,255,0.6)',
   },
-  cricketInningWinner: {
-    color: colors.primary,
+  cricketInningWon: {
+    color: colors.white,
     fontWeight: fontWeight.bold,
-  },
-  cricketTotal: {
-    fontSize: fontSize.md,
-    fontWeight: fontWeight.medium,
-    color: colors.textMuted,
-    marginTop: spacing.xs,
-  },
-  cricketTotalWinner: {
-    color: colors.primary,
-    fontWeight: fontWeight.semibold,
   },
   cricketDivider: {
     fontSize: fontSize.md,
-    color: colors.textMuted,
+    color: 'rgba(255,255,255,0.5)',
     marginTop: spacing.sm,
   },
-  // Tennis-specific styles
-  tennisScoreContainer: {
+
+  // ============ QUICK STATS BAR ============
+  statsBar: {
     flexDirection: 'row',
-    gap: spacing.sm,
-    flexWrap: 'wrap',
     justifyContent: 'center',
+    gap: spacing.md,
+    paddingHorizontal: spacing.lg,
+    marginTop: -spacing.lg,
+    marginBottom: spacing.lg,
   },
-  tennisSet: {
+  statPill: {
+    flex: 1,
+    flexDirection: 'column',
+    alignItems: 'center',
+    gap: 2,
+    backgroundColor: colors.surface,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.sm,
+    borderRadius: borderRadius.xl,
+    ...shadows.md,
+  },
+  statPillValue: {
     fontSize: fontSize.xl,
     fontWeight: fontWeight.bold,
-    color: colors.textSecondary,
-    paddingHorizontal: spacing.xs,
-  },
-  tennisSetHomeWon: {
-    color: colors.primary,
-  },
-  tennisSetAwayWon: {
-    color: colors.error,
-  },
-  infoCard: {
-    margin: spacing.lg,
-    marginTop: spacing.md,
-  },
-  infoRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-    paddingVertical: spacing.sm,
-  },
-  infoText: {
-    fontSize: fontSize.md,
     color: colors.text,
   },
-  section: {
+  statPillLabel: {
+    fontSize: fontSize.xs,
+    color: colors.textMuted,
+  },
+
+  // ============ INFO CHIPS ============
+  infoChipsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
     paddingHorizontal: spacing.lg,
     marginBottom: spacing.lg,
   },
-  sectionTitle: {
-    fontSize: fontSize.lg,
-    fontWeight: fontWeight.semibold,
-    color: colors.text,
-    marginBottom: spacing.md,
-  },
-  experienceRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: spacing.sm,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-  experienceLabel: {
-    fontSize: fontSize.md,
-    color: colors.textSecondary,
-  },
-  experienceValue: {
-    fontSize: fontSize.md,
-    color: colors.text,
-    fontWeight: fontWeight.medium,
-  },
-  experienceValueRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-  },
-  stars: {
-    flexDirection: 'row',
-    gap: 2,
-  },
-  notesContainer: {
-    paddingTop: spacing.md,
-  },
-  notesText: {
-    fontSize: fontSize.md,
-    color: colors.text,
-    marginTop: spacing.sm,
-    lineHeight: 22,
-  },
-  photosContainer: {
-    flexDirection: 'row',
-    gap: spacing.md,
-  },
-  photo: {
-    width: 200,
-    height: 150,
-    borderRadius: borderRadius.lg,
-  },
-  actions: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    padding: spacing.lg,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
-    marginTop: spacing.lg,
-  },
-  actionButton: {
-    alignItems: 'center',
-    gap: spacing.xs,
-  },
-  actionButtonActive: {},
-  actionButtonText: {
-    fontSize: fontSize.sm,
-    color: colors.textSecondary,
-  },
-  actionButtonTextActive: {
-    color: colors.error,
-  },
-  socialShare: {
-    padding: spacing.lg,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
-  },
-  socialShareTitle: {
-    fontSize: fontSize.md,
-    fontWeight: fontWeight.medium,
-    color: colors.textSecondary,
-    marginBottom: spacing.md,
-    textAlign: 'center',
-  },
-  socialButtons: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    gap: spacing.md,
-  },
-  socialButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.sm,
-    borderRadius: borderRadius.md,
-  },
-  socialButtonText: {
-    fontSize: fontSize.sm,
-    fontWeight: fontWeight.medium,
-    color: colors.white,
-  },
-  reviewSection: {
-    padding: spacing.lg,
-    alignItems: 'center',
-  },
-  writeReviewButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing.sm,
-    backgroundColor: colors.primary,
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.xl,
-    borderRadius: borderRadius.lg,
-    width: '100%',
-  },
-  writeReviewText: {
-    fontSize: fontSize.md,
-    fontWeight: fontWeight.semibold,
-    color: colors.white,
-  },
-  reviewHint: {
-    fontSize: fontSize.sm,
-    color: colors.textMuted,
-    marginTop: spacing.sm,
-  },
-  reviewedBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing.sm,
-    backgroundColor: `${colors.success}15`,
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.xl,
-    borderRadius: borderRadius.lg,
-    width: '100%',
-  },
-  reviewedText: {
-    fontSize: fontSize.md,
-    fontWeight: fontWeight.semibold,
-    color: colors.success,
-  },
-  reviewItem: {
-    paddingVertical: spacing.md,
-  },
-  reviewItemBorder: {
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-  reviewHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    marginBottom: spacing.sm,
-  },
-  reviewAuthor: {
-    flex: 1,
-  },
-  reviewAuthorName: {
-    fontSize: fontSize.sm,
-    fontWeight: fontWeight.medium,
-    color: colors.text,
-  },
-  reviewDate: {
-    fontSize: fontSize.xs,
-    color: colors.textMuted,
-  },
-  reviewRating: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 2,
-  },
-  reviewRatingText: {
-    fontSize: fontSize.sm,
-    fontWeight: fontWeight.medium,
-    color: colors.gold,
-  },
-  reviewText: {
-    fontSize: fontSize.sm,
-    color: colors.textSecondary,
-    lineHeight: 20,
-    marginBottom: spacing.sm,
-  },
-  reviewStats: {
-    flexDirection: 'row',
-    gap: spacing.lg,
-  },
-  reviewStat: {
+  infoChip: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.xs,
+    backgroundColor: colors.surface,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    borderRadius: borderRadius.full,
+    borderWidth: 1,
+    borderColor: colors.border,
   },
-  reviewStatText: {
-    fontSize: fontSize.xs,
-    color: colors.textMuted,
+  infoChipText: {
+    fontSize: fontSize.sm,
+    color: colors.text,
   },
+
+  // ============ I WAS THERE ============
   iWasThereSection: {
-    padding: spacing.lg,
-    paddingBottom: spacing['2xl'],
+    paddingHorizontal: spacing.lg,
+    marginBottom: spacing.lg,
     alignItems: 'center',
   },
   iWasThereButton: {
@@ -1611,11 +1434,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: spacing.sm,
-    backgroundColor: colors.secondary,
     paddingVertical: spacing.md,
     paddingHorizontal: spacing.xl,
-    borderRadius: borderRadius.lg,
+    borderRadius: borderRadius.xl,
     width: '100%',
+    ...shadows.sm,
   },
   iWasThereText: {
     fontSize: fontSize.md,
@@ -1627,34 +1450,71 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     marginTop: spacing.sm,
   },
-  // Public event stats
-  publicStatsCard: {
-    marginHorizontal: spacing.lg,
+
+  // ============ PEOPLE YOU FOLLOW ============
+  followedCard: {
+    backgroundColor: colors.surface,
+    borderRadius: borderRadius.xl,
+    padding: spacing.lg,
+    borderLeftWidth: 4,
+    ...shadows.sm,
+  },
+  followedHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginBottom: spacing.md,
+  },
+  followedTitle: {
+    fontSize: fontSize.md,
+    fontWeight: fontWeight.semibold,
+    color: colors.text,
+    flex: 1,
+  },
+  followedAvatars: {
+    flexDirection: 'row',
+    gap: spacing.md,
+  },
+  followedAvatarItem: {
+    alignItems: 'center',
+    width: 60,
+  },
+  followedAvatarName: {
+    fontSize: fontSize.xs,
+    color: colors.textSecondary,
+    marginTop: spacing.xs,
+    textAlign: 'center',
+  },
+  moreCircle: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: colors.surfaceLighter,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  moreCircleText: {
+    fontSize: fontSize.sm,
+    fontWeight: fontWeight.semibold,
+    color: colors.textSecondary,
+  },
+
+  // ============ SECTIONS ============
+  section: {
+    paddingHorizontal: spacing.lg,
     marginBottom: spacing.lg,
   },
-  publicStatsRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    alignItems: 'center',
-  },
-  publicStatItem: {
-    alignItems: 'center',
-    gap: spacing.xs,
-  },
-  publicStatValue: {
-    fontSize: fontSize['2xl'],
+  sectionTitle: {
+    fontSize: fontSize.lg,
     fontWeight: fontWeight.bold,
     color: colors.text,
+    marginBottom: spacing.md,
   },
-  publicStatLabel: {
-    fontSize: fontSize.xs,
-    color: colors.textMuted,
-  },
-  // Attendees
+
+  // ============ ATTENDEES ============
   attendeesRow: {
     flexDirection: 'row',
-    paddingHorizontal: spacing.lg,
-    paddingBottom: spacing.xl,
+    paddingRight: spacing.lg,
     gap: spacing.md,
   },
   attendeeItem: {
@@ -1667,11 +1527,7 @@ const styles = StyleSheet.create({
     marginTop: spacing.xs,
     textAlign: 'center',
   },
-  moreAttendeesItem: {
-    alignItems: 'center',
-    width: 70,
-  },
-  moreAttendeesCircle: {
+  moreCircleLg: {
     width: 50,
     height: 50,
     borderRadius: 25,
@@ -1679,7 +1535,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  moreAttendeesText: {
+  moreCircleLgText: {
     fontSize: fontSize.sm,
     fontWeight: fontWeight.semibold,
     color: colors.textSecondary,
@@ -1697,15 +1553,236 @@ const styles = StyleSheet.create({
     fontWeight: fontWeight.bold,
     color: colors.white,
   },
-  // Fan photos
-  fanPhotosRow: {
+
+  // ============ YOUR EXPERIENCE ============
+  experienceCard: {
+    backgroundColor: colors.surface,
+    borderRadius: borderRadius.xl,
+    padding: spacing.lg,
+    ...shadows.sm,
+  },
+  experienceRatingsRow: {
     flexDirection: 'row',
-    paddingHorizontal: spacing.lg,
+    gap: spacing.lg,
+    marginBottom: spacing.lg,
+    paddingBottom: spacing.lg,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  experienceRatingBox: {
+    flex: 1,
+    alignItems: 'center',
+    gap: spacing.xs,
+  },
+  experienceRatingLabel: {
+    fontSize: fontSize.sm,
+    color: colors.textSecondary,
+    fontWeight: fontWeight.medium,
+  },
+  experienceDetails: {
     gap: spacing.md,
   },
-  fanPhoto: {
-    width: 120,
-    height: 120,
+  experienceDetail: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  experienceDetailLabel: {
+    fontSize: fontSize.sm,
+    color: colors.textSecondary,
+    minWidth: 80,
+  },
+  experienceDetailValue: {
+    fontSize: fontSize.md,
+    color: colors.text,
+    fontWeight: fontWeight.medium,
+    flex: 1,
+  },
+  experienceDetailValueRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    flex: 1,
+  },
+  experienceWentWith: {
+    marginTop: spacing.lg,
+    paddingTop: spacing.lg,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  experienceNotes: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    marginTop: spacing.lg,
+    paddingTop: spacing.lg,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  experienceNotesText: {
+    fontSize: fontSize.md,
+    color: colors.text,
+    lineHeight: 22,
+    flex: 1,
+  },
+
+  // ============ PHOTOS GRID ============
+  photoGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+  },
+  photoGridItem: {
+    width: (SCREEN_WIDTH - spacing.lg * 2 - spacing.sm * 2) / 3,
+    height: (SCREEN_WIDTH - spacing.lg * 2 - spacing.sm * 2) / 3,
     borderRadius: borderRadius.lg,
+  },
+
+  // ============ REVIEW STATUS ============
+  reviewedBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.sm,
+    backgroundColor: `${colors.success}12`,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.lg,
+    borderRadius: borderRadius.xl,
+    borderWidth: 1,
+    borderColor: `${colors.success}30`,
+  },
+  reviewedBannerText: {
+    fontSize: fontSize.md,
+    fontWeight: fontWeight.medium,
+    color: colors.success,
+  },
+
+  // ============ COMMUNITY REVIEWS ============
+  reviewCard: {
+    backgroundColor: colors.surface,
+    borderRadius: borderRadius.xl,
+    padding: spacing.lg,
+    ...shadows.sm,
+  },
+  reviewHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: spacing.sm,
+  },
+  reviewAuthorRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    flex: 1,
+  },
+  reviewAuthor: {
+    flex: 1,
+  },
+  reviewAuthorName: {
+    fontSize: fontSize.sm,
+    fontWeight: fontWeight.semibold,
+    color: colors.text,
+  },
+  reviewDate: {
+    fontSize: fontSize.xs,
+    color: colors.textMuted,
+  },
+  reviewRatingPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    backgroundColor: `${colors.gold}18`,
+    paddingVertical: 3,
+    paddingHorizontal: spacing.sm,
+    borderRadius: borderRadius.full,
+  },
+  reviewRatingText: {
+    fontSize: fontSize.sm,
+    fontWeight: fontWeight.bold,
+    color: colors.gold,
+  },
+  reviewText: {
+    fontSize: fontSize.sm,
+    color: colors.textSecondary,
+    lineHeight: 20,
+    marginBottom: spacing.md,
+  },
+  reviewFooter: {
+    flexDirection: 'row',
+    gap: spacing.lg,
+  },
+  reviewStat: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+  },
+  reviewStatText: {
+    fontSize: fontSize.sm,
+    color: colors.textMuted,
+  },
+
+  // ============ ACTIONS ============
+  actionsSection: {
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.lg,
+    marginTop: spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  actionsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    marginBottom: spacing.lg,
+  },
+  actionBtn: {
+    alignItems: 'center',
+    gap: spacing.xs,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    borderRadius: borderRadius.lg,
+  },
+  actionBtnActive: {},
+  actionBtnText: {
+    fontSize: fontSize.xs,
+    color: colors.textSecondary,
+    fontWeight: fontWeight.medium,
+  },
+  socialRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: spacing.md,
+  },
+  socialBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm,
+    borderRadius: borderRadius.lg,
+  },
+  socialBtnText: {
+    fontSize: fontSize.sm,
+    fontWeight: fontWeight.medium,
+    color: colors.white,
+  },
+
+  // ============ FAB ============
+  fab: {
+    position: 'absolute',
+    bottom: spacing['2xl'],
+    right: spacing.lg,
+    left: spacing.lg,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.sm,
+    paddingVertical: spacing.lg,
+    borderRadius: borderRadius.xl,
+    ...shadows.lg,
+  },
+  fabText: {
+    fontSize: fontSize.md,
+    fontWeight: fontWeight.bold,
+    color: colors.white,
   },
 });
