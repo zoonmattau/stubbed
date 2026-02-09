@@ -1,9 +1,8 @@
 import React from 'react';
 import { View, Text, StyleSheet, Image } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
 import { Card, Badge } from '@/components/ui';
-import { colors, spacing, fontSize, fontWeight, borderRadius, shadows } from '@/constants/theme';
+import { colors, spacing, fontSize, fontWeight, borderRadius } from '@/constants/theme';
 import { formatDate, formatTime } from '@/utils/dates';
 import { getSportColor, SPORTS, isRacingSport } from '@/constants/sports';
 import { parseTennisScore } from '@/utils/scores';
@@ -17,13 +16,11 @@ function getSportDisplayName(sportCode: string | null | undefined): string {
   return sportCode.charAt(0).toUpperCase() + sportCode.slice(1);
 }
 
-// Helper to lighten a hex color
-function lightenColor(hex: string, amount: number): string {
-  const num = parseInt(hex.replace('#', ''), 16);
-  const r = Math.min(255, (num >> 16) + Math.round(amount * 255));
-  const g = Math.min(255, ((num >> 8) & 0x00FF) + Math.round(amount * 255));
-  const b = Math.min(255, (num & 0x0000FF) + Math.round(amount * 255));
-  return `#${(1 << 24 | r << 16 | g << 8 | b).toString(16).slice(1)}`;
+// Community stats passed from EventList
+export interface EventCardStats {
+  attendeeCount: number;
+  avgRating: number | null;
+  avgAtmosphere: number | null;
 }
 
 interface EventCardProps {
@@ -32,9 +29,10 @@ interface EventCardProps {
   onPress?: () => void;
   compact?: boolean;
   mini?: boolean;
+  stats?: EventCardStats;
 }
 
-// Shared score parsing utilities
+// Shared score parsing
 function parseCricketScore(score: string | number | null | undefined): { runs: number; wickets: number } {
   if (score === null || score === undefined) return { runs: 0, wickets: 10 };
   const scoreStr = String(score);
@@ -129,7 +127,7 @@ function computeMatchResult(event: EventWithDetails) {
   };
 }
 
-export function EventCard({ event, attendance, onPress, compact = false, mini = false }: EventCardProps) {
+export function EventCard({ event, attendance, onPress, compact = false, mini = false, stats }: EventCardProps) {
   const { getTeamLogo } = useTeamLogos();
 
   const homeTeamName = event.home_team?.name || event.home_team_name || 'Home Team';
@@ -147,10 +145,9 @@ export function EventCard({ event, attendance, onPress, compact = false, mini = 
   const winnerName = result.homeWon ? homeTeamShort : awayTeamShort;
 
   // =============================================
-  // MINI VIEW (unchanged from previous design)
+  // MINI VIEW
   // =============================================
   if (mini) {
-    // Racing mini card
     if (result.isRacing) {
       return (
         <Card onPress={onPress} style={styles.miniContainer}>
@@ -164,17 +161,17 @@ export function EventCard({ event, attendance, onPress, compact = false, mini = 
               </View>
               <Text style={styles.miniDate}>{formatDate(event.event_date)}</Text>
             </View>
-            <View style={styles.racingEventContent}>
-              <View style={[styles.racingIconContainer, { backgroundColor: `${sportColor}20` }]}>
+            <View style={styles.racingContent}>
+              <View style={[styles.racingIcon, { backgroundColor: `${sportColor}20` }]}>
                 <Ionicons name="flag" size={24} color={sportColor} />
               </View>
-              <View style={styles.racingEventDetails}>
-                <Text style={styles.racingEventName} numberOfLines={1}>{homeTeamName}</Text>
-                {awayTeamName && awayTeamName !== 'Away Team' && (
-                  <Text style={styles.racingSelection} numberOfLines={1}>Selection: {awayTeamName}</Text>
+              <View style={styles.racingDetails}>
+                <Text style={styles.racingName} numberOfLines={1}>{homeTeamName}</Text>
+                {awayTeamName !== 'Away Team' && (
+                  <Text style={styles.racingSub} numberOfLines={1}>Selection: {awayTeamName}</Text>
                 )}
                 {event.home_score && (
-                  <Text style={[styles.racingResult, { color: sportColor }]}>Result: {event.home_score}</Text>
+                  <Text style={[styles.racingScore, { color: sportColor }]}>Result: {event.home_score}</Text>
                 )}
               </View>
             </View>
@@ -224,7 +221,7 @@ export function EventCard({ event, attendance, onPress, compact = false, mini = 
               <Text style={[styles.miniTeamName, result.homeWon && styles.miniTeamNameWinner]} numberOfLines={1}>
                 {homeTeamShort}
               </Text>
-              {result.homeWon && <View style={[styles.miniWinIndicator, { backgroundColor: sportColor }]} />}
+              {result.homeWon && <View style={[styles.miniWinDot, { backgroundColor: sportColor }]} />}
             </View>
             <View style={styles.miniScoreContainer}>
               {result.hasScore ? (
@@ -237,15 +234,15 @@ export function EventCard({ event, attendance, onPress, compact = false, mini = 
                     </View>
                   ) : result.isCricket && result.homeScoreData && result.awayScoreData && result.homeScoreData.innings.length > 1 ? (
                     <View style={styles.miniCricketScores}>
-                      <View style={styles.miniCricketScoreColumn}>
+                      <View style={styles.miniCricketCol}>
                         {result.homeScoreData.innings.map((inn, i) => (
-                          <Text key={i} style={[styles.miniCricketInning, result.homeWon && styles.miniCricketInningWinner]}>{inn}</Text>
+                          <Text key={i} style={[styles.miniCricketInning, result.homeWon && styles.miniCricketWon]}>{inn}</Text>
                         ))}
                       </View>
-                      <Text style={styles.miniCricketDivider}>v</Text>
-                      <View style={styles.miniCricketScoreColumn}>
+                      <Text style={styles.miniCricketDiv}>v</Text>
+                      <View style={styles.miniCricketCol}>
                         {result.awayScoreData.innings.map((inn, i) => (
-                          <Text key={i} style={[styles.miniCricketInning, result.awayWon && styles.miniCricketInningWinner]}>{inn}</Text>
+                          <Text key={i} style={[styles.miniCricketInning, result.awayWon && styles.miniCricketWon]}>{inn}</Text>
                         ))}
                       </View>
                     </View>
@@ -257,17 +254,13 @@ export function EventCard({ event, attendance, onPress, compact = false, mini = 
                     </View>
                   )}
                   {result.isDraw ? (
-                    <Text style={styles.miniDrawLabel}>DRAW</Text>
+                    <Text style={styles.miniResultLabel}>DRAW</Text>
                   ) : (
-                    <View style={styles.miniMarginContainer}>
-                      <Text style={styles.miniMarginText}>
-                        {winnerName} won{result.isTennis && result.tennisResult
-                          ? ` ${result.tennisResult.winner === 'home' ? result.tennisResult.player1Sets : result.tennisResult.player2Sets}-${result.tennisResult.winner === 'home' ? result.tennisResult.player2Sets : result.tennisResult.player1Sets}`
-                          : result.isCricket
-                          ? ` by ${result.getCricketResultText()}`
-                          : ` by ${result.margin}`}
-                      </Text>
-                    </View>
+                    <Text style={styles.miniResultLabel}>
+                      {winnerName} won{result.isTennis && result.tennisResult
+                        ? ` ${result.tennisResult.winner === 'home' ? result.tennisResult.player1Sets : result.tennisResult.player2Sets}-${result.tennisResult.winner === 'home' ? result.tennisResult.player2Sets : result.tennisResult.player1Sets}`
+                        : result.isCricket ? ` by ${result.getCricketResultText()}` : ` by ${result.margin}`}
+                    </Text>
                   )}
                 </>
               ) : (
@@ -285,7 +278,7 @@ export function EventCard({ event, attendance, onPress, compact = false, mini = 
               <Text style={[styles.miniTeamName, result.awayWon && styles.miniTeamNameWinner]} numberOfLines={1}>
                 {awayTeamShort}
               </Text>
-              {result.awayWon && <View style={[styles.miniWinIndicator, { backgroundColor: sportColor }]} />}
+              {result.awayWon && <View style={[styles.miniWinDot, { backgroundColor: sportColor }]} />}
             </View>
           </View>
           <View style={styles.miniFooter}>
@@ -293,11 +286,9 @@ export function EventCard({ event, attendance, onPress, compact = false, mini = 
               {attendance?.rating ? (
                 <View style={styles.miniRating}>
                   {[1, 2, 3, 4, 5].map((star) => {
-                    const fullStar = star <= Math.floor(attendance.rating!);
-                    const halfStar = !fullStar && star === Math.ceil(attendance.rating!) && attendance.rating! % 1 !== 0;
-                    return (
-                      <Ionicons key={star} name={fullStar ? 'star' : halfStar ? 'star-half' : 'star-outline'} size={14} color={colors.gold} />
-                    );
+                    const full = star <= Math.floor(attendance.rating!);
+                    const half = !full && star === Math.ceil(attendance.rating!) && attendance.rating! % 1 !== 0;
+                    return <Ionicons key={star} name={full ? 'star' : half ? 'star-half' : 'star-outline'} size={14} color={colors.gold} />;
                   })}
                 </View>
               ) : null}
@@ -321,62 +312,75 @@ export function EventCard({ event, attendance, onPress, compact = false, mini = 
   }
 
   // =============================================
-  // REGULAR VIEW — Redesigned
+  // REGULAR VIEW — Clean accent design
   // =============================================
 
-  // Result-aware styling
   const resultTintColor = attendance?.result === 'win'
     ? `${colors.success}08`
     : attendance?.result === 'loss'
     ? `${colors.error}08`
     : null;
   const resultTintStyle = resultTintColor ? { backgroundColor: resultTintColor } : undefined;
-
-  const resultAccentColor = attendance?.result === 'win'
-    ? colors.success
-    : attendance?.result === 'loss'
-    ? colors.error
-    : attendance?.result === 'draw'
-    ? colors.textSecondary
-    : undefined;
-
-  const gradientEnd = lightenColor(sportColor, 0.15);
   const wentWithCount = (attendance?.went_with_user_ids?.length || 0) + (attendance?.went_with?.length || 0);
+
+  // Has meaningful community stats (more than just the current user)
+  const hasStats = stats && stats.attendeeCount > 1;
 
   // Racing regular card
   if (result.isRacing) {
     return (
-      <Card onPress={onPress} style={[styles.cardContainer, resultTintStyle]}>
-        <LinearGradient
-          colors={[sportColor, gradientEnd]}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 0 }}
-          style={styles.cardGradientHeader}
-        >
-          <Badge label={sportName} size="sm" color="rgba(255,255,255,0.25)" />
-          {event.competition && (
-            <Text style={styles.cardHeaderCompetition} numberOfLines={1}>{event.competition}</Text>
-          )}
-          <Text style={styles.cardHeaderDate}>{formatDate(event.event_date)}</Text>
-        </LinearGradient>
+      <Card onPress={onPress} style={[styles.card, resultTintStyle]}>
+        {/* Sport accent top border */}
+        <View style={[styles.cardAccent, { backgroundColor: sportColor }]} />
 
         <View style={styles.cardBody}>
-          <View style={styles.racingEventContent}>
-            <View style={[styles.racingIconContainer, { backgroundColor: `${sportColor}15` }]}>
+          {/* Header */}
+          <View style={styles.cardHeader}>
+            <Badge label={sportName} size="sm" color={sportColor} />
+            {event.competition && (
+              <Text style={styles.cardCompetition} numberOfLines={1}>{event.competition}</Text>
+            )}
+            <Text style={styles.cardDate}>{formatDate(event.event_date)}</Text>
+          </View>
+
+          <View style={styles.racingContent}>
+            <View style={[styles.racingIcon, { backgroundColor: `${sportColor}12` }]}>
               <Ionicons name="flag" size={26} color={sportColor} />
             </View>
-            <View style={styles.racingEventDetails}>
-              <Text style={styles.racingEventNameLarge} numberOfLines={2}>{homeTeamName}</Text>
-              {awayTeamName && awayTeamName !== 'Away Team' && (
-                <Text style={styles.racingSelection} numberOfLines={1}>Selection: {awayTeamName}</Text>
+            <View style={styles.racingDetails}>
+              <Text style={styles.racingNameLg} numberOfLines={2}>{homeTeamName}</Text>
+              {awayTeamName !== 'Away Team' && (
+                <Text style={styles.racingSub} numberOfLines={1}>Selection: {awayTeamName}</Text>
               )}
               {event.home_score && (
-                <View style={[styles.resultBadgeInline, { backgroundColor: `${sportColor}15` }]}>
-                  <Text style={[styles.resultBadgeInlineText, { color: sportColor }]}>{event.home_score}</Text>
+                <View style={[styles.inlineResultPill, { backgroundColor: `${sportColor}12` }]}>
+                  <Text style={[styles.inlineResultText, { color: sportColor }]}>{event.home_score}</Text>
                 </View>
               )}
             </View>
           </View>
+
+          {/* Community Stats */}
+          {hasStats && !compact && (
+            <View style={styles.communityStats}>
+              <View style={styles.commStatPill}>
+                <Ionicons name="people" size={12} color={colors.primary} />
+                <Text style={styles.commStatText}>{stats.attendeeCount} attended</Text>
+              </View>
+              {stats.avgRating && (
+                <View style={styles.commStatPill}>
+                  <Ionicons name="star" size={12} color={colors.gold} />
+                  <Text style={styles.commStatText}>{stats.avgRating.toFixed(1)}</Text>
+                </View>
+              )}
+              {stats.avgAtmosphere && (
+                <View style={styles.commStatPill}>
+                  <Ionicons name="flame" size={12} color={colors.secondary} />
+                  <Text style={styles.commStatText}>{stats.avgAtmosphere.toFixed(1)}</Text>
+                </View>
+              )}
+            </View>
+          )}
 
           {/* Footer */}
           {!compact && (
@@ -395,9 +399,7 @@ export function EventCard({ event, attendance, onPress, compact = false, mini = 
                     <Text style={styles.footerChipText} numberOfLines={1}>{venueName}</Text>
                   </View>
                 )}
-                {attendance?.is_favorite && (
-                  <Ionicons name="heart" size={16} color={colors.error} />
-                )}
+                {attendance?.is_favorite && <Ionicons name="heart" size={16} color={colors.error} />}
               </View>
             </View>
           )}
@@ -408,23 +410,20 @@ export function EventCard({ event, attendance, onPress, compact = false, mini = 
 
   // Standard sport card
   return (
-    <Card onPress={onPress} style={[styles.cardContainer, resultTintStyle]}>
-      {/* Gradient Header Strip */}
-      <LinearGradient
-        colors={[sportColor, gradientEnd]}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 0 }}
-        style={styles.cardGradientHeader}
-      >
-        <Badge label={sportName} size="sm" color="rgba(255,255,255,0.25)" />
-        {event.competition && (
-          <Text style={styles.cardHeaderCompetition} numberOfLines={1}>{event.competition}</Text>
-        )}
-        <Text style={styles.cardHeaderDate}>{formatDate(event.event_date)}</Text>
-      </LinearGradient>
+    <Card onPress={onPress} style={[styles.card, resultTintStyle]}>
+      {/* Sport accent top border */}
+      <View style={[styles.cardAccent, { backgroundColor: sportColor }]} />
 
-      {/* Card Body */}
       <View style={styles.cardBody}>
+        {/* Header: sport badge + competition + date */}
+        <View style={styles.cardHeader}>
+          <Badge label={sportName} size="sm" color={sportColor} />
+          {event.competition && (
+            <Text style={styles.cardCompetition} numberOfLines={1}>{event.competition}</Text>
+          )}
+          <Text style={styles.cardDate}>{formatDate(event.event_date)}</Text>
+        </View>
+
         {/* Teams & Score */}
         <View style={styles.matchupRow}>
           {/* Home Team */}
@@ -441,60 +440,62 @@ export function EventCard({ event, attendance, onPress, compact = false, mini = 
             </Text>
           </View>
 
-          {/* Score */}
+          {/* Score in tinted box */}
           <View style={styles.scoreCol}>
-            {result.hasScore ? (
-              <>
-                {result.isTennis && result.tennisResult ? (
-                  <View style={styles.scoreBox}>
-                    <Text style={[styles.scoreNum, result.homeWon && styles.scoreWinner, result.awayWon && styles.scoreDim]}>
-                      {result.tennisResult.player1Sets}
-                    </Text>
-                    <Text style={styles.scoreSep}>-</Text>
-                    <Text style={[styles.scoreNum, result.awayWon && styles.scoreWinner, result.homeWon && styles.scoreDim]}>
-                      {result.tennisResult.player2Sets}
-                    </Text>
-                  </View>
-                ) : result.isTestMatch && result.homeScoreData && result.awayScoreData ? (
-                  <View style={styles.cricketScores}>
-                    <View style={styles.cricketCol}>
-                      {result.homeScoreData.innings.map((inn, i) => (
-                        <Text key={i} style={[styles.cricketInning, result.homeWon && styles.cricketInningWon]}>{inn}</Text>
-                      ))}
+            <View style={[styles.scoreBox, { backgroundColor: `${sportColor}0A` }]}>
+              {result.hasScore ? (
+                <>
+                  {result.isTennis && result.tennisResult ? (
+                    <View style={styles.scoreRow}>
+                      <Text style={[styles.scoreNum, result.homeWon && { color: sportColor }, result.awayWon && styles.scoreDim]}>
+                        {result.tennisResult.player1Sets}
+                      </Text>
+                      <Text style={styles.scoreSep}>-</Text>
+                      <Text style={[styles.scoreNum, result.awayWon && { color: sportColor }, result.homeWon && styles.scoreDim]}>
+                        {result.tennisResult.player2Sets}
+                      </Text>
                     </View>
-                    <Text style={styles.cricketDiv}>v</Text>
-                    <View style={styles.cricketCol}>
-                      {result.awayScoreData.innings.map((inn, i) => (
-                        <Text key={i} style={[styles.cricketInning, result.awayWon && styles.cricketInningWon]}>{inn}</Text>
-                      ))}
+                  ) : result.isTestMatch && result.homeScoreData && result.awayScoreData ? (
+                    <View style={styles.cricketScores}>
+                      <View style={styles.cricketCol}>
+                        {result.homeScoreData.innings.map((inn, i) => (
+                          <Text key={i} style={[styles.cricketInning, result.homeWon && { color: sportColor, fontWeight: fontWeight.bold }]}>{inn}</Text>
+                        ))}
+                      </View>
+                      <Text style={styles.cricketDiv}>v</Text>
+                      <View style={styles.cricketCol}>
+                        {result.awayScoreData.innings.map((inn, i) => (
+                          <Text key={i} style={[styles.cricketInning, result.awayWon && { color: sportColor, fontWeight: fontWeight.bold }]}>{inn}</Text>
+                        ))}
+                      </View>
                     </View>
-                  </View>
-                ) : (
-                  <View style={styles.scoreBox}>
-                    <Text style={[styles.scoreNum, result.homeWon && styles.scoreWinner, result.awayWon && styles.scoreDim]}>
-                      {event.home_score}
-                    </Text>
-                    <Text style={styles.scoreSep}>-</Text>
-                    <Text style={[styles.scoreNum, result.awayWon && styles.scoreWinner, result.homeWon && styles.scoreDim]}>
-                      {event.away_score}
-                    </Text>
-                  </View>
-                )}
-                {/* Result text */}
-                {result.isDraw ? (
-                  <Text style={styles.resultLabel}>Draw</Text>
-                ) : (
-                  <Text style={styles.resultLabel}>
-                    {winnerName} won{result.isTennis && result.tennisResult
-                      ? ` ${result.tennisResult.winner === 'home' ? result.tennisResult.player1Sets : result.tennisResult.player2Sets}-${result.tennisResult.winner === 'home' ? result.tennisResult.player2Sets : result.tennisResult.player1Sets}`
-                      : result.isCricket
-                      ? ` by ${result.getCricketResultText()}`
-                      : ` by ${result.margin}`}
-                  </Text>
-                )}
-              </>
-            ) : (
-              <Text style={styles.vsText}>VS</Text>
+                  ) : (
+                    <View style={styles.scoreRow}>
+                      <Text style={[styles.scoreNum, result.homeWon && { color: sportColor }, result.awayWon && styles.scoreDim]}>
+                        {event.home_score}
+                      </Text>
+                      <Text style={styles.scoreSep}>-</Text>
+                      <Text style={[styles.scoreNum, result.awayWon && { color: sportColor }, result.homeWon && styles.scoreDim]}>
+                        {event.away_score}
+                      </Text>
+                    </View>
+                  )}
+                </>
+              ) : (
+                <Text style={styles.vsText}>VS</Text>
+              )}
+            </View>
+            {/* Result text */}
+            {result.hasScore && (
+              result.isDraw ? (
+                <Text style={styles.resultLabel}>Draw</Text>
+              ) : (
+                <Text style={styles.resultLabel}>
+                  {winnerName} won{result.isTennis && result.tennisResult
+                    ? ` ${result.tennisResult.winner === 'home' ? result.tennisResult.player1Sets : result.tennisResult.player2Sets}-${result.tennisResult.winner === 'home' ? result.tennisResult.player2Sets : result.tennisResult.player1Sets}`
+                    : result.isCricket ? ` by ${result.getCricketResultText()}` : ` by ${result.margin}`}
+                </Text>
+              )
             )}
           </View>
 
@@ -513,19 +514,38 @@ export function EventCard({ event, attendance, onPress, compact = false, mini = 
           </View>
         </View>
 
+        {/* Community Stats Row */}
+        {hasStats && !compact && (
+          <View style={styles.communityStats}>
+            <View style={styles.commStatPill}>
+              <Ionicons name="people" size={12} color={colors.primary} />
+              <Text style={styles.commStatText}>{stats.attendeeCount} attended</Text>
+            </View>
+            {stats.avgRating && (
+              <View style={styles.commStatPill}>
+                <Ionicons name="star" size={12} color={colors.gold} />
+                <Text style={styles.commStatText}>{stats.avgRating.toFixed(1)} avg</Text>
+              </View>
+            )}
+            {stats.avgAtmosphere && (
+              <View style={styles.commStatPill}>
+                <Ionicons name="flame" size={12} color={colors.secondary} />
+                <Text style={styles.commStatText}>{stats.avgAtmosphere.toFixed(1)} atmos</Text>
+              </View>
+            )}
+          </View>
+        )}
+
         {/* Rich Footer */}
         {!compact && (
           <View style={styles.cardFooter}>
-            {/* Left side: rating + went with */}
             <View style={styles.footerLeft}>
               {attendance?.rating ? (
                 <View style={styles.footerRating}>
                   {[1, 2, 3, 4, 5].map((star) => {
-                    const fullStar = star <= Math.floor(attendance.rating!);
-                    const halfStar = !fullStar && star === Math.ceil(attendance.rating!) && attendance.rating! % 1 !== 0;
-                    return (
-                      <Ionicons key={star} name={fullStar ? 'star' : halfStar ? 'star-half' : 'star-outline'} size={14} color={colors.gold} />
-                    );
+                    const full = star <= Math.floor(attendance.rating!);
+                    const half = !full && star === Math.ceil(attendance.rating!) && attendance.rating! % 1 !== 0;
+                    return <Ionicons key={star} name={full ? 'star' : half ? 'star-half' : 'star-outline'} size={14} color={colors.gold} />;
                   })}
                 </View>
               ) : null}
@@ -536,8 +556,6 @@ export function EventCard({ event, attendance, onPress, compact = false, mini = 
                 </View>
               )}
             </View>
-
-            {/* Right side: venue + result badge + favorite */}
             <View style={styles.footerRight}>
               {venueName && (
                 <View style={styles.footerChip}>
@@ -564,9 +582,7 @@ export function EventCard({ event, attendance, onPress, compact = false, mini = 
                   </Text>
                 </View>
               )}
-              {attendance?.is_favorite && (
-                <Ionicons name="heart" size={16} color={colors.error} />
-              )}
+              {attendance?.is_favorite && <Ionicons name="heart" size={16} color={colors.error} />}
             </View>
           </View>
         )}
@@ -576,31 +592,35 @@ export function EventCard({ event, attendance, onPress, compact = false, mini = 
 }
 
 const styles = StyleSheet.create({
-  // ============ REGULAR CARD (Redesigned) ============
-  cardContainer: {
+  // ============ REGULAR CARD ============
+  card: {
     overflow: 'hidden',
     borderRadius: borderRadius.xl,
   },
-  cardGradientHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.md,
-    gap: spacing.sm,
-  },
-  cardHeaderCompetition: {
-    flex: 1,
-    fontSize: fontSize.xs,
-    color: 'rgba(255,255,255,0.85)',
-    fontWeight: fontWeight.medium,
-  },
-  cardHeaderDate: {
-    fontSize: fontSize.xs,
-    color: 'rgba(255,255,255,0.75)',
-    fontWeight: fontWeight.medium,
+  cardAccent: {
+    height: 4,
+    borderTopLeftRadius: borderRadius.xl,
+    borderTopRightRadius: borderRadius.xl,
   },
   cardBody: {
     padding: spacing.md,
+  },
+  cardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginBottom: spacing.md,
+  },
+  cardCompetition: {
+    flex: 1,
+    fontSize: fontSize.xs,
+    color: colors.textSecondary,
+    fontWeight: fontWeight.medium,
+  },
+  cardDate: {
+    fontSize: fontSize.xs,
+    color: colors.textMuted,
+    fontWeight: fontWeight.medium,
   },
 
   // Matchup
@@ -608,7 +628,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: spacing.sm,
   },
   teamCol: {
     flex: 1,
@@ -642,10 +661,14 @@ const styles = StyleSheet.create({
   // Score
   scoreCol: {
     alignItems: 'center',
-    paddingHorizontal: spacing.sm,
-    minWidth: 80,
+    paddingHorizontal: spacing.xs,
   },
   scoreBox: {
+    borderRadius: borderRadius.lg,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+  },
+  scoreRow: {
     flexDirection: 'row',
     alignItems: 'center',
   },
@@ -655,9 +678,6 @@ const styles = StyleSheet.create({
     color: colors.text,
     minWidth: 28,
     textAlign: 'center',
-  },
-  scoreWinner: {
-    color: colors.primary,
   },
   scoreDim: {
     color: colors.textMuted,
@@ -693,14 +713,34 @@ const styles = StyleSheet.create({
     fontWeight: fontWeight.medium,
     color: colors.textSecondary,
   },
-  cricketInningWon: {
-    color: colors.primary,
-    fontWeight: fontWeight.bold,
-  },
   cricketDiv: {
     fontSize: fontSize.xs,
     color: colors.textMuted,
     marginTop: spacing.xs,
+  },
+
+  // Community Stats
+  communityStats: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    marginTop: spacing.md,
+    paddingTop: spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  commStatPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: colors.surfaceLighter,
+    paddingVertical: 3,
+    paddingHorizontal: spacing.sm,
+    borderRadius: borderRadius.full,
+  },
+  commStatText: {
+    fontSize: fontSize.xs,
+    color: colors.textSecondary,
+    fontWeight: fontWeight.medium,
   },
 
   // Footer
@@ -711,7 +751,7 @@ const styles = StyleSheet.create({
     paddingTop: spacing.sm,
     borderTopWidth: 1,
     borderTopColor: colors.border,
-    marginTop: spacing.xs,
+    marginTop: spacing.sm,
   },
   footerLeft: {
     flexDirection: 'row',
@@ -751,57 +791,57 @@ const styles = StyleSheet.create({
     fontSize: fontSize.xs,
     fontWeight: fontWeight.bold,
   },
-  resultBadgeInline: {
+  inlineResultPill: {
     alignSelf: 'flex-start',
     paddingVertical: 2,
     paddingHorizontal: spacing.sm,
     borderRadius: borderRadius.md,
     marginTop: spacing.xs,
   },
-  resultBadgeInlineText: {
+  inlineResultText: {
     fontSize: fontSize.md,
     fontWeight: fontWeight.bold,
   },
 
   // ============ RACING ============
-  racingEventContent: {
+  racingContent: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.md,
     marginBottom: spacing.sm,
   },
-  racingIconContainer: {
+  racingIcon: {
     width: 48,
     height: 48,
     borderRadius: 24,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  racingEventDetails: {
+  racingDetails: {
     flex: 1,
     gap: 2,
   },
-  racingEventName: {
+  racingName: {
     fontSize: fontSize.md,
     fontWeight: fontWeight.semibold,
     color: colors.text,
   },
-  racingEventNameLarge: {
+  racingNameLg: {
     fontSize: fontSize.lg,
     fontWeight: fontWeight.bold,
     color: colors.text,
   },
-  racingSelection: {
+  racingSub: {
     fontSize: fontSize.sm,
     color: colors.textSecondary,
   },
-  racingResult: {
+  racingScore: {
     fontSize: fontSize.sm,
     fontWeight: fontWeight.semibold,
     marginTop: 2,
   },
 
-  // ============ MINI STYLES (kept from previous) ============
+  // ============ MINI STYLES ============
   miniContainer: {
     overflow: 'hidden',
     borderRadius: borderRadius.lg,
@@ -868,9 +908,8 @@ const styles = StyleSheet.create({
   },
   miniTeamNameWinner: {
     fontWeight: fontWeight.bold,
-    color: colors.text,
   },
-  miniWinIndicator: {
+  miniWinDot: {
     width: 6,
     height: 6,
     borderRadius: 3,
@@ -883,7 +922,6 @@ const styles = StyleSheet.create({
   miniScoreBox: {
     flexDirection: 'row',
     alignItems: 'center',
-    borderRadius: borderRadius.md,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
   },
@@ -906,29 +944,19 @@ const styles = StyleSheet.create({
     fontSize: fontSize.sm,
     fontWeight: fontWeight.semibold,
     color: colors.textMuted,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs,
   },
-  miniDrawLabel: {
+  miniResultLabel: {
     fontSize: fontSize.xs,
     color: colors.textSecondary,
     fontWeight: fontWeight.medium,
     marginTop: spacing.xs,
-  },
-  miniMarginContainer: {
-    marginTop: spacing.xs,
-  },
-  miniMarginText: {
-    fontSize: fontSize.xs,
-    fontWeight: fontWeight.medium,
-    color: colors.textSecondary,
   },
   miniCricketScores: {
     flexDirection: 'row',
     alignItems: 'flex-start',
     gap: spacing.sm,
   },
-  miniCricketScoreColumn: {
+  miniCricketCol: {
     alignItems: 'center',
   },
   miniCricketInning: {
@@ -936,11 +964,11 @@ const styles = StyleSheet.create({
     fontWeight: fontWeight.medium,
     color: colors.textSecondary,
   },
-  miniCricketInningWinner: {
+  miniCricketWon: {
     color: colors.text,
     fontWeight: fontWeight.semibold,
   },
-  miniCricketDivider: {
+  miniCricketDiv: {
     fontSize: fontSize.xs,
     color: colors.textMuted,
     marginTop: spacing.xs,
@@ -972,12 +1000,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.xs,
-    justifyContent: 'flex-end',
   },
   miniVenueText: {
     fontSize: fontSize.xs,
     color: colors.textSecondary,
-    textAlign: 'right',
   },
   miniRating: {
     flexDirection: 'row',
