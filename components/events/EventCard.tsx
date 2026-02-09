@@ -326,6 +326,13 @@ export function EventCard({ event, attendance, onPress, compact = false, mini = 
   // Has meaningful community stats (more than just the current user)
   const hasStats = stats && stats.attendeeCount > 1;
 
+  // Build subtitle from competition, round, season
+  const subtitleParts: string[] = [];
+  if (event.competition) subtitleParts.push(event.competition);
+  if (event.round) subtitleParts.push(event.round);
+  if (event.season) subtitleParts.push(`Season ${event.season}`);
+  const subtitle = subtitleParts.join(' \u00B7 ');
+
   // Racing regular card
   if (result.isRacing) {
     return (
@@ -337,9 +344,9 @@ export function EventCard({ event, attendance, onPress, compact = false, mini = 
           {/* Header */}
           <View style={styles.cardHeader}>
             <Badge label={sportName} size="sm" color={sportColor} />
-            {event.competition && (
-              <Text style={styles.cardCompetition} numberOfLines={1}>{event.competition}</Text>
-            )}
+            {subtitle ? (
+              <Text style={styles.cardCompetition} numberOfLines={1}>{subtitle}</Text>
+            ) : null}
             <Text style={styles.cardDate}>{formatDate(event.event_date)}</Text>
           </View>
 
@@ -415,12 +422,12 @@ export function EventCard({ event, attendance, onPress, compact = false, mini = 
       <View style={[styles.cardAccent, { backgroundColor: sportColor }]} />
 
       <View style={styles.cardBody}>
-        {/* Header: sport badge + competition + date */}
+        {/* Header: sport badge + competition/round/season + date */}
         <View style={styles.cardHeader}>
           <Badge label={sportName} size="sm" color={sportColor} />
-          {event.competition && (
-            <Text style={styles.cardCompetition} numberOfLines={1}>{event.competition}</Text>
-          )}
+          {subtitle ? (
+            <Text style={styles.cardCompetition} numberOfLines={1}>{subtitle}</Text>
+          ) : null}
           <Text style={styles.cardDate}>{formatDate(event.event_date)}</Text>
         </View>
 
@@ -603,7 +610,9 @@ const styles = StyleSheet.create({
     borderTopRightRadius: borderRadius.xl,
   },
   cardBody: {
-    padding: spacing.md,
+    paddingHorizontal: spacing.md,
+    paddingBottom: spacing.md,
+    paddingTop: spacing.lg,
   },
   cardHeader: {
     flexDirection: 'row',
