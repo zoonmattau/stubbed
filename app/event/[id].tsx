@@ -1217,7 +1217,7 @@ const styles = StyleSheet.create({
   // ============ HERO ============
   hero: {
     paddingTop: spacing['3xl'],
-    paddingBottom: spacing['2xl'],
+    paddingBottom: spacing['3xl'],
     paddingHorizontal: spacing.lg,
   },
   heroTopBar: {
