@@ -361,6 +361,28 @@ export default function EventDetailScreen() {
   const sportColor = getSportColor(sportName.toLowerCase());
   const gradientEnd = lightenColor(sportColor, 0.15);
 
+  // Compute hero text colors based on sport color brightness
+  const brightHero = (() => {
+    const c = sportColor.replace('#', '');
+    const r = parseInt(c.substring(0, 2), 16) / 255;
+    const g = parseInt(c.substring(2, 4), 16) / 255;
+    const b = parseInt(c.substring(4, 6), 16) / 255;
+    const lin = (v: number) => (v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4));
+    return (0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b)) > 0.4;
+  })();
+  const hc = {
+    text: brightHero ? colors.text : colors.white,
+    a80: brightHero ? 'rgba(0,0,0,0.7)' : 'rgba(255,255,255,0.8)',
+    a75: brightHero ? 'rgba(0,0,0,0.65)' : 'rgba(255,255,255,0.75)',
+    a70: brightHero ? 'rgba(0,0,0,0.6)' : 'rgba(255,255,255,0.7)',
+    a60: brightHero ? 'rgba(0,0,0,0.5)' : 'rgba(255,255,255,0.6)',
+    a50: brightHero ? 'rgba(0,0,0,0.4)' : 'rgba(255,255,255,0.5)',
+    a40: brightHero ? 'rgba(0,0,0,0.3)' : 'rgba(255,255,255,0.4)',
+    bgOverlay: brightHero ? 'rgba(0,0,0,0.1)' : 'rgba(0,0,0,0.15)',
+    logoBg: brightHero ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.2)',
+    badgeBg: brightHero ? 'rgba(0,0,0,0.12)' : 'rgba(255,255,255,0.25)',
+  };
+
   const homeTeamLogo = event.home_team?.logo_url || getTeamLogo(homeTeamName);
   const awayTeamLogo = event.away_team?.logo_url || getTeamLogo(awayTeamName);
 
@@ -538,14 +560,14 @@ export default function EventDetailScreen() {
     if (attendance?.is_abandoned) {
       return (
         <View style={styles.abandonedContainer}>
-          <Ionicons name="cloud-offline-outline" size={28} color="rgba(255,255,255,0.7)" />
-          <Text style={styles.abandonedText}>Abandoned</Text>
+          <Ionicons name="cloud-offline-outline" size={28} color={hc.a70} />
+          <Text style={[styles.abandonedText, { color: hc.a70 }]}>Abandoned</Text>
         </View>
       );
     }
 
     if (!hasScore) {
-      return <Text style={styles.heroVs}>VS</Text>;
+      return <Text style={[styles.heroVs, { color: hc.a60 }]}>VS</Text>;
     }
 
     if (isTennis && tennisResult) {
@@ -554,8 +576,9 @@ export default function EventDetailScreen() {
           {tennisResult.sets.map((set, i) => (
             <Text key={i} style={[
               styles.tennisSet,
-              set.winner === 'home' && styles.tennisSetWon,
-              set.winner === 'away' && styles.tennisSetLost,
+              { color: hc.a60 },
+              set.winner === 'home' && { color: hc.text },
+              set.winner === 'away' && { color: hc.a40 },
             ]}>
               {set.player1}-{set.player2}
             </Text>
@@ -569,15 +592,15 @@ export default function EventDetailScreen() {
         <View style={styles.cricketScoresContainer}>
           <View style={styles.cricketScoreColumn}>
             {homeScoreData.innings.map((inn, i) => (
-              <Text key={i} style={[styles.cricketInning, homeWon && styles.cricketInningWon]}>
+              <Text key={i} style={[styles.cricketInning, { color: hc.a60 }, homeWon && { color: hc.text, fontWeight: fontWeight.bold }]}>
                 {inn}
               </Text>
             ))}
           </View>
-          <Text style={styles.cricketDivider}>v</Text>
+          <Text style={[styles.cricketDivider, { color: hc.a50 }]}>v</Text>
           <View style={styles.cricketScoreColumn}>
             {awayScoreData.innings.map((inn, i) => (
-              <Text key={i} style={[styles.cricketInning, awayWon && styles.cricketInningWon]}>
+              <Text key={i} style={[styles.cricketInning, { color: hc.a60 }, awayWon && { color: hc.text, fontWeight: fontWeight.bold }]}>
                 {inn}
               </Text>
             ))}
@@ -588,11 +611,11 @@ export default function EventDetailScreen() {
 
     return (
       <View style={styles.heroScoreRow}>
-        <Text style={[styles.heroScore, homeWon && styles.heroScoreWinner, awayWon && styles.heroScoreDim]}>
+        <Text style={[styles.heroScore, { color: hc.text }, awayWon && { color: hc.a50 }]}>
           {event.home_score}
         </Text>
-        <Text style={styles.heroScoreDivider}>-</Text>
-        <Text style={[styles.heroScore, awayWon && styles.heroScoreWinner, homeWon && styles.heroScoreDim]}>
+        <Text style={[styles.heroScoreDivider, { color: hc.a50 }]}>-</Text>
+        <Text style={[styles.heroScore, { color: hc.text }, homeWon && { color: hc.a50 }]}>
           {event.away_score}
         </Text>
       </View>
@@ -602,10 +625,10 @@ export default function EventDetailScreen() {
   const renderResultText = () => {
     if (!hasScore || attendance?.is_abandoned) return null;
     if (isDraw) {
-      return <Text style={styles.heroResultText}>Draw</Text>;
+      return <Text style={[styles.heroResultText, { color: hc.a80 }]}>Draw</Text>;
     }
     return (
-      <Text style={styles.heroResultText}>
+      <Text style={[styles.heroResultText, { color: hc.a80 }]}>
         {winnerName} won{isTennis
           ? ` ${tennisResult?.player1Sets}-${tennisResult?.player2Sets}`
           : isCricket
@@ -634,20 +657,20 @@ export default function EventDetailScreen() {
         >
           {/* Top bar */}
           <View style={styles.heroTopBar}>
-            <TouchableOpacity style={styles.heroBackButton} onPress={handleBack}>
-              <Ionicons name="arrow-back" size={22} color={colors.white} />
+            <TouchableOpacity style={[styles.heroBackButton, { backgroundColor: hc.bgOverlay }]} onPress={handleBack}>
+              <Ionicons name="arrow-back" size={22} color={hc.text} />
             </TouchableOpacity>
-            <Badge label={sportName} size="md" color="rgba(255,255,255,0.25)" />
+            <Badge label={sportName} size="md" color={hc.badgeBg} />
           </View>
 
           {/* Competition & Round */}
           {(event.competition || event.round) && (
             <View style={styles.heroCompetitionRow}>
               {event.competition && (
-                <Text style={styles.heroCompetition}>{event.competition}</Text>
+                <Text style={[styles.heroCompetition, { color: hc.text }]}>{event.competition}</Text>
               )}
               {event.round && (
-                <Text style={styles.heroRound}>{event.round}</Text>
+                <Text style={[styles.heroRound, { color: hc.a75 }]}>{event.round}</Text>
               )}
             </View>
           )}
@@ -662,12 +685,12 @@ export default function EventDetailScreen() {
                 {homeTeamLogo ? (
                   <Image source={{ uri: homeTeamLogo }} style={styles.heroLogo} />
                 ) : (
-                  <View style={styles.heroLogoPlaceholder}>
-                    <Text style={styles.heroLogoText}>{homeTeamShort[0]}</Text>
+                  <View style={[styles.heroLogoPlaceholder, { backgroundColor: hc.logoBg }]}>
+                    <Text style={[styles.heroLogoText, { color: hc.text }]}>{homeTeamShort[0]}</Text>
                   </View>
                 )}
               </View>
-              <Text style={styles.heroTeamName} numberOfLines={2}>{homeTeamName}</Text>
+              <Text style={[styles.heroTeamName, { color: hc.text }]} numberOfLines={2}>{homeTeamName}</Text>
             </TouchableOpacity>
 
             <View style={styles.heroCenter}>
@@ -683,24 +706,24 @@ export default function EventDetailScreen() {
                 {awayTeamLogo ? (
                   <Image source={{ uri: awayTeamLogo }} style={styles.heroLogo} />
                 ) : (
-                  <View style={styles.heroLogoPlaceholder}>
-                    <Text style={styles.heroLogoText}>{awayTeamShort[0]}</Text>
+                  <View style={[styles.heroLogoPlaceholder, { backgroundColor: hc.logoBg }]}>
+                    <Text style={[styles.heroLogoText, { color: hc.text }]}>{awayTeamShort[0]}</Text>
                   </View>
                 )}
               </View>
-              <Text style={styles.heroTeamName} numberOfLines={2}>{awayTeamName}</Text>
+              <Text style={[styles.heroTeamName, { color: hc.text }]} numberOfLines={2}>{awayTeamName}</Text>
             </TouchableOpacity>
           </View>
 
           {/* User's result badge in hero */}
           {isOwnEvent && attendance?.supported_team && attendance?.result && (
-            <View style={styles.heroUserResult}>
+            <View style={[styles.heroUserResult, { backgroundColor: hc.bgOverlay }]}>
               <Ionicons
                 name={attendance.result === 'win' ? 'trophy' : attendance.result === 'loss' ? 'sad-outline' : 'remove-circle-outline'}
                 size={16}
-                color={colors.white}
+                color={hc.text}
               />
-              <Text style={styles.heroUserResultText}>
+              <Text style={[styles.heroUserResultText, { color: hc.text }]}>
                 You supported {attendance.supported_team === 'home' ? homeTeamShort : attendance.supported_team === 'away' ? awayTeamShort : 'Neutral'}
                 {' '}({attendance.result})
               </Text>
@@ -789,11 +812,11 @@ export default function EventDetailScreen() {
               activeOpacity={0.8}
             >
               {isAddingAttendance ? (
-                <ActivityIndicator size="small" color={colors.white} />
+                <ActivityIndicator size="small" color={hc.text} />
               ) : (
                 <>
-                  <Ionicons name="hand-left" size={22} color={colors.white} />
-                  <Text style={styles.iWasThereText}>I Was There Too!</Text>
+                  <Ionicons name="hand-left" size={22} color={hc.text} />
+                  <Text style={[styles.iWasThereText, { color: hc.text }]}>I Was There Too!</Text>
                 </>
               )}
             </TouchableOpacity>
@@ -1161,8 +1184,8 @@ export default function EventDetailScreen() {
           onPress={() => router.push(`/event/review/${attendance.id}`)}
           activeOpacity={0.85}
         >
-          <Ionicons name="create" size={22} color={colors.white} />
-          <Text style={styles.fabText}>Write Review</Text>
+          <Ionicons name="create" size={22} color={hc.text} />
+          <Text style={[styles.fabText, { color: hc.text }]}>Write Review</Text>
         </TouchableOpacity>
       )}
     </View>
