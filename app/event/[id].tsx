@@ -729,6 +729,34 @@ export default function EventDetailScreen() {
               </Text>
             </View>
           )}
+
+          {/* Date/Time + Venue in hero */}
+          <View style={styles.heroInfoRow}>
+            <TouchableOpacity
+              style={[styles.heroInfoItem, { backgroundColor: hc.bgOverlay }]}
+              onPress={() => router.push(`/date/${event.event_date}` as any)}
+              activeOpacity={0.7}
+            >
+              <Ionicons name="calendar" size={14} color={hc.text} />
+              <Text style={[styles.heroInfoText, { color: hc.text }]}>
+                {formatDate(event.event_date)}{event.event_time ? ` · ${formatTime(event.event_time)}` : ''}
+              </Text>
+              <Ionicons name="chevron-forward" size={12} color={hc.a60} />
+            </TouchableOpacity>
+            {venueName && (
+              <TouchableOpacity
+                style={[styles.heroInfoItem, { backgroundColor: hc.bgOverlay }]}
+                onPress={() => router.push(`/venue/${encodeURIComponent(venueName)}` as any)}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="location" size={14} color={hc.text} />
+                <Text style={[styles.heroInfoText, { color: hc.text }]} numberOfLines={1}>
+                  {venueName}{venueCity ? `, ${venueCity}` : ''}
+                </Text>
+                <Ionicons name="chevron-forward" size={12} color={hc.a60} />
+              </TouchableOpacity>
+            )}
+          </View>
         </LinearGradient>
 
         {/* ============ QUICK STATS BAR ============ */}
@@ -764,30 +792,14 @@ export default function EventDetailScreen() {
         )}
 
         {/* ============ EVENT INFO CHIPS ============ */}
-        <View style={styles.infoChipsRow}>
-          <View style={styles.infoChip}>
-            <Ionicons name="calendar" size={14} color={sportColor} />
-            <Text style={styles.infoChipText}>{formatDate(event.event_date)}</Text>
-          </View>
-          {event.event_time && (
-            <View style={styles.infoChip}>
-              <Ionicons name="time" size={14} color={sportColor} />
-              <Text style={styles.infoChipText}>{formatTime(event.event_time)}</Text>
-            </View>
-          )}
-          {venueName && (
-            <View style={styles.infoChip}>
-              <Ionicons name="location" size={14} color={sportColor} />
-              <Text style={styles.infoChipText}>{venueName}{venueCity ? `, ${venueCity}` : ''}</Text>
-            </View>
-          )}
-          {event.season && (
+        {event.season && (
+          <View style={styles.infoChipsRow}>
             <View style={styles.infoChip}>
               <Ionicons name="flag" size={14} color={sportColor} />
               <Text style={styles.infoChipText}>Season {event.season}</Text>
             </View>
-          )}
-        </View>
+          </View>
+        )}
 
         {/* ============ CONFLICT RESOLVER ============ */}
         {isOwnEvent && attendance && (
@@ -1336,6 +1348,23 @@ const styles = StyleSheet.create({
   heroUserResultText: {
     fontSize: fontSize.sm,
     color: colors.white,
+    fontWeight: fontWeight.medium,
+  },
+  heroInfoRow: {
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginTop: spacing.lg,
+  },
+  heroInfoItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.lg,
+    borderRadius: borderRadius.full,
+  },
+  heroInfoText: {
+    fontSize: fontSize.sm,
     fontWeight: fontWeight.medium,
   },
   abandonedContainer: {
