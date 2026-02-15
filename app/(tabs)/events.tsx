@@ -575,6 +575,7 @@ export default function EventsScreen() {
               data={winLossChartData}
               centerValue={winLossStats.total}
               centerLabel="games with results"
+              onSegmentPress={(segment) => openStatsFilter(segment.id as 'wins' | 'draws' | 'losses', segment.id)}
             />
           ) : (
             <View style={styles.emptyChart}>

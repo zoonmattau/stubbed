@@ -75,8 +75,6 @@ begin
   left join venues v on v.id = e.venue_id
   join attended_events ae on ae.event_id = e.id
   where (p_sport_id is null or e.sport_id = p_sport_id)
-    -- Only show events from last 90 days
-    and e.event_date >= current_date - interval '90 days'
   group by e.id, e.event_date, e.event_time, e.home_team_name, e.away_team_name,
            e.home_score, e.away_score, e.venue_name, e.competition,
            ht.name, ht.logo_url, att.name, att.logo_url, v.name,
