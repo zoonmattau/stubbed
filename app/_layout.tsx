@@ -69,6 +69,9 @@ export default function RootLayout() {
         <Stack.Screen name="explore" options={{ headerShown: false }} />
         <Stack.Screen name="review" options={{ headerShown: false }} />
         <Stack.Screen name="followers" options={{ headerShown: false }} />
+        <Stack.Screen name="team" options={{ headerShown: false }} />
+        <Stack.Screen name="venue" options={{ headerShown: false }} />
+        <Stack.Screen name="date" options={{ headerShown: false }} />
         <Stack.Screen name="sports" options={{ headerShown: false }} />
         <Stack.Screen name="tennis" options={{ headerShown: false }} />
         <Stack.Screen

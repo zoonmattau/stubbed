@@ -11,7 +11,7 @@ import {
 import { useLocalSearchParams, Stack, router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '@/lib/supabase';
-import { useFollows } from '@/hooks/useFollows';
+import { useAuthStore } from '@/stores/authStore';
 import { Avatar } from '@/components/ui';
 import { FollowButton } from '@/components/explore';
 import { colors, spacing, fontSize, fontWeight } from '@/constants/theme';
@@ -21,48 +21,43 @@ type TabType = 'followers' | 'following';
 
 export default function FollowersScreen() {
   const { userId, tab } = useLocalSearchParams<{ userId: string; tab?: string }>();
-  const { fetchUserFollowLists } = useFollows();
+  const { user } = useAuthStore();
 
   const [activeTab, setActiveTab] = useState<TabType>((tab as TabType) || 'followers');
   const [followers, setFollowers] = useState<FollowWithProfile[]>([]);
   const [following, setFollowing] = useState<FollowWithProfile[]>([]);
   const [profile, setProfile] = useState<Profile | null>(null);
+  const [myFollowingIds, setMyFollowingIds] = useState<Set<string>>(new Set());
   const [isLoading, setIsLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
-  // Fetch profile
-  const fetchProfile = useCallback(async () => {
+  // Fetch all data in parallel
+  const fetchAll = useCallback(async () => {
     if (!userId) return;
 
-    try {
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', userId)
-        .single();
+    const profilePromise = supabase.from('profiles').select('*').eq('id', userId).single() as any;
+    const followersPromise = supabase.from('follows').select('*, profile:profiles!follows_follower_id_fkey(*)').eq('following_id', userId) as any;
+    const followingPromise = supabase.from('follows').select('*, profile:profiles!follows_following_id_fkey(*)').eq('follower_id', userId) as any;
+    const myFollowingPromise = user?.id
+      ? (supabase.from('follows').select('following_id').eq('follower_id', user.id) as any)
+      : Promise.resolve({ data: [] });
 
-      if (error) throw error;
-      setProfile(data as Profile);
-    } catch (err) {
-      console.error('[Followers] Error fetching profile:', err);
-    }
-  }, [userId]);
+    const [profileRes, followersRes, followingRes, myFollowingRes] = await Promise.all([
+      profilePromise, followersPromise, followingPromise, myFollowingPromise,
+    ]);
 
-  // Fetch follow lists
-  const fetchFollowLists = useCallback(async () => {
-    if (!userId) return;
-
-    const lists = await fetchUserFollowLists(userId);
-    setFollowers(lists.followers);
-    setFollowing(lists.following);
-  }, [userId]);
+    if (profileRes.data) setProfile(profileRes.data as Profile);
+    if (!followersRes.error) setFollowers((followersRes.data || []) as FollowWithProfile[]);
+    if (!followingRes.error) setFollowing((followingRes.data || []) as FollowWithProfile[]);
+    setMyFollowingIds(new Set((myFollowingRes.data || []).map((r: any) => r.following_id)));
+  }, [userId, user?.id]);
 
   // Initial load
   useEffect(() => {
     const load = async () => {
       setIsLoading(true);
       try {
-        await Promise.all([fetchProfile(), fetchFollowLists()]);
+        await fetchAll();
       } catch (err) {
         console.error('[Followers] Error loading data:', err);
       } finally {
@@ -75,7 +70,7 @@ export default function FollowersScreen() {
   // Handle refresh
   const handleRefresh = async () => {
     setRefreshing(true);
-    await fetchFollowLists();
+    await fetchAll();
     setRefreshing(false);
   };
 
@@ -104,7 +99,7 @@ export default function FollowersScreen() {
           </Text>
           <Text style={styles.username}>@{userProfile.username}</Text>
         </View>
-        <FollowButton userId={userProfile.id} size="sm" />
+        <FollowButton userId={userProfile.id} size="sm" initialFollowing={myFollowingIds.has(userProfile.id)} />
       </TouchableOpacity>
     );
   };

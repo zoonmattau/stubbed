@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useAuthStore } from '@/stores/authStore';
 import type { FollowCounts, FollowWithProfile, Profile, TaggedUser, UserSuggestion } from '@/types';
@@ -288,15 +288,6 @@ export function useFollows() {
       setIsLoading(false);
     }
   }, []);
-
-  // Initial load
-  useEffect(() => {
-    if (user?.id) {
-      fetchFollowers();
-      fetchFollowing();
-      getFollowCounts(user.id);
-    }
-  }, [user?.id]);
 
   return {
     // State
