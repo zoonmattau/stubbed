@@ -1,4 +1,4 @@
-import React, { useEffect, useCallback, useState } from 'react';
+import React, { useEffect, useCallback, useState, useMemo } from 'react';
 import {
   View,
   Text,
@@ -15,14 +15,23 @@ import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAuthStore } from '@/stores/authStore';
 import { useExploreStore, TrendingEvent } from '@/stores/exploreStore';
-import { ReviewCard, FeedToggle, SportFilter } from '@/components/explore';
-import { Avatar, Card } from '@/components/ui';
+import { ReviewCard, FeedToggle, SportFilter, FollowButton } from '@/components/explore';
+import { useFollows } from '@/hooks/useFollows';
+import { Avatar, Badge, Card } from '@/components/ui';
 import { supabase } from '@/lib/supabase';
 import { colors, spacing, fontSize, fontWeight, borderRadius } from '@/constants/theme';
-import { getSportIcon, getSportColor } from '@/constants/sports';
+import { getSportIcon, getSportColor, SPORTS } from '@/constants/sports';
 import { parseLocalDate } from '@/utils/dates';
 import { parseTennisScore } from '@/utils/scores';
-import type { ReviewWithDetails } from '@/types';
+import { ActivityItem } from '@/components/social/ActivityItem';
+import type { ReviewWithDetails, UserSuggestion, ActivityFeed, Profile } from '@/types';
+
+function getSportDisplayName(sportCode: string | null | undefined): string {
+  if (!sportCode) return 'Sport';
+  const sport = SPORTS.find(s => s.id.toLowerCase() === sportCode.toLowerCase());
+  if (sport) return sport.name;
+  return sportCode.charAt(0).toUpperCase() + sportCode.slice(1);
+}
 
 interface SportCategory {
   id: string;
@@ -85,6 +94,14 @@ export default function ExploreScreen() {
 
   const [refreshing, setRefreshing] = useState(false);
 
+  // Suggested users state
+  const [suggestedUsers, setSuggestedUsers] = useState<UserSuggestion[]>([]);
+  const { getSuggestedUsers } = useFollows();
+
+  // Recent activity & hot reviews state
+  const [recentActivity, setRecentActivity] = useState<(ActivityFeed & { profile?: Profile })[]>([]);
+  const [hotReviews, setHotReviews] = useState<ReviewWithDetails[]>([]);
+
   // Live sports state
   const [hiddenSports, setHiddenSports] = useState<Set<string>>(new Set());
   const [showFilterModal, setShowFilterModal] = useState(false);
@@ -108,6 +125,24 @@ export default function ExploreScreen() {
         if (trendingEvents.length === 0 || error) {
           fetchTrendingEvents(true);
         }
+        // Fetch suggested users for Discover Fans section
+        getSuggestedUsers(6).then(setSuggestedUsers);
+        // Fetch recent activity
+        supabase
+          .from('activity_feed')
+          .select('*, profile:profiles(*)')
+          .order('created_at', { ascending: false })
+          .limit(8)
+          .then(({ data, error: actErr }) => {
+            if (actErr) console.error('[Explore] Activity fetch error:', actErr);
+            if (data) setRecentActivity(data as any);
+          });
+        // Fetch hot reviews
+        // @ts-expect-error - Supabase RPC type inference issue
+        supabase.rpc('get_trending_reviews', { p_limit: 5, p_offset: 0 }).then(({ data, error: revErr }) => {
+          if (revErr) console.error('[Explore] Hot reviews fetch error:', revErr);
+          if (data) setHotReviews(data as ReviewWithDetails[]);
+        });
       } else if (feedType === 'following' && user?.id) {
         if (followingReviews.length === 0 || error) {
           fetchFollowingFeed(user.id, true);
@@ -153,6 +188,14 @@ export default function ExploreScreen() {
   }, [saveSportsFilter]);
 
   const visibleSports = LIVE_SPORTS.filter(sport => !hiddenSports.has(sport.id));
+
+  // Community stats computed from trending events
+  const communityStats = useMemo(() => {
+    if (trendingEvents.length === 0) return null;
+    const totalAttendance = trendingEvents.reduce((sum, e) => sum + (e.attendance_count || 0), 0);
+    const uniqueSports = new Set(trendingEvents.map(e => e.sport_name).filter(Boolean)).size;
+    return { totalAttendance, uniqueSports, trendingCount: trendingEvents.length };
+  }, [trendingEvents]);
 
   // Fetch leaderboard when tab or sort changes
   useEffect(() => {
@@ -219,6 +262,21 @@ export default function ExploreScreen() {
     setRefreshing(true);
     if (feedType === 'trending') {
       await fetchTrendingEvents(true);
+      getSuggestedUsers(6).then(setSuggestedUsers);
+      supabase
+        .from('activity_feed')
+        .select('*, profile:profiles(*)')
+        .order('created_at', { ascending: false })
+        .limit(8)
+        .then(({ data, error: actErr }) => {
+          if (actErr) console.error('[Explore] Activity refresh error:', actErr);
+          if (data) setRecentActivity(data as any);
+        });
+      // @ts-expect-error - Supabase RPC type inference issue
+      supabase.rpc('get_trending_reviews', { p_limit: 5, p_offset: 0 }).then(({ data, error: revErr }) => {
+        if (revErr) console.error('[Explore] Hot reviews refresh error:', revErr);
+        if (data) setHotReviews(data as ReviewWithDetails[]);
+      });
     } else if (feedType === 'following' && user?.id) {
       await fetchFollowingFeed(user.id, true);
     } else if (feedType === 'leaderboard') {
@@ -601,6 +659,172 @@ export default function ExploreScreen() {
     </ScrollView>
   );
 
+  // Render trending header with Browse Sports, Discover Fans, Community Stats
+  const renderTrendingHeader = () => {
+    if (feedType !== 'trending') return null;
+
+    return (
+      <View style={styles.trendingHeaderContainer}>
+        {/* Recent Activity */}
+        {recentActivity.length > 0 && (
+          <View style={styles.sectionContainer}>
+            <Text style={styles.sectionTitle}>Recent Activity</Text>
+            <View style={styles.recentActivityCard}>
+              {recentActivity.map((activity, index) => (
+                <React.Fragment key={activity.id}>
+                  {index > 0 && <View style={styles.recentActivityDivider} />}
+                  <TouchableOpacity
+                    style={styles.recentActivityItem}
+                    onPress={() => {
+                      if (activity.activity_type === 'attended_event' && activity.reference_id) {
+                        // reference_id is attended_event id — look up event_id from metadata
+                        const eventId = (activity.metadata as any)?.event_id;
+                        if (eventId) {
+                          router.push(`/event/${eventId}` as any);
+                        }
+                      }
+                    }}
+                    activeOpacity={0.7}
+                  >
+                    <ActivityItem activity={activity} />
+                  </TouchableOpacity>
+                </React.Fragment>
+              ))}
+            </View>
+          </View>
+        )}
+
+        {/* Discover Fans */}
+        {suggestedUsers.length > 0 && (
+          <View style={styles.sectionContainer}>
+            <View style={styles.sectionHeaderRow}>
+              <Text style={styles.sectionTitle}>Discover Fans</Text>
+              <TouchableOpacity onPress={() => router.push('/explore/discover')}>
+                <Text style={styles.seeAllText}>See All</Text>
+              </TouchableOpacity>
+            </View>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.discoverFansRow}
+            >
+              {suggestedUsers.map((u) => (
+                <TouchableOpacity
+                  key={u.user_id}
+                  style={styles.fanCard}
+                  onPress={() => router.push(`/profile/${u.user_id}` as any)}
+                  activeOpacity={0.7}
+                >
+                  <Avatar
+                    source={u.avatar_url}
+                    name={u.display_name || u.username}
+                    size="lg"
+                  />
+                  <Text style={styles.fanName} numberOfLines={1}>
+                    {u.display_name || u.username}
+                  </Text>
+                  <Text style={styles.fanUsername} numberOfLines={1}>
+                    @{u.username}
+                  </Text>
+                  <FollowButton userId={u.user_id} size="sm" />
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+        )}
+
+        {/* Hot Reviews */}
+        {hotReviews.length > 0 && (
+          <View style={styles.sectionContainer}>
+            <Text style={styles.sectionTitle}>Hot Reviews</Text>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.hotReviewsRow}
+            >
+              {hotReviews.map((review) => {
+                const sportName = getSportDisplayName(review.sport_name);
+                const sportColor = getSportColor(sportName.toLowerCase());
+
+                return (
+                  <TouchableOpacity
+                    key={review.review_id}
+                    style={styles.hotReviewCard}
+                    onPress={() => router.push(`/event/${review.event_id}` as any)}
+                    activeOpacity={0.7}
+                  >
+                    {/* Sport accent top border */}
+                    <View style={[styles.hotReviewAccent, { backgroundColor: sportColor }]} />
+                    <View style={styles.hotReviewBody}>
+                      <Badge label={sportName} size="sm" color={sportColor} />
+                      <View style={styles.hotReviewHeader}>
+                        <Avatar
+                          source={review.avatar_url}
+                          name={review.display_name || review.username}
+                          size="sm"
+                        />
+                        <Text style={styles.hotReviewName} numberOfLines={1}>
+                          {review.display_name || review.username}
+                        </Text>
+                      </View>
+                      <Text style={styles.hotReviewEvent} numberOfLines={1}>
+                        {review.home_team_name && review.away_team_name
+                          ? `${review.home_team_name} vs ${review.away_team_name}`
+                          : `Event`}
+                      </Text>
+                      <View style={styles.hotReviewRating}>
+                        {[1, 2, 3, 4, 5].map((star) => (
+                          <Ionicons
+                            key={star}
+                            name={star <= (review.rating || 0) ? 'star' : 'star-outline'}
+                            size={14}
+                            color={colors.gold}
+                          />
+                        ))}
+                      </View>
+                      {review.review_text && (
+                        <Text style={styles.hotReviewText} numberOfLines={2}>
+                          {review.review_text}
+                        </Text>
+                      )}
+                    </View>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          </View>
+        )}
+
+        {/* Community Stats */}
+        {communityStats && (
+          <View style={styles.communityStatsCard}>
+            <View style={styles.communityStatsRow}>
+              <View style={styles.communityStatItem}>
+                <Ionicons name="people" size={20} color={colors.info} />
+                <Text style={styles.communityStatValue}>
+                  {communityStats.totalAttendance.toLocaleString()}
+                </Text>
+                <Text style={styles.communityStatLabel}>Total Attended</Text>
+              </View>
+              <View style={styles.communityStatDivider} />
+              <View style={styles.communityStatItem}>
+                <Ionicons name="football" size={20} color={colors.success} />
+                <Text style={styles.communityStatValue}>{communityStats.uniqueSports}</Text>
+                <Text style={styles.communityStatLabel}>Sports</Text>
+              </View>
+              <View style={styles.communityStatDivider} />
+              <View style={styles.communityStatItem}>
+                <Ionicons name="flame" size={20} color={colors.warning} />
+                <Text style={styles.communityStatValue}>{communityStats.trendingCount}</Text>
+                <Text style={styles.communityStatLabel}>Trending</Text>
+              </View>
+            </View>
+          </View>
+        )}
+      </View>
+    );
+  };
+
   // Render empty state
   const renderEmptyState = () => {
     // Show error state with retry button
@@ -790,6 +1014,7 @@ export default function ExploreScreen() {
           data={listData as any}
           keyExtractor={keyExtractor}
           renderItem={renderItem as any}
+          ListHeaderComponent={feedType === 'trending' ? renderTrendingHeader() : undefined}
           ListEmptyComponent={renderEmptyState}
           ListFooterComponent={renderFooter}
           onEndReached={handleLoadMore}
@@ -842,6 +1067,7 @@ const styles = StyleSheet.create({
     marginBottom: spacing.sm,
   },
   listContent: {
+    flexGrow: 1,
     paddingBottom: spacing['3xl'],
   },
   reviewWrapper: {
@@ -1150,6 +1376,161 @@ const styles = StyleSheet.create({
     color: colors.white,
   },
 
+  // Trending Header sections
+  trendingHeaderContainer: {
+    paddingBottom: spacing.md,
+  },
+  sectionContainer: {
+    marginBottom: spacing.lg,
+  },
+  sectionTitle: {
+    fontSize: fontSize.lg,
+    fontWeight: fontWeight.bold,
+    color: colors.text,
+    marginBottom: spacing.md,
+    paddingHorizontal: spacing.lg,
+  },
+  sectionHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: spacing.lg,
+    marginBottom: spacing.md,
+  },
+  seeAllText: {
+    fontSize: fontSize.sm,
+    fontWeight: fontWeight.medium,
+    color: colors.primary,
+  },
+
+  // Discover Fans
+  discoverFansRow: {
+    paddingHorizontal: spacing.lg,
+    gap: spacing.md,
+  },
+  fanCard: {
+    alignItems: 'center',
+    backgroundColor: colors.surface,
+    borderRadius: borderRadius.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.md,
+    width: 120,
+    gap: spacing.xs,
+  },
+  fanName: {
+    fontSize: fontSize.sm,
+    fontWeight: fontWeight.medium,
+    color: colors.text,
+    textAlign: 'center',
+    marginTop: spacing.xs,
+  },
+  fanUsername: {
+    fontSize: fontSize.xs,
+    color: colors.textMuted,
+    textAlign: 'center',
+    marginBottom: spacing.xs,
+  },
+
+  // Community Stats
+  communityStatsCard: {
+    marginHorizontal: spacing.lg,
+    backgroundColor: colors.surface,
+    borderRadius: borderRadius.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.md,
+    marginBottom: spacing.md,
+  },
+  communityStatsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-around',
+  },
+  communityStatItem: {
+    alignItems: 'center',
+    flex: 1,
+  },
+  communityStatValue: {
+    fontSize: fontSize.lg,
+    fontWeight: fontWeight.bold,
+    color: colors.text,
+    marginTop: spacing.xs,
+  },
+  communityStatLabel: {
+    fontSize: fontSize.xs,
+    color: colors.textMuted,
+    marginTop: 2,
+  },
+  communityStatDivider: {
+    width: 1,
+    height: 40,
+    backgroundColor: colors.border,
+  },
+
+  // Recent Activity
+  recentActivityCard: {
+    marginHorizontal: spacing.lg,
+    backgroundColor: colors.surface,
+    borderRadius: borderRadius.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    overflow: 'hidden',
+  },
+  recentActivityItem: {},
+  recentActivityDivider: {
+    height: 1,
+    backgroundColor: colors.border,
+    marginHorizontal: spacing.md,
+  },
+
+  // Hot Reviews
+  hotReviewsRow: {
+    paddingHorizontal: spacing.lg,
+    gap: spacing.md,
+  },
+  hotReviewCard: {
+    width: 200,
+    backgroundColor: colors.surface,
+    borderRadius: borderRadius.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    overflow: 'hidden',
+  },
+  hotReviewAccent: {
+    height: 4,
+    borderTopLeftRadius: borderRadius.lg,
+    borderTopRightRadius: borderRadius.lg,
+  },
+  hotReviewBody: {
+    padding: spacing.md,
+    gap: spacing.sm,
+  },
+  hotReviewHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  hotReviewName: {
+    fontSize: fontSize.sm,
+    fontWeight: fontWeight.semibold,
+    color: colors.text,
+    flex: 1,
+  },
+  hotReviewEvent: {
+    fontSize: fontSize.xs,
+    color: colors.textSecondary,
+  },
+  hotReviewRating: {
+    flexDirection: 'row',
+    gap: 2,
+  },
+  hotReviewText: {
+    fontSize: fontSize.sm,
+    color: colors.textSecondary,
+    lineHeight: fontSize.sm * 1.4,
+  },
   // Trending Event Card styles
   trendingEventCard: {
     backgroundColor: colors.surface,

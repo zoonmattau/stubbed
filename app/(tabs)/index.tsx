@@ -656,6 +656,20 @@ export default function HomeScreen() {
             </View>
           </TouchableOpacity>
 
+          <TouchableOpacity
+            style={[styles.exploreCard, { backgroundColor: colors.error }]}
+            onPress={() => router.push('/(tabs)/explore')}
+            activeOpacity={0.8}
+          >
+            <View style={styles.exploreCardContent}>
+              <View style={styles.exploreCardIcon}>
+                <Ionicons name="flame" size={24} color={colors.white} />
+              </View>
+              <Text style={styles.exploreCardTitle}>Hot Right Now</Text>
+              <Text style={styles.exploreCardSubtitle}>Trending events</Text>
+            </View>
+          </TouchableOpacity>
+
         </View>
       </View>
 
